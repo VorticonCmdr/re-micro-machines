@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Micro Machines — Asset Viewer</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>Micro Machines <span class="sub">asset viewer</span></h1>
+      <div class="topbar-controls">
+        <label>Zoom <select id="zoom"></select></label>
+        <span id="source-status" class="status">connecting…</span>
+        <button id="pick-folder" type="button" hidden>Open game folder…</button>
+        <a class="game-link" href="index.html">▶ Play</a>
+      </div>
+    </header>
+    <div id="drop-zone" class="layout">
+      <nav id="sidebar" class="sidebar" aria-label="Assets"></nav>
+      <main id="view" class="view">
+        <p class="placeholder">Select an asset.</p>
+      </main>
+    </div>
+    <script type="module" src="/src/viewer.js"></script>
+  </body>
+</html>

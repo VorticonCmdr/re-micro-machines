@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Micro Machines</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body class="game-body">
+    <header class="topbar">
+      <h1>Micro Machines</h1>
+      <div class="topbar-controls">
+        <label>Smoothness <select id="smoothness"><option value="1">1 HIGH</option><option value="2">2 GOOD</option><option value="3">3 MEDIUM</option><option value="4">4 LOW</option></select></label>
+        <label><input type="checkbox" id="opl-strict" /> Strict OPL2 (sine only)</label>
+        <label><input type="checkbox" id="projectiles-toggle" /> Projectiles (dev)</label>
+        <label><input type="checkbox" id="lapline-toggle" /> Lap line (dev)</label>
+        <button id="pick-folder" type="button" hidden>Open game folder…</button>
+        <a class="viewer-link" href="game.html">Tournament →</a>
+        <a class="viewer-link" href="viewer.html">Asset Viewer →</a>
+      </div>
+    </header>
+    <main id="stage" class="stage">
+      <p class="placeholder game-note">
+        ROUND21 (POWERBOATS, one player) — M3.6, no menus/two-player yet (PLAN-ENGINE.md).
+        Controls: arrows to steer/throttle, S to fire, SPACE to pause, R to restart once the race
+        is over. Fire is only enabled in
+        TANKS (round 7) in the real game — this page always boots ROUND21 (round 2), so check
+        "Projectiles (dev)" above to fire here anyway. As in the original, holding S on the keyboard
+        freezes your car's steering and speed while it is held, even where nothing fires
+        (docs/engine.md §9an). The lap counts where the left channel passes
+        under the bath rack, right where you start (the original paints no line there; tick
+        "Lap line (dev)" to mark it). The HUD's top digit is laps left: it jumps to 4 as the race starts
+        (you start just behind the line) and counts down each time you cross it. If the game files aren't found at
+        <code>/game</code> (a production build), open your own copy with "Open game folder…" or
+        drop it below.
+      </p>
+      <canvas id="race-canvas" class="race-canvas"></canvas>
+      <p id="race-status" class="race-status">Loading…</p>
+    </main>
+    <script type="module" src="/src/play-entry.js"></script>
+  </body>
+</html>

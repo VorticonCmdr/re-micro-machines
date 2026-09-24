@@ -1,0 +1,27 @@
+node_modules/
+dist/
+.DS_Store
+
+# Ghidra project (binary database, machine-local, not source): ghidra/mm.gpr + mm.rep/.
+ghidra/
+mm.gpr
+mm.lock
+mm.lock~
+mm.rep/
+
+# Derived Ghidra listings (regenerable with analyzeHeadless).
+re/
+
+# Claude Code session state.
+.claude/
+
+# Original game data. Commercial software — never commit it, never bundle it; the viewer
+# loads it from the user's own copy.
+game/
+
+# Reference renders produced by tools/ for eyeball verification.
+tools/out/
+# (tools/refs/ IS committed: small raw DOSBox captures the live check diffs against)
+
+# CodeGraph index (machine-local, regenerable with `codegraph init`).
+.codegraph/

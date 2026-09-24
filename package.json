@@ -1,0 +1,40 @@
+{
+  "name": "micro-machines-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "HTML + vanilla JS port of Micro Machines (Codemasters, 1994). Decodes the original game files at runtime.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "render": "node tools/render-reference.mjs",
+    "catalog": "node tools/check-catalog.mjs",
+    "lz": "node tools/check-lz.mjs",
+    "chrtable": "node tools/check-chr-table.mjs",
+    "tables": "node tools/check-tables.mjs",
+    "car": "node tools/check-car.mjs",
+    "step": "node tools/check-step.mjs",
+    "trace": "node tools/check-trace.mjs",
+    "ai": "node tools/check-ai.mjs",
+    "play": "node tools/check-play.mjs",
+    "sound": "node tools/check-sound.mjs",
+    "rounds": "node tools/check-rounds.mjs",
+    "finish": "node tools/check-finish.mjs",
+    "twocar": "node tools/check-twocar.mjs",
+    "tournament": "node tools/check-tournament.mjs",
+    "menu": "node tools/check-menu.mjs",
+    "screens": "node tools/check-screens.mjs",
+    "opl-toggle": "node tools/check-opl-toggle.mjs",
+    "smoothness": "node tools/check-smoothness.mjs",
+    "tracks": "node tools/render-tracks.mjs",
+    "bitsfile": "node tools/render-bitsfile.mjs",
+    "live": "node tools/check-live.mjs",
+    "smoke": "node tools/check-views.mjs",
+    "si2": "node tools/check-si2.mjs && node tools/check-si2-live.mjs && node tools/check-si2-race.mjs",
+    "tunes": "node tools/render-tunes.mjs"
+  },
+  "devDependencies": {
+    "vite": "^7.0.0"
+  }
+}

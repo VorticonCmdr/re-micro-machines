@@ -1,0 +1,91 @@
+// Human control-byte reader (PLAN-ENGINE.md D3: one pluggable reader among several -- `ai.js` is
+// another). Keyboard only this milestone; gamepad/mouse are the same 5-bit-byte interface and are
+// not implemented here. Bit order and key roles: docs/engine.md §6 (`KeyboardIsr 2efd`,
+// `RunRedefineKeysScreen`'s slot labels) -- LEFT/RIGHT/ACCELERATE/BRAKE/SELECT(fire) map to bits
+// 0x80/0x40/0x20/0x10/0x08, the same layout every reader (human or AI) produces.
+
+// Standard PC/XT scancode -> browser KeyboardEvent.code, for the codes SETTINGS.DAT's default
+// KEYS2 binding actually uses (arrows + S) plus the rest of formats/globaldata.js's SCANCODE_NAME
+// table, so a custom SETTINGS.DAT (any letter/arrow key) still resolves.
+const SCANCODE_TO_KEY_CODE = {
+  0x1e: 'KeyA', 0x30: 'KeyB', 0x2e: 'KeyC', 0x20: 'KeyD', 0x12: 'KeyE', 0x21: 'KeyF', 0x22: 'KeyG',
+  0x23: 'KeyH', 0x17: 'KeyI', 0x24: 'KeyJ', 0x25: 'KeyK', 0x26: 'KeyL', 0x32: 'KeyM', 0x31: 'KeyN',
+  0x18: 'KeyO', 0x19: 'KeyP', 0x10: 'KeyQ', 0x13: 'KeyR', 0x1f: 'KeyS', 0x14: 'KeyT', 0x16: 'KeyU',
+  0x2f: 'KeyV', 0x11: 'KeyW', 0x2d: 'KeyX', 0x15: 'KeyY', 0x2c: 'KeyZ',
+  0x39: 'Space', 0x48: 'ArrowUp', 0x50: 'ArrowDown', 0x4b: 'ArrowLeft', 0x4d: 'ArrowRight',
+}
+
+const BIT_LEFT = 0x80, BIT_RIGHT = 0x40, BIT_ACCEL = 0x20, BIT_BRAKE = 0x10, BIT_FIRE = 0x08
+
+/**
+ * `scancodes`: `parseSettings(...).keys2` (or `.keys1`) -- [left, right, accelerate, brake,
+ * fire], in that order (docs/engine.md §6). Returns `{ read(): number, dispose(): void }`.
+ */
+export function createKeyboardReader(scancodes, target = window) {
+  const codes = scancodes.map((sc) => SCANCODE_TO_KEY_CODE[sc]).filter(Boolean)
+  const held = new Set()
+  const onDown = (e) => { if (codes.includes(e.code)) { held.add(e.code); e.preventDefault() } }
+  const onUp = (e) => { if (codes.includes(e.code)) held.delete(e.code) }
+  const onBlur = () => held.clear()
+  target.addEventListener('keydown', onDown)
+  target.addEventListener('keyup', onUp)
+  target.addEventListener('blur', onBlur)
+
+  return {
+    read() {
+      const [left, right, accel, brake, fire] = codes
+      let bits = 0
+      if (left && held.has(left)) bits |= BIT_LEFT
+      if (right && held.has(right)) bits |= BIT_RIGHT
+      if (accel && held.has(accel)) bits |= BIT_ACCEL
+      if (brake && held.has(brake)) bits |= BIT_BRAKE
+      if (fire && held.has(fire)) bits |= BIT_FIRE
+      return bits
+    },
+    dispose() {
+      target.removeEventListener('keydown', onDown)
+      target.removeEventListener('keyup', onUp)
+      target.removeEventListener('blur', onBlur)
+    },
+  }
+}
+
+/** SPACE (docs/engine.md §6: key slot 14, a bit of `[107C]` separate from the 5-bit control byte,
+ * pause test at `3074`) -- tracked independently since it drives `engine/pause.js`'s own state
+ * machine, not `runStep`'s per-car control byte. `read()` returns `{pressed, held}`: `pressed` is
+ * an edge, true exactly once per fresh press (consumed on read), `held` is the live level (the
+ * pause resume gate needs both). */
+export function createPauseKeyReader(target = window) {
+  let held = false
+  let pressed = false
+  const onDown = (e) => { if (e.code === 'Space') { if (!held) pressed = true; held = true; e.preventDefault() } }
+  const onUp = (e) => { if (e.code === 'Space') held = false }
+  const onBlur = () => { held = false }
+  target.addEventListener('keydown', onDown)
+  target.addEventListener('keyup', onUp)
+  target.addEventListener('blur', onBlur)
+  return {
+    read() {
+      const p = pressed
+      pressed = false
+      return { pressed: p, held }
+    },
+    dispose() {
+      target.removeEventListener('keydown', onDown)
+      target.removeEventListener('keyup', onUp)
+      target.removeEventListener('blur', onBlur)
+    },
+  }
+}
+
+/** A reader over a pre-recorded control-byte-per-step array (determinism check / tape replay). */
+export function createTapeReader(bytes) {
+  let i = 0
+  return { read: () => bytes[i++] ?? 0, reset: () => { i = 0 } }
+}
+
+/** Records every byte a wrapped reader returns, for later replay via `createTapeReader`. */
+export function recordingReader(reader) {
+  const tape = []
+  return { read: () => { const b = reader.read(); tape.push(b); return b }, tape, dispose: () => reader.dispose?.() }
+}

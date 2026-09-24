@@ -1,0 +1,130 @@
+# Micro Machines — an HTML + vanilla JS port
+
+An in-browser port of **Micro Machines** (Codemasters, 1994) that decodes and plays the original
+DOS game's own files at runtime — no extraction step, no converted assets, nothing generated at
+build time. It ships no game data of its own; you provide your own legally-owned copy of the game.
+
+This is a from-scratch reverse-engineering project: every format, physics formula and game rule
+here was recovered from the shipped files and the disassembled executable (`MICROU.EXE`), not
+copied from another port or from source code (none exists). `PLAN.md` and `PLAN-ENGINE.md` are the
+full working plans; `docs/` holds the subsystem-by-subsystem evidence, each claim tagged
+`[PROVEN]` (verified by running something), `[STATIC]` (read from the bytes) or `[UNKNOWN]`
+(not established) — see `CLAUDE.md` for that convention in full.
+
+## Playing it
+
+You need your own copy of the game's files (an `.exe`/`.com`/data-file set from the original
+install, commonly named things like `MICRO.COM`, `MICRO.EXE`, `GAME1/`, etc.) — this repository
+does not include or link to a copy.
+
+```bash
+npm install
+npm run dev
+```
+
+Open the URL Vite prints. Three pages:
+
+- **`index.html`** — a single race (round 2 qualifier), one player vs. 3 AI drones. The
+  simplest way to see the physics and rendering work.
+- **`game.html`** — the full flow: title → menu → character select → a one-player Challenge or
+  Head-to-Head-vs-CPU tournament → champion screen. Two-human head-to-head is not implemented
+  (its own track selection isn't deterministic — see `docs/engine.md`'s tournament section).
+- **`viewer.html`** — a developer asset viewer: every decoded format (tracks, sprites, sound,
+  palettes…) browsable directly, useful for seeing what a file *is* independent of the game.
+
+In dev, Vite serves a local `game/` folder (see below) over HTTP automatically. A **production
+build** (`npm run build && npm run preview`, or any static host) has no `game/` to serve — every
+page then offers "Open game folder…" (or a drag-and-drop zone) to read your own copy directly from
+disk via the File System Access API, without ever uploading it anywhere.
+
+Controls: arrow keys to steer/throttle, Space (or S) to fire — remappable only by editing your own
+copy's `SETTINGS.DAT` (there is no in-browser key-rebinding UI yet). During menus, arrows navigate
+and Space/Enter confirms.
+
+## Setting up the game files for development
+
+Put your copy's files in `game/` at the repository root (case doesn't matter; the per-round data
+belongs in `game/GAME1/`, matching the original install layout). `game/` is git-ignored and is
+never bundled into a build (`vite.config.js` sets `publicDir: false`) — it is commercial software
+and stays local to your machine.
+
+## What's implemented
+
+- **Every shipped asset format**: palettes, sprites/fonts (the `.CHR` arena), tile banks, vehicle
+  rotation frames, track layout (`.MAP`/`.CT`/`.COL`/`.DIR`/`.LEV`), the LZ codec, the OPL2/AdLib
+  music-and-sfx driver (`DRIVER1.BIN`) reimplemented as a from-scratch YM3812 synthesizer, the logo
+  intro, and the (patched-out) code-card copy protection.
+- **The race engine**: 35 Hz fixed-timestep physics (steering, velocity, collisions, terrain
+  hazards per round, checkpoints/laps, airborne/ramps, the full car state machine), the drone AI,
+  and per-round camera — all reproduced from the disassembly, not approximated.
+- **A full one-player tournament**: the Challenge (4-car) and Head-to-Head-vs-CPU (2-car) formats,
+  win-streak bonus races (round 9, "RUFFTRUX"), lives, and driver elimination/replacement — see
+  `docs/engine.md`'s front-end section for exactly which parts are simplified (auto-picked
+  opponents rather than an interactive picker, for instance) and why.
+- **Sound**: real OPL2 synthesis running in an `AudioWorklet`, ticked off the audio clock the way
+  the original driver was, with an optional strict-YM3812 mode (see below).
+- **Two "polish" settings**, both faithful to the original rather than added for their own sake:
+  - **Smoothness** (1–4): the original's own display-vs-physics-rate tradeoff — physics always
+    runs at 35 Hz, this only controls how often the screen redraws. On modern hardware there's no
+    performance reason to use anything but 1 (the smoothest); it's here for parity with the
+    original's own options screen, not because the browser needs it.
+  - **Strict OPL2**: the shipped game never enables the real YM3812's waveform-select register, so
+    a real AdLib card would have played every voice as a plain sine wave. The DOSBox build this
+    port's audio was verified against emulates an OPL3 chip in OPL2 mode instead, which (like most
+    real Sound Blaster/AWE cards of the era) ignores that and plays each instrument's own waveform
+    regardless — a richer, "not strictly accurate" sound that is what the game actually sounded
+    like on real, common hardware. This checkbox switches to the stricter, sine-only behaviour.
+
+## What's not implemented
+
+- Two-human head-to-head, the interactive tournament-opponent/replacement pickers, the tournament
+  board and options/redefine-keys/joystick-calibration screens, and palette fades — all named
+  explicitly in `docs/engine.md`'s front-end sections, with the reason each was cut.
+- The code-card copy-protection screen is decoded (`src/formats/fontbin.js`) and viewable in
+  `viewer.html`, but not wired into the game's own boot sequence as a curiosity.
+- Gamepad/mouse input (keyboard only).
+- A handful of narrow, explicitly-tagged `[UNKNOWN]` items remain — grep `docs/engine.md` and
+  `docs/sound.md` for `UNKNOWN_` to see exactly what and why.
+
+## Verifying it
+
+There is no conventional test runner; verification is either an exact match against values read
+live from the disassembly, or "render it and look." The check scripts:
+
+```bash
+npm run catalog     # decoded-format catalogue matches the real game/ directory
+npm run tables       # every embedded engine/front-end constant matches MICROU.EXE
+npm run car          # car record round-trips the static memory image byte-exact
+npm run step         # headless physics sanity + the lap/checkpoint rule
+npm run trace        # replay a live-captured DOSBox trace through the physics
+npm run ai           # drone AI against the same trace, and a full AI+physics loop
+npm run rounds       # all 9 rounds x every race x both race formats run clean
+npm run tournament   # the one-player tournament state machine's rules
+npm run sound        # the sound driver model, engine pitch, sfx wiring
+npm run opl-toggle   # the two OPL2 waveform modes actually sound different
+npm run si2          # the JS OPL2 core reproduces every register write DOSBox made
+npm run live         # pixel-diffs an assembled track against a real DOSBox frame
+npm run smoke        # every viewer view against the real files, headless
+```
+
+`npm run render` / `npm run tracks` / `npm run tunes` decode assets to `tools/out/` to be looked at
+or listened to by a person — that inspection *is* the check for anything visual or audible that a
+byte-for-byte comparison can't cover on its own.
+
+## Project layout
+
+```
+game/            your own copy of the game files (git-ignored, never bundled)
+src/formats/     decoders for every shipped file format
+src/engine/      the race physics, state machine, drone AI, camera, input, sound wiring
+src/frontend/    the tournament rules and the menu/race/results flow (game.html)
+src/render/      indexed-buffer compositing and sprite blitting
+src/audio/       the from-scratch OPL2 synthesizer and its AudioWorklet host
+src/data/        engine/front-end constants read live from MICROU.EXE, checked against it
+src/ui/          the developer asset viewer (viewer.html)
+tools/           check-*.mjs verification scripts, render-*.mjs asset dumpers
+docs/            subsystem-by-subsystem reverse-engineering findings, with evidence tags
+```
+
+See `PLAN.md` (asset formats) and `PLAN-ENGINE.md` (the engine/front-end port) for the full,
+milestone-by-milestone account of how this was built.
