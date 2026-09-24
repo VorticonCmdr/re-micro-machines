@@ -522,9 +522,9 @@ async function settled(round, race) {
 // `CS:[0x9C62]`==`DS:[0x8A2]`) is 0, and two-human H2H's own entry (`1F80`'s `JZ 1FA9` rejecting
 // `CX==0` before `[0x8A2]` is ever stored) means that mode ALWAYS takes the fork's OTHER branch,
 // `3F3B-3FBD` -- never `4070` at all. So a human P2 does NOT get car slot 1's usual drone tuning
-// in two-human H2H; instead every car gets a symmetric, entirely UNPORTED alternate tuning
-// (`3F3B`'s own per-character-roster-byte formulas) -- porting it is a PREREQUISITE for that
-// mode's first playable race, tracked as `UNKNOWN_alt_tuning_path`, not this commit's own scope.
+// in two-human H2H; instead every car gets a symmetric alternate tuning (`3F3B`'s own
+// per-character-roster-byte formulas) -- now ported and live-DOSBox-proven, `altTuningFieldsFor`,
+// see the test section below and docs/engine.md §9bg (was `UNKNOWN_alt_tuning_path`, resolved).
 // The rubber band (`4B1C`/`528D`) was checked and is ALSO car-INDEX based, matching `tuningFieldsFor`'s
 // own shape; it CANNOT be gated by `[0x8A2]` (that cell's only 2 readers, 3F33/40AF, are both
 // inside init-time tuning, nowhere near this per-step physics code) -- whether `4B1C-4B41` has its
@@ -567,5 +567,41 @@ async function settled(round, race) {
   check('TANKS (round 7): a drone car always adds 1 to its steer step regardless of speed (cx 0x10->0x11), NOT the human halving rule', aiTanks.heading === ((0 - 0x11) & 0xff))
 }
 
-console.log(bad ? `${bad} of ${asserted} executed check(s) failed` : `check-twocar: ${distinct.size} distinct assertions (${asserted} executed) pass -- the two-car match matches the disassembly -- camera trigger, knockout reset (both branches), 64-step blink and commit, finish block and Play Off, banners, double death, and the exit fix-up; real races end at 8, at 0, on a finish while ahead or behind, and in sudden death after a tied finish; car.isDrone now reflects controllerType, not car index, proven against the real keyboard fire-preempt (GOAL-DOS-PARITY.md P4, docs/engine.md §9bf)`)
+// Two-human H2H's own alternate tuning path (GOAL-DOS-PARITY.md P4, docs/engine.md §9bg):
+// `spawnCars`'s new `altTuning` option selects `altTuningFieldsFor` (the real `3F3B-3FBD`) over
+// `tuningFieldsFor` (the real `4070`/`3FBE-4134`) -- the mode two-human H2H's own entry ALWAYS
+// takes, `[PROVEN]` live this session (round 7 TANKS, raceFormat 2, P1=KEYS2/P2=KEYS1,
+// `DS:[0x8A2]==1` read live at the real `1000:3F30` fork). `rosterWords: [5,6,11,11]` is the LIVE
+// capture's own exact input (a `DS:0x2668` read, characters DWAYNE/JETHRO/11/11 -- 11/11 for the
+// unused two-car-format slots), all four with bit 7 clear (5/6 well under 0x80). Both spawned
+// cars' tuning matched `CAR_TYPE_INFO[6]`'s own raw row (plus the formula's own unconditional
+// `+0x32`/`+20`/`+20` terms) EXACTLY, byte-identical between car 0 and car 1 -- this is the bit7=0
+// case, and passing the REAL character indices (not 0) also proves the low 7 bits are genuinely
+// ignored while bit 7 is clear, not just untested; the bit7=1 arithmetic is `[STATIC]` only (see
+// `altTuningFieldsFor`'s own header). These values are the LIVE CAPTURE's own ground truth, not
+// re-derived from the same formula the port implements -- the non-tautological check the
+// project's own evidence discipline requires.
+{
+  const cars = spawnCars(strt, 7, 1, { raceFormat: 2, controllerTypes: [5, 4, 6, 6], altTuning: true, rosterWords: [5, 6, 11, 11] })
+  for (const [i, car] of [[0, cars[0]], [1, cars[1]]]) {
+    check(`altTuning round 7 car ${i}: maxSpeedCur matches the live capture (931)`, car.maxSpeedCur === 931)
+    check(`altTuning round 7 car ${i}: maxSpeedBase matches maxSpeedCur (931)`, car.maxSpeedBase === 931)
+    check(`altTuning round 7 car ${i}: reverseLimit matches the live capture (-781)`, car.reverseLimit === -781)
+    check(`altTuning round 7 car ${i}: accel matches the live capture (16)`, car.accel === 16)
+    check(`altTuning round 7 car ${i}: brakeDecel matches the live capture (16)`, car.brakeDecel === 16)
+    check(`altTuning round 7 car ${i}: coastDecel matches the live capture (30)`, car.coastDecel === 30)
+    check(`altTuning round 7 car ${i}: slipThreshold matches the live capture (80)`, car.slipThreshold === 80)
+    check(`altTuning round 7 car ${i}: gripStep matches the live capture (79)`, car.gripStep === 79)
+  }
+  check('altTuning: car 0 and car 1 get IDENTICAL tuning -- no isDrone/car-index distinction in this path, matching the live capture exactly', cars[0].maxSpeedCur === cars[1].maxSpeedCur && cars[0].accel === cars[1].accel && cars[0].reverseLimit === cars[1].reverseLimit)
+
+  // The default (altTuning omitted/false) must be untouched -- the normal 4070/tuningFieldsFor
+  // path, which for the SAME round/format gives DIFFERENT values (car 0 human, no cx ramp reason
+  // to coincide with the alt path's own raw-table numbers except where the formulas happen to
+  // agree by construction) -- proven by checking the normal path is still reachable and distinct.
+  const normalCars = spawnCars(strt, 7, 1, { raceFormat: 2, controllerTypes: [5, 4, 6, 6] })
+  check('altTuning defaults to false: the normal tuningFieldsFor path is untouched (car 1, a drone by default tuning math, keeps its own DRONE_MAX_VEL_HANDICAP-adjusted maxSpeedCur, not the alt path\'s raw 931)', normalCars[1].maxSpeedCur !== 931 || normalCars[1].accel !== 16)
+}
+
+console.log(bad ? `${bad} of ${asserted} executed check(s) failed` : `check-twocar: ${distinct.size} distinct assertions (${asserted} executed) pass -- the two-car match matches the disassembly -- camera trigger, knockout reset (both branches), 64-step blink and commit, finish block and Play Off, banners, double death, and the exit fix-up; real races end at 8, at 0, on a finish while ahead or behind, and in sudden death after a tied finish; car.isDrone now reflects controllerType, not car index, proven against the real keyboard fire-preempt (GOAL-DOS-PARITY.md P4, docs/engine.md §9bf); two-human H2H's own alternate tuning path (altTuning) is ported and live-DOSBox-proven byte-exact against a real race's own car 0/car 1 tuning (docs/engine.md §9bg)`)
 process.exitCode = bad ? 1 : 0

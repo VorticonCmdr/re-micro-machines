@@ -148,6 +148,62 @@ export function tuningFieldsFor(carIndex, round, tournamentIndex = 0, character,
   }
 }
 
+/**
+ * `InitRaceCarsFromTables`'s ALTERNATE per-car tuning path (`3F3B-3FBD`), taken instead of
+ * `tuningFieldsFor`'s own `CarTypeInfo`+`cx` ramp whenever a per-RACE mode fork (`1000:3F30`,
+ * `CS:[0x9C62]` == `DS:[0x8A2]`) is nonzero -- `[PROVEN]` live this session (GOAL-DOS-PARITY.md P4,
+ * docs/engine.md §9bg): a real two-human Head to Head race (raceFormat=2, P1=KEYS2, P2=KEYS1,
+ * round 7 TANKS) read `[0x8A2]==1` at the fork, and BOTH spawned cars' resulting tuning matched
+ * this function's own formula applied to `CAR_TYPE_INFO[6]`'s raw row (`931, -831, 16, 16, 30, 60,
+ * 59`) EXACTLY -- 931/-781/16/16/30/80/79 for maxSpeedCur/reverseLimit/accel/brakeDecel/
+ * coastDecel/slipThreshold/gripStep (reverseLimit/slipThreshold/gripStep each add their own
+ * `+0x32`/`+20`/`+20`) -- byte-identical between car 0 and car 1 -- no `CMP BX,0`/isDrone
+ * distinction anywhere in this path, unlike `tuningFieldsFor`'s
+ * own `4070`. DOS distinguishes two-human H2H from every other race format by this ONE per-race
+ * fork, not by re-testing car index or controller type inside the tuning code itself.
+ *
+ * Each field depends on that car SLOT's own roster word (`rosterWord`, the real
+ * `[DI+0x2668+2*slot]`): bit 7 set means `n = (w&0x7F)+1` and the field below its own `-0xC0`/`-0xC`
+ * baseline gets `64*(n-1)`/`4*(n-1)` added back; bit 7 clear means the field is the RAW
+ * `CarTypeInfo` value, unconditionally, with no `n` term at all -- `[PROVEN]` live for the bit7=0
+ * case: the live capture's own two roster words read `[5, 6]` (characters DWAYNE/JETHRO), both
+ * with bit 7 clear -- both outside `handicapQuestionApplies`'s own `character<=2` range, so the
+ * handicap screen's own absence in that capture is exactly what the existing gate predicts, not
+ * new evidence either way about whether a handicap answer ever sets this bit; the bit7=1 arithmetic
+ * is `[STATIC]` only, traced instruction-by-instruction from the disassembly (`3F54-3F89`) but not
+ * exercised live. `reverseLimit`/`brakeDecel`/`coastDecel` never
+ * depend on `n` or bit 7 at all, in either state. `slipThreshold`/`gripStep` both add `[0x24E0]`
+ * unconditionally -- `[PROVEN]` live this session to read `0x14` (20, the SAME `GripAdjust` literal
+ * `tuningFieldsFor`'s own `gripBase` already uses for a non-drone car).
+ *
+ * What sets `rosterWord`'s own bit 7 (a per-character handicap answer merged in, a "taken
+ * character" marker, or something else) is `UNKNOWN_8a2_meaning`'s own still-open sibling question
+ * -- deliberately NOT modelled here; this function takes the raw word as an opaque input, matching
+ * the real bytes exactly, rather than guessing at the merge rule. Every CURRENTLY-reachable
+ * `spawnCars` caller passes no `rosterWords`, defaulting every slot to `0` (bit 7 clear) --
+ * matching this session's own live-captured, `[PROVEN]` no-handicap-answered case exactly.
+ * @param {number} round
+ * @param {number} rosterWord this car SLOT's own raw `[0x2668+2*slot]` word (default `0`)
+ */
+function altTuningFieldsFor(round, rosterWord = 0) {
+  const info = CAR_TYPE_INFO[round - 1]
+  const bit7 = (rosterWord & 0x80) !== 0
+  const n = bit7 ? (rosterWord & 0x7f) + 1 : 0
+  const maxSpeedCur = bit7 ? info[0] - 0xc0 + 64 * (n - 1) : info[0]
+  const accel = bit7 ? info[2] - 0xc + 4 * (n - 1) : info[2]
+
+  return {
+    maxSpeedCur: toI16(maxSpeedCur), maxSpeedBase: toI16(maxSpeedCur),
+    reverseLimit: toI16(info[1] + 0x32),
+    accel: toI16(accel),
+    brakeDecel: toI16(info[3]),
+    coastDecel: info[4],
+    slipThreshold: toI16(info[5] + 20), // [0x24E0], [PROVEN] live == GripAdjust
+    gripStep: toI16(info[6] + 20),
+    steerStep: round === 6 || round === 7 ? 2 : 3,
+  }
+}
+
 // [137C] per car index 0-3 (docs/engine.md §2 "per-car [137C] = 3,2,1,0"); bit 0 -> x+26, bit 1 ->
 // y+26, forming the 2x2 start grid around STRT_POS.BIN's own {x,y} (docs/engine.md §1).
 const START_GRID_SLOT = [3, 2, 1, 0]
@@ -184,31 +240,35 @@ const INIT_CAM_HALF_W = [0x80, 0xa0, 0xc0, 0xe0]
  * steer-mod `4EE7`, and `collide.js`'s own wall-stuck knockout counter `5C84`) -- all four test
  * `[BX+0x12EB]==1`, none test car index. So a human-controlled car 1 (two-human H2H, GOAL P4)
  * needs `car.isDrone=0` for these four RUNTIME mechanics. Its own INIT-time tuning is a THIRD,
- * still-separate question this function does NOT yet answer for two-human H2H specifically: the
- * whole `4070`/`CMP BX,0` block this function implements only runs in the real bytes when a
- * per-RACE mode fork (`1000:3F30`, `CS:[0x9C62]`≡`DS:[0x8A2]`) is `0` -- and two-human H2H's own
- * entry always sets that fork nonzero, taking a SEPARATE, entirely unported per-car computation
- * (`3F3B-3FBD`) instead, symmetric across every car slot. So this function's own tuning is correct
- * for every CURRENT caller (all one-player, all take the `CS:[0x9C62]==0` branch) but is NOT what
- * a two-human H2H race actually uses -- porting `3F3B`'s own formulas is a prerequisite for that
- * mode, tracked as `UNKNOWN_alt_tuning_path` (docs/engine.md §9bf/§10), not yet done here.
+ * separate question, now answered: the whole `4070`/`CMP BX,0` block this function implements only
+ * runs in the real bytes when a per-RACE mode fork (`1000:3F30`, `CS:[0x9C62]`≡`DS:[0x8A2]`) is
+ * `0` -- and two-human H2H's own entry always sets that fork nonzero, taking `altTuningFieldsFor`'s
+ * own SEPARATE, symmetric-across-every-slot computation (`3F3B-3FBD`) instead. `spawnCars`'s own
+ * `altTuning` option selects this explicitly -- DOS decides by MODE, not by inferring it from
+ * `controllerTypes` (the same `[0x8A2]` fork's own `CX==2` value, still `UNKNOWN_8a2_meaning`, may
+ * also select it for the single-race format P4 item 2 covers, unrelated to who is controlling which
+ * car), so this function never infers it either.
  * @param {{x:number,y:number}[]} strtPosEntries  `parseStrtPos`'s output
- * @param {{raceFormat?: number, tournamentIndex?: number, opponentCharacters?: number[], controllerTypes?: number[]}} opts
+ * @param {{raceFormat?: number, tournamentIndex?: number, opponentCharacters?: number[], controllerTypes?: number[], altTuning?: boolean, rosterWords?: number[]}} opts
  *   `raceFormat: 2` (M3.8): cars 2/3 are absent (docs/engine.md §1 "cars 2,3 = 0 in a two-car
  *   race"). `tournamentIndex` ([28C1], the `ORDER_TABLE` position, 0-25) defaults to 0 -- matching
  *   this port's other established `[28C1]`-approximations (`ai.js`) -- which selects the real
  *   game's own `tournamentIndex<=0` flat-ramp branch, not a KidModifier lookup, so a caller with no
  *   tournament context (this port's own `play.js`) never needs `opponentCharacters` either.
  *   `opponentCharacters`: the 3 drones' selected character indices (`tournament.js`'s own
- *   `state.opponents`), consulted only when `tournamentIndex>0`. `controllerTypes`: one word per
- *   slot (`[0x2658..265E]`, 1/2 joystick, 3 mouse, 4/5 keys, 6 CPU), defaults to `[1,6,6,6]` --
- *   every CURRENTLY-reachable caller (flow.js, play.js, every `tools/check-*.mjs`) never passes
- *   this, and car 0's own controller type is never 6 / cars 1-3's are always 6 in every one of
- *   those flows, so this default reproduces the exact same `car.isDrone` values the old
- *   `i !== 0` computation gave -- confirmed behaviour-neutral, not just assumed (the full existing
- *   suite, `tools/check-*.mjs`, passes unchanged with this default).
+ *   `state.opponents`), consulted only when `tournamentIndex>0` and `!altTuning`. `controllerTypes`:
+ *   one word per slot (`[0x2658..265E]`, 1/2 joystick, 3 mouse, 4/5 keys, 6 CPU), defaults to
+ *   `[1,6,6,6]` -- every CURRENTLY-reachable caller (flow.js, play.js, every `tools/check-*.mjs`)
+ *   never passes this, and car 0's own controller type is never 6 / cars 1-3's are always 6 in
+ *   every one of those flows, so this default reproduces the exact same `car.isDrone` values the
+ *   old `i !== 0` computation gave -- confirmed behaviour-neutral, not just assumed (the full
+ *   existing suite, `tools/check-*.mjs`, passes unchanged with this default). `altTuning` (default
+ *   `false`): selects `altTuningFieldsFor` over `tuningFieldsFor` for every car slot, matching the
+ *   real `[0x8A2]` fork -- `[PROVEN]` live this session for a real two-human H2H race. `rosterWords`
+ *   (default every slot `0`, matching this session's own live-captured no-handicap-answered case):
+ *   one raw `[0x2668+2*slot]` word per car slot, consulted only when `altTuning`.
  */
-export function spawnCars(strtPosEntries, round, race, { raceFormat = 1, tournamentIndex = 0, opponentCharacters = [], controllerTypes = [1, 6, 6, 6] } = {}) {
+export function spawnCars(strtPosEntries, round, race, { raceFormat = 1, tournamentIndex = 0, opponentCharacters = [], controllerTypes = [1, 6, 6, 6], altTuning = false, rosterWords = [] } = {}) {
   const start = strtPosEntries.find((s) => s.round === round && s.race === race)
   if (!start) throw new Error(`no STRT_POS entry for round ${round} race ${race}`)
 
@@ -229,7 +289,9 @@ export function spawnCars(strtPosEntries, round, race, { raceFormat = 1, tournam
     const posX = wrapWorld(start.x + 20 + (slot & 1 ? 26 : 0))
     const posY = wrapWorld(start.y - 10 + (slot & 2 ? 26 : 0))
 
-    const tuning = tuningFieldsFor(i, round, tournamentIndex, opponentCharacters[i - 1], raceFormat)
+    const tuning = altTuning
+      ? altTuningFieldsFor(round, rosterWords[i])
+      : tuningFieldsFor(i, round, tournamentIndex, opponentCharacters[i - 1], raceFormat)
 
     const partial = {
       playerSlot: i + 1,

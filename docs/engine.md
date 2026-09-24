@@ -6428,6 +6428,34 @@ but unconfirmed, deferred to the start of the `3F3B`-porting commit. Two smaller
 `FUN_1000_0400`); `UNKNOWN_f61_p2_control_word` (whether `[0xF61]` is genuinely SETTINGS.DAT's P2
 control word).
 
+**Added 2026-09-24 (§9bg).** §9bf's own prerequisite closed: `3F3B`'s alternate tuning path is
+ported (`altTuningFieldsFor`, `spawnCars`'s new `altTuning`/`rosterWords` options, both defaulting
+off/empty -- behaviour-neutral). `UNKNOWN_alt_tuning_path` **resolved 2026-09-24 (§9bg)**: ported,
+live-DOSBox-proven for the bit7=0 case. A live DOSBox capture of a genuine two-human H2H race
+(found already in progress, continued rather than restarted) proved the fork live (`CS:[0x9C62]`==
+`DS:[0x8A2]`==1, same linear address, read at a breakpoint on the real `3F30`) and all seven
+formulas for the bit7=0 case (car 0 and car 1 identical, matching `CAR_TYPE_INFO[6]`'s own raw row
+plus the formula's own unconditional `+0x32`/`+20`/`+20` terms to the byte, with the real live
+roster-word input `[5,6,11,11]` -- not just `0` -- proving the low
+7 bits are genuinely ignored while bit 7 is clear). `UNKNOWN_8a2_meaning` **resolved 2026-09-24
+(§9bg)**: the screen reached right after both character picks was `RunHeadToHeadChooseGameMenu`
+("CHOOSE GAME! TOURNAMENT/SINGLE RACE"), not a handicap question -- `[0x8A0]`/`[0x8A2]` hold THAT
+pick, not a Y/N answer, `0382` is `RunTwoItemMenu`. The two picked characters (DWAYNE(5)/JETHRO(6),
+confirmed via a live `DS:0x2668` read, correcting a first-draft screenshot misread of "WALTER")
+were both outside `handicapQuestionApplies`'s own `character<=2` range, so the handicap screen's
+own absence this session confirms that ALREADY-PORTED gate rather than saying anything new about
+`[0x8A2]`. `[0xF61]` closed (`[PROVEN]`, three independent reads agree); `[0x8A2]`'s own
+persistence checked (`[STATIC]`, no live one-player race run to confirm end to end) across every
+one-player entry point, no leak risk found. `[0x3F4]`, read out of curiosity, turned out to be
+`charSelect.js`'s own already-documented H2H-vs-CPU last-pick cells (`[3F4]`/`[3F6]`), leftover
+from an earlier one-player session in the same DOSBox instance, unrelated to this capture. Two
+open items carried forward, UNCHANGED in scope (not resolved either way by this session):
+`UNKNOWN_handicap_rosterword_link` (how, or whether, a per-character handicap answer -- `0B51`'s
+own `DS:[0x1D6+c]` toggle -- ever reaches a roster word's bit 7 at all -- UNCHANGED by this
+session, not resolved either way, deferred to a capture with an eligible character) and
+`UNKNOWN_4be7_twocar_rubberband` (the rubber band's own two-car-specific branch at `4BE7`, found
+while confirming `4B1C`'s gate, not yet read).
+
 ## 9as. P1's first item: the logo intro's real per-frame animation (2026-09-24)
 
 Full account, and every cited address, in `docs/intro-and-codecard.md`'s own "The real per-frame
@@ -8662,3 +8690,140 @@ screen), the CHOOSE GAME/results screens, and `flow.js` wiring (a real P2 keyboa
 `enterSelectGame`'s TWO PLAYER branch, one shared `controllerTypes` array feeding both `spawnCars`
 and `raceCtx.controllerTypes` instead of the two independently-built arrays that exist today) --
 each its own subsequent commit toward closing P4's first checklist item.
+
+`3F3B`'s own alternate tuning path (this section's own "not yet ported at all" note above) is now
+ported -- see §9bg, which also settles `RunHeadToHeadChooseGameMenu`'s own real meaning via a live
+DOSBox capture.
+
+## 9bg. P4 engine refactor, continued: `3F3B`'s alternate tuning path, ported and live-proven (2026-09-24)
+
+**§9bf's own prerequisite, closed.** `race.js` gained `altTuningFieldsFor(round, rosterWord)`,
+`spawnCars`'s own new `altTuning`/`rosterWords` options (explicit, not inferred from
+`controllerTypes` -- see that function's own updated header), implementing the seven-field formula
+§9bf already derived from the disassembly (`3F3B-3FBD`, gated on the real `[0x8A2]` fork being
+nonzero): `maxSpeedCur`/`maxSpeedBase` = `info[0] - 0xC0 + 64*(n-1)` when roster-word bit 7 is set
+(`n = (w&0x7F)+1`) else raw `info[0]`; `accel` the same shape with `-0xC`/`4*(n-1)`; `reverseLimit`
+always `info[1]+0x32`; `brakeDecel`/`coastDecel` always raw `info[3]`/`info[4]`; `slipThreshold`/
+`gripStep` always `info[5]+20`/`info[6]+20` (the live-confirmed `[0x24E0]`==`GripAdjust`). Default
+`altTuning: false`/`rosterWords: []` -- every existing caller unaffected, confirmed by the full
+29-script suite passing unchanged.
+
+**Live DOSBox capture, closing several open threads at once.** The managed DOSBox instance
+(`bridge_status`: connected, `dosbox-automation` 0.84.0-vc1) was found already mid-session, paused
+in mode 13h at a character-select screen reading "MicroMachines Head to Head" / "PLAYER ONE" --
+`[0x2656]==2` and `[0x265A]==4` (KEYS1) confirmed this was already a genuine TWO-HUMAN H2H flow
+(not vs-CPU, which would read `[0x265A]==6`), so the session continued it rather than restarting.
+`game/SETTINGS.DAT` was decoded directly to get the real scancodes (not the JS port's own
+`DEFAULT_SETTINGS` fallback, which is a different, rarely-used table): P1=KEYS2 (arrows + `S`
+fire), P2=KEYS1 (`I`/`J`/`K`/`L`/`M`, `K` fire) -- `p1Control=5`, `p2Control=4`, matching the live
+`[0x265A]` read exactly.
+
+- P1 confirmed a character via `input_sequence` holding `S` ~1.3s (the real 5-blink commit timing
+  already established in §9ax). P2's own carousel then appeared ("PLAYER TWO" / "WHO DO YOU WANT
+  TO BE?"); confirmed similarly with `K`. Screen text read DWAYNE (P1) and JETHRO (P2) -- confirmed
+  directly from live memory, not from reading the screenshots (a first draft misread the names as
+  WALTER/character-0, corrected here): `DS:0x2668`, 4 words, read `[5, 6, 11, 11]` -- character
+  indices 5 (DWAYNE) and 6 (JETHRO) for cars 0/1 (11/11 for the unused two-car-format slots 2/3),
+  confirming both that the roster word's own LOW byte is the plain character index (matching
+  `opponentCharacters`'s own existing semantics elsewhere in this port) and that bit 7 was genuinely
+  clear for both (5 and 6 are both well under `0x80`).
+- Neither pick showed a handicap question screen -- exactly what the ALREADY-PORTED
+  `handicapQuestionApplies` gate predicts (`character>=0 && character<=2`, i.e. WALTER/MIKE/ANNE
+  only): DWAYNE(5)/JETHRO(6) are both outside that range, so this observation confirms the existing
+  gate, it does not weaken or strengthen anything about `[0x8A2]`'s own relationship to it -- this
+  session simply never picked an eligible character, having nothing to do with whether `[0x8A2]`
+  and the handicap mechanism are connected. Both picks together landed directly on
+  a screen reading "CHOOSE GAME!" with two icons, "TOURNAMENT" and "SINGLE RACE" -- this is
+  `RunHeadToHeadChooseGameMenu` (a name already present in the Ghidra project from an earlier
+  session, not assigned this session), and it settles `UNKNOWN_8a2_meaning` in the direction §9bf's
+  own hedge favoured over the retracted "handicap answer" claim: `[0x8A0]`/`[0x8A2]` hold this
+  Tournament-vs-Single-Race pick (`0382` is `RunTwoItemMenu`, a shared 2-item-menu component also
+  used elsewhere in the front end), NOT a handicap Y/N answer. `CX==1` (TOURNAMENT, proceeds via
+  `CALL 1FAF`/`RunHeadToHeadTournament`) was picked (LEFT then `S`); `[0x8A0]`/`[0x8A2]` read `1`
+  immediately after, confirmed live. `CX==2` (SINGLE RACE, `1F9B`'s own `CALL 2329`) was NOT
+  exercised this session -- whether that is genuinely P4 item 2's own single-race entry remains
+  `UNKNOWN`, a lead for whoever works that item, not confirmed here.
+- **The fork itself, `[PROVEN]` live.** An execute breakpoint at the real `1000:3F30` (mapped to
+  the live `023E:3F30`, this session's own established live-CS/DS convention, `023E`/`0B7A`) fired
+  on the very first per-car tuning pass (`BX==0`). `CS:[0x9C62]` (segment 574/`0x23E`, offset
+  `0x9C62`) and `DS:[0x8A2]` (segment `0xB7A`, offset `0x8A2`) were BOTH read at that exact paused
+  instant and both returned the SAME linear address (`49218`) and the SAME value, `1` -- direct,
+  live confirmation both that the two cells are the one byte §9bf claimed from static segment-base
+  arithmetic, and that this specific two-human H2H race genuinely takes the `3F3B` branch, not
+  `3FBE`. The race's own round turned out to be 7 (TANKS), read from `[0x28BF]`, itself confirming
+  this particular race happened to land on round 7.
+- **All seven formulas, `[PROVEN]` live for the bit7=0 case, re-confirmed after full init.** A
+  second breakpoint at `3F4F` (immediately after `3F3B`'s own bit-7/roster-word test, right where
+  `LODSW` first reads a `CarTypeInfo` field) caught `AX=931`/`DX=0` for car 0 -- `DX==0` meaning
+  bit 7 was clear, consistent with the roster-word read above. A third breakpoint at the shared
+  `4244` (`maxSpeedBase`'s own copy site, confirmed to run once per car AFTER either branch
+  converges, matching §9bf's own citation) caught both cars' tuning records directly from
+  `DS:124A`/`DS:13AE` (car 0/car 1 bases). One field looked wrong at first: `steerStep` read `4`
+  at this EARLY breakpoint, not the `2` the existing `round===6||round===7?2:3` formula predicts --
+  a fresh read of the SAME records after the race was fully running (not just at `4244`, which
+  fires before `steerStep`'s own real writer at `4426`) showed `2`, confirming the `4244`-time read
+  was transient (a pre-`4426` value) and the port's own existing formula is correct; not touched by
+  `altTuningFieldsFor`'s own port. Every other field was IDENTICAL between the early and late read
+  and between car 0 and car 1, byte-for-byte, matching `CAR_TYPE_INFO[6]`'s own raw row (`[0x03a3,
+  0xfcc1, 0x0010, 0x0010, 0x001e, 0x003c, 0x003b, ...]`, i.e. `931, -831(+0x32=-781), 16, 16, 30,
+  60(+20=80), 59(+20=79)`) to the exact byte: `slipThreshold=80, gripStep=79, reverseLimit=-781,
+  maxSpeedCur=931, maxSpeedBase=931, accel=16, brakeDecel=16, coastDecel=30` -- a clean, complete,
+  non-tautological confirmation of all seven formula shapes at once (the live values were read from
+  a paused DOSBox session and only afterward checked against the formula, not the reverse). `[0x24E0]`
+  was read live separately and confirmed `0x14` (20), the same `GripAdjust` literal
+  `tuningFieldsFor`'s own `gripBase` already uses.
+- **`[0xF61]` closed, `[PROVEN]`.** Three independent reads agree: `[0xF61]==4` (live), `[0x265A]
+  ==4` (live, copied from it at H2H entry), and `game/SETTINGS.DAT`'s own byte-decoded word 1 == 4
+  -- `UNKNOWN_f61_p2_control_word` is resolved: `[0xF61]` genuinely is SETTINGS.DAT's own P2
+  control word.
+- **`[0x8A2]`'s own persistence checked statically, no risk found.** `[STATIC]` only -- no
+  one-player race was actually run live this session to confirm it end to end. `[0x8A2]`'s only
+  zeroing writers (`0FE0`, `1045`, beyond the two H2H-entry sites `1F1D`/`1FA9`) sit inside
+  `RunOnePlayerHeadToHeadVsCpu` and `RunOnePlayerChallenge` respectively (both already-named Ghidra
+  functions) -- i.e. EVERY one-player race-entry path explicitly resets this flag before racing, so
+  a value left over from a prior two-player session cannot leak into a later one-player race and
+  wrongly select the alt path. No `UNKNOWN` needed here, but not `[PROVEN]` either.
+- **What stayed `[STATIC]`-only.** The bit7=1 branch's own arithmetic (`3F54-3F89` -- the
+  `-0xC0`/`64*(n-1)` and `-0xC`/`4*(n-1)` terms) was traced instruction-by-instruction from the
+  disassembly but never exercised live, since this session's own two picks (DWAYNE/JETHRO, both
+  outside `handicapQuestionApplies`'s own `character<=2` range) never reach the handicap screen at
+  all -- exactly what the existing gate predicts, not a new finding either way.
+  `UNKNOWN_8a2_meaning` itself is RESOLVED (above); what it leaves behind is a narrower sibling
+  question, tracked separately as `UNKNOWN_handicap_rosterword_link` -- how a per-character
+  handicap answer (`0B51`'s own confirmed `DS:[0x1D6+c]` toggle) actually merges into a roster
+  word's bit 7, if it does at all. UNCHANGED by this session: still open, exactly as open as it was
+  in §9bf, since nothing this capture found bears on it either way (a `DS:0x1D6` read, 3 bytes,
+  came back `[0,0,0]`, but that is equally consistent with "never yet answered this session" and
+  "the mechanism is unrelated" -- inconclusive, not evidence for either). Deliberately left for the
+  commit that implements the handicap
+  question screen with an ELIGIBLE character (0-2), not resolved here. `DS:0x3F4`, 4 bytes, read
+  `[10, 9]` -- NOT this session's own two-human picks (5, 6): `charSelect.js`'s own existing
+  documentation (`docs/engine.md §9an`) already identifies `[3F4]`/`[3F6]` as the Head-to-Head-vs-
+  CPU picker's own "last pick" cells, written only by `0FBF`/`102B` (`RunOnePlayerHeadToHeadVsCpu`/
+  `RunOnePlayerChallenge` -- the SAME two one-player entry points cited just above) -- so `10`/`9`
+  (SPIDER/BONNIE) are simply leftover state from an earlier ONE-PLAYER session that ran in this
+  same DOSBox instance before, unrelated to the two-human flow this session drove.
+- **The rubber band's own two-car branch (`4BE7`), found but not chased.** While confirming `4B1C`'s
+  own gate this session, its consumer at `4B45` turned out to branch on `[2656]==2` into a separate
+  code path (`4BE7`) not yet read. Not part of this commit's own scope (tuning, not the rubber
+  band); recorded as a new, narrower open item, `UNKNOWN_4be7_twocar_rubberband`, superseding the
+  vaguer "not checked for a mode gate" note in §9bf with a concrete address to start from.
+
+**Tests.** `tools/check-twocar.mjs` gained a new section: `altTuning: true` against round 7
+reproduces the live capture's own seven field values exactly, for both car 0 and car 1
+independently, plus an explicit "car 0 and car 1 are identical" invariant check; `altTuning`
+defaulting to `false`/omitted is confirmed to still take the old `tuningFieldsFor` path (car 1's
+own drone-tuned `maxSpeedCur`/`accel` differ from the alt path's raw values). Reintroduction-proven:
+reverting the `altTuning ? ... : ...` wiring to the old unconditional `tuningFieldsFor` call fails
+9 of the 18 new checks (car 1's own 7 field checks plus the identical-cars invariant; car 0's own 6
+of 8 field checks happen to coincide between the two formulas at `cx=0`/non-drone, a real
+coincidence in the bytes, not a test gap -- `brakeDecel` and the cross-car invariant still catch
+car 0's own regression). Restoring the wiring restores all 107 distinct assertions (261 executed).
+Full 29-script regression suite re-run clean after this change.
+
+**Verification status.** `race.js`'s own new formulas are `[PROVEN]` live for the bit7=0 case (the
+only case this session's own natural flow reached), `[STATIC]` for bit7=1. `RunHeadToHeadChooseGameMenu`'s
+own real purpose (Tournament vs Single Race) is `[PROVEN]` live. Still not done, unchanged from
+§9bf's own list: `twoHuman.js`, the CHOOSE GAME/results/handicap screens, and `flow.js` wiring --
+each its own subsequent commit. `UNKNOWN_handicap_rosterword_link` and
+`UNKNOWN_4be7_twocar_rubberband` are new leads for whichever of those commits reaches them.
