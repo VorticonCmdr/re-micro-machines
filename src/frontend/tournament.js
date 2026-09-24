@@ -399,6 +399,38 @@ function maybeTriggerBonusRace(state) {
 }
 
 /**
+ * `1000:1439`'s own pass/fail test, fully re-disassembled -- it appears at THREE separate sites in
+ * the SAME function, byte-for-byte identical (the second, up to one register substitution): the
+ * results screen's own tune select (`1410-1427`, this item's own scope); a per-row results-label
+ * pick inside the standings-drawing loop (`15A5-15C7`, for the row identified as the player's own);
+ * and whether to show the `ONE_LIFE_LOST` outcome message at all (`1650-1667`). The latter two were
+ * already found and fully disassembled by GOAL-DOS-PARITY.md P3's 4th item (docs/engine.md §9bb
+ * item 1) -- including a LIVE read confirming the row-label's own two strings, `DS:039A`="QUALIFY"/
+ * `DS:03A2`="FAILED", and already establishing `drawResults`'s own text needs no separate wiring --
+ * which explicitly deferred THIS site (the tune) as the one piece still left on the `lastPassed`
+ * approximation. Confirms all three are ONE rule, not independently-drifting copies (docs/engine.md
+ * §9bd has the full derivation). The player passes iff they finished 1st (`word[0x3FC]==0xC03`), or
+ * finished 2nd AND this is NOT the tournament's very last race (`byte[0x28C1]!=0x19`,
+ * `ORDER_TABLE_LAST_INDEX`). `[3FC]`/`[3FE]`
+ * are the order array's own first two of four slots (`11D5`'s own `[2678..267E]->[3FC..402]` copy,
+ * each slot holding the finishing car's own descriptor address); `finishPosition<=passThreshold` reads
+ * the identical thing via `rankOrder.indexOf(0)+1` (`flow.js`'s own citation of `[3FC..402]`) --
+ * confirmed byte-exact even under the instant-win cheat: `36A7`'s own `[2678..267E]` writes (`0,
+ * 0x2C8, 0x164, 0x42C`) divide by `[0x2662]` (independently confirmed elsewhere, §9am, to be P2's
+ * own car-record pointer, written only as `0x164` -- i.e. `CAR_RECORD_SIZE`, `src/engine/car.js`)
+ * then scale by `0x1B` in `11D5`'s own transform to exactly car indices `[0,2,1,3]`, matching
+ * `cheats.js`'s own `fixedOrder` hardcode exactly. GOAL-DOS-PARITY.md's "results screen tune
+ * condition" item: this single predicate now drives BOTH the PASSED/ONE_LIFE_LOST outcome below
+ * AND `raceResultMusic`'s own tune argument (`flow.js`'s `advanceRace`) -- `lastOutcome` itself
+ * (read by `flow.js`'s own `lastPassed` for the RESULTS screen's "QUALIFY"/"FAILED" text) needed
+ * no change, since it's now DERIVED FROM this same predicate for the one case that matters.
+ */
+export function resultsPassed(state, finishPosition) {
+  const isLastRace = state.raceIndex === ORDER_TABLE_LAST_INDEX
+  return finishPosition <= (isLastRace ? 1 : 2)
+}
+
+/**
  * Report the result of the race `currentRace()` just named. `finishPosition` is the player's
  * 1..4 finishing place for a Challenge race, 1..2 for a two-car race, or (only when
  * `pendingBonusRace` is set) ignored in favour of the explicit `won` flag `[291D]`'s reading
@@ -449,15 +481,7 @@ export function reportRaceResult(state, { finishPosition, won, lifeDelta = 0, ch
     return
   }
 
-  // 1000:15B7/1658, fully re-disassembled (GOAL-DOS-PARITY.md P3's 4th item, docs/engine.md §9bb):
-  // on the VERY LAST race (`[28C1]==[439]`, `ORDER_TABLE_LAST_INDEX`), 2nd place does NOT pass --
-  // `1650: CMP [0x3fc],0xC03` (did the player finish 1st?) is the ONLY passing branch reached;
-  // `165F: CMP [0x3fe],0xC03` (2nd place) is only even CONSULTED when `1658: CMP [28C1],0x19` is
-  // false (not the last race). Every OTHER race accepts 1st or 2nd. Both sites gate the SAME
-  // mechanism (one drives a results-row label, the other the actual outcome), confirmed identical.
-  const isLastRace = state.raceIndex === ORDER_TABLE_LAST_INDEX
-  const passThreshold = isLastRace ? 1 : 2
-  if (finishPosition > passThreshold) {
+  if (!resultsPassed(state, finishPosition)) {
     state.lastOutcome = OUTCOME.ONE_LIFE_LOST
     const outOfLives = decrementLives(state)
     // docs/engine.md §7: "[3fa]=3" on a 3rd/4th result, explicit -- the real site is

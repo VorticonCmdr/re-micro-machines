@@ -6,7 +6,7 @@
 // 5th item (docs/engine.md §9bc, both of tournament.js's own file-header rules, formerly
 // INFERRED, now fully cited).
 //   node tools/check-tournament.mjs
-import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, applyLivesDelta, QUALIFIER_OPPONENTS, OUTCOME } from '../src/frontend/tournament.js'
+import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, resultsPassed, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, applyLivesDelta, QUALIFIER_OPPONENTS, OUTCOME } from '../src/frontend/tournament.js'
 import { ORDER_TABLE_LAST_INDEX, MAX_BONUS_RACES } from '../src/data/frontend-tables.js'
 
 let bad = 0
@@ -534,5 +534,23 @@ function freshAtLastRace() {
   check('a bonus race under an active cheat also gets its type-0 decrements erased before the win\'s own +1 life applies', s.lives === 11)
 }
 
-console.log(bad ? `${bad} check(s) failed` : 'check-tournament: qualifier pass/fail, the real opponent picker, the real elimination/replacement rule, Challenge/two-car race rules, streak/bonus-race schedule, the last-race 2nd-place fail, the uncapped bonus trigger, the win-gated bonus-race counter/life, the conditional RESULTS->OUTCOME transition, the ] lives cheat, the byte-exact lives wraparound (both the outcome-screen and the cheat-spot paths), and the 25011968 cheat\'s own reset applied in the real order relative to the loss check, for every race type including a bonus race, all match docs/engine.md §7/§9az/§9ba/§9bb/§9bc')
+// 17. `resultsPassed` (`1000:1439`, docs/engine.md §9bd, GOAL-DOS-PARITY.md's "results screen tune
+// condition" item): the byte-exact pass/fail test now driving BOTH the results-screen tune
+// (`raceResultMusic`, via `flow.js`'s own `resultsWasPassed`) and `reportRaceResult`'s own
+// Challenge PASS/ONE_LIFE_LOST split, confirmed identical since both port the SAME re-disassembled
+// `1439` byte test, which appears at THREE sites in that one function -- `1410-1427` (tune),
+// `15A5-15C7` (a per-row results-label pick), and `1650-1667` (the outcome gate).
+{
+  const s = initTournament()
+  s.raceIndex = 5 // not the last race
+  check('1st place always passes', resultsPassed(s, 1) === true)
+  check('2nd place passes on an ordinary race', resultsPassed(s, 2) === true)
+  check('3rd place fails on an ordinary race', resultsPassed(s, 3) === false)
+  check('4th place fails on an ordinary race', resultsPassed(s, 4) === false)
+  s.raceIndex = ORDER_TABLE_LAST_INDEX
+  check('1st place still passes on the very last race', resultsPassed(s, 1) === true)
+  check('2nd place does NOT pass on the very last race -- the one place the rule narrows', resultsPassed(s, 2) === false)
+}
+
+console.log(bad ? `${bad} check(s) failed` : 'check-tournament: qualifier pass/fail, the real opponent picker, the real elimination/replacement rule, Challenge/two-car race rules, streak/bonus-race schedule, the last-race 2nd-place fail, the uncapped bonus trigger, the win-gated bonus-race counter/life, the conditional RESULTS->OUTCOME transition, the ] lives cheat, the byte-exact lives wraparound (both the outcome-screen and the cheat-spot paths), the 25011968 cheat\'s own reset applied in the real order relative to the loss check for every race type including a bonus race, and the byte-exact results-screen tune/pass condition all match docs/engine.md §7/§9az/§9ba/§9bb/§9bc/§9bd')
 process.exitCode = bad ? 1 : 0

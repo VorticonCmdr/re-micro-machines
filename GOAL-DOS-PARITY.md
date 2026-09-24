@@ -410,8 +410,33 @@ docs, (6) commit.
   the tournament on the cheat's very first race" -- false, then that it was reduced to an
   unobservable byte value with "nothing to fix" -- also false, once a type-0 decrement is in the
   same race. Full account, docs/engine.md §9bc.)**
-- [ ] **The results screen's tune condition.** It uses a pass/fail boolean; the real condition is
+- [x] **The results screen's tune condition.** It uses a pass/fail boolean; the real condition is
   the narrower `word[3FC]`/`[3FE]` test (§9ai). Port it exactly.
+  **Done, §9bd: `1000:1439`'s full 242-instruction body re-disassembled fresh. The tune test
+  (`1410-1427`) is byte-for-byte IDENTICAL to two other sites in the SAME function: `1650-1667`
+  (the outcome-gate) and `15A5-15C7` (a per-row results-label pick) -- BOTH already found and fully
+  disassembled by P3's 4th item (§9bb item 1, including a live read confirming the row-label's own
+  two strings), which ported the outcome-gate as `reportRaceResult`'s `isLastRace ? 1 : 2` threshold
+  and explicitly deferred THIS site (the tune) as the one piece still left on the `lastPassed`
+  approximation. One rule, tested three times in the same function, not independently-drifting
+  copies. `finishPosition` (`rankOrder.indexOf(0)+1`) confirmed to read the
+  SAME order-array slots `[3FC]`/`[3FE]` DOS does, including under the instant-win cheat (`36A7`'s
+  own writes, divided by `[0x2662]` -- independently confirmed elsewhere to be P2's own car-record
+  pointer, `0x164`/`CAR_RECORD_SIZE` -- at `11D5`, resolve to exactly `[0,2,1,3]`, matching
+  `cheats.js`'s own hardcode) -- the specific check this item's own citation warns not to skip,
+  echoing §9bb item 3's own earlier shortcut (waving off a call site as "already correct" without
+  checking it). New `resultsPassed(state, finishPosition)` export extracts the shared formula (used
+  by both `reportRaceResult` and the tune); `flow.js`'s `advanceRace` now computes it directly,
+  captured before `raceIndex` advances (same timing as `wasQualifier`), and passes it to
+  `raceResultMusic` in place of the old `lastOutcome`-derived `lastPassed`. `lastPassed` itself
+  (which also feeds `drawResults`'s "QUALIFY"/"FAILED" text) needed no change and was NOT
+  redirected to the new export -- an intermediate draft tried that and was wrong (`resultsPassed`'s
+  own Challenge-shaped formula gives a false PASS for a non-last-race H2H loss or a two-car
+  qualifier loss), reverted once checked; `lastOutcome` already reflects the byte-exact rule for
+  the one case that matters, since `reportRaceResult` now computes `PASSED`/`ONE_LIFE_LOST` via
+  `resultsPassed` itself. Confirmed by reintroducing a naive `finishPosition<=2` (no last-race
+  narrowing) and re-running the suite: fails both the new pinning test AND a pre-existing one,
+  passes again once reverted.**
 - [ ] **The H2H race-intro variant** (§9an 8, "the H2H race-intro variant").
 
 ### P4: two-human Head to Head

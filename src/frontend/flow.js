@@ -37,7 +37,7 @@ import { raceStart, updateEngines, createRaceJitter, raceOverSequence, raceOverS
 import { lapLineSegments, nearestPaletteIndex } from '../engine/lapLine.js'
 import { Si2Player } from '../audio/si2Player.js'
 import { RUFF_TRUCK_TIMES } from '../data/engine-tables.js'
-import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, OUTCOME } from './tournament.js'
+import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, resultsPassed, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, OUTCOME } from './tournament.js'
 import { CHARACTER_NAMES, OUTCOME_MESSAGES, resolveSmoothnessForPlay } from '../data/frontend-tables.js'
 import { drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawOpponentPanel, drawEliminatedScreen, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
 import { createSmoothnessGate } from '../engine/smoothness.js'
@@ -896,6 +896,13 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     phase = 'LOADING' // input is ignored until runOneRace switches to RACING (a second confirm would start a second race)
     const result = await runOneRace(race)
     if (result.aborted) { enterTitle(); return } // ESC quit, see runOneRace
+    // `ShowRaceResultsScreenTune8or6 1000:1439`'s own byte-exact pass/fail test (tournament.js's
+    // `resultsPassed`, docs/engine.md §9bd), captured BEFORE `reportRaceResult` can advance
+    // `tournament.raceIndex` -- the SAME timing constraint `wasQualifier` above needs, and the
+    // SAME snapshot-before-mutate reasoning the opponent snapshot below explains. Only meaningful
+    // for a Challenge non-qualifier, non-bonus race (the only case `next==='RESULTS'` below can
+    // produce), but harmless to compute unconditionally.
+    const resultsWasPassed = resultsPassed(tournament, result.finishPosition)
     if (race.round === 9) {
       reportRaceResult(tournament, { won: result.won, lifeDelta: result.lifeDelta, cheatActive })
       lastStandings = null
@@ -924,7 +931,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     // table only for a Challenge race that isn't the qualifier; an outcome message for a qualifier
     // (either format), a bonus race or a lost Head-to-Head race; nothing after a won Head-to-Head race.
     const next = screenAfterRace(tournament, { wasQualifier, wasBonus: race.round === 9 })
-    if (next === 'RESULTS') { raceResultMusic(sound, lastPassed); phase = 'RESULTS' }
+    if (next === 'RESULTS') { raceResultMusic(sound, resultsWasPassed); phase = 'RESULTS' }
     else if (next === 'OUTCOME') { raceOutcomeMusic(sound, tournament.lastOutcome); phase = 'OUTCOME' }
     else {
       nextAfterOutcome()

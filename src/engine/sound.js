@@ -164,20 +164,18 @@ export function raceIntroMusic(driver) {
 
 /**
  * The tournament's own standings screen ("RESULTS" in `flow.js`), `ShowRaceResultsScreenTune8or6
- * 1000:1439`: real condition is `word[3FC]==0xC03` (car 0 placed 1st) OR (`byte[28C1]!=0x19` AND
- * `word[3FE]==0xC03`, car 0 placed 2nd, except on the tournament's 25th-of-26 race) -- `[3FC]`/
- * `[3FE]` are the order array's own first two slots (`runOneRace`'s own citation of `[3FC..402]`).
- * Approximated here by `passed` (the same boolean the screen's own display text already computes,
- * `flow.js`'s `lastPassed`) rather than the exact byte test -- a confirmed [STATIC]-only reading
- * (`mm-re-player-visible`, 2026-09-23, docs/engine.md §9ai) whose `0x19`-race exception is NOW
- * understood (GOAL-DOS-PARITY.md P3's 4th item, docs/engine.md §9bb item 1): it's the SAME
- * last-race-only-1st-place rule `tournament.js`'s `reportRaceResult` now ports for the outcome
- * itself (`1000:15B7`/`1658`), just re-used here for the results TUNE specifically -- still left as
- * the `passed` approximation, not implemented byte-exact for the tune condition itself, since
- * `lastPassed` already agrees with the byte-exact test in every case this port's own last-race
- * pass-threshold fix now produces (a 2nd-place finish on the last race is `lastPassed=false` there
- * too), so the two are no longer known to diverge -- flagged as a refinement to VERIFY exhaustively,
- * not a known bug, next time this specific item is picked up. */
+ * 1000:1439`: tune 8 iff `word[3FC]==0xC03` (car 0 placed 1st) OR (`byte[28C1]!=0x19` AND
+ * `word[3FE]==0xC03`, car 0 placed 2nd, except on the tournament's very last race), else tune 6 --
+ * `[3FC]`/`[3FE]` are the order array's own first two slots (`runOneRace`'s own citation of
+ * `[3FC..402]`). GOAL-DOS-PARITY.md P3's "results screen tune condition" item, closed for real
+ * (2026-09-24, docs/engine.md §9bd): `passed` is now `tournament.js`'s own
+ * `resultsPassed(state, finishPosition)`, called directly in `flow.js`'s `advanceRace` -- the exact
+ * same `1439` test (`1410-1427`, confirmed byte-for-byte identical to the SAME function's own
+ * `1650-1667` outcome-gate test, which `reportRaceResult`'s existing pass-threshold logic already
+ * cited), not an indirect `lastOutcome`-derived approximation that merely happened to agree with
+ * it. Previously left as that approximation, `lastPassed`, pending exhaustive verification -- now
+ * done: this function's own parameter name is unchanged (`passed`), only the caller's own
+ * computation of it changed. */
 export function raceResultMusic(driver, passed) {
   driver.playTune(passed ? 8 : 6)
 }

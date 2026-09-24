@@ -4407,6 +4407,10 @@ from a live capture -- this milestone is porting that table, not re-deriving it:
   `raceResultMusic(sound, lastPassed)` -> tune 8 if passed, 6 if not, reusing the exact boolean the
   screen's own text already computes. **Approximated, not byte-exact** -- see the follow-up RE pass
   below, `ShowRaceResultsScreenTune8or6 1000:1439`'s real condition is narrower.
+  **Resolved 2026-09-24, §9bd**: `raceResultMusic` is now called with `resultsWasPassed`
+  (`tournament.js`'s own `resultsPassed(state, finishPosition)`, the byte-exact `1439` test), not
+  `lastPassed` -- `lastPassed` itself (the screen's own "QUALIFY"/"FAILED" text) is unchanged, and
+  was already established as correct for this case by §9bb item 1.
 - `OUTCOME` (the shared win/lose *message* screen -- entered two ways: directly from `advanceRace`
   for a bonus race, which skips `RESULTS` entirely; or from `RESULTS`'s own confirm): initially
   ported the same way as `RESULTS` (one `raceResultMusic` call covering both screens), **corrected
@@ -4455,7 +4459,8 @@ confirming this section's own tune-1..8 mapping site-for-site, and additionally 
 - **`ShowRaceResultsScreenTune8or6 1000:1439`'s real condition is narrower than "passed the race"**:
   tune 8 iff `word[3FC]==0xC03` (car 0 occupies the order array's own first slot, i.e. placed 1st)
   OR (`byte[28C1]!=0x19` AND `word[3FE]==0xC03`, placed 2nd) -- an apparent exception on the
-  tournament's 25th-of-26 race (`byte[28C1]` 1-based) that this pass could not further explain.
+  tournament's very last race (`byte[28C1]`, 0-based -- the qualifier is 0, so `0x19` is the LAST
+  race, not the "25th-of-26") that this pass could not further explain.
   **The `0x19` exception is now explained, 2026-09-24 (GOAL-DOS-PARITY.md P3's 4th item,
   docs/engine.md §9bb item 1)**: it's the SAME "only 1st place passes the tournament's very last
   race" rule `1000:15B7`/`1658` gate for the OUTCOME itself, re-used here for the RESULTS tune --
@@ -4468,6 +4473,11 @@ confirming this section's own tune-1..8 mapping site-for-site, and additionally 
   separate, not-yet-fully-verified refinement -- see `sound.js`'s own updated header) -- and
   `word[3FC]`/`[3FE]`'s exact encoding (`0xC03`) beyond "the order array's first two slots" still
   wasn't independently pinned down by this pass either.
+  **Resolved 2026-09-24, §9bd**: the tune condition is now ported byte-exact, via a new
+  `resultsPassed(state, finishPosition)` export called directly (`resultsWasPassed`), not the
+  `lastPassed` approximation; `word[3FC]`/`[3FE]`'s own encoding (car descriptor addresses, via
+  `1000:11D5`'s copy/transform) is now independently pinned down too, including under the
+  instant-win cheat.
 - **`1000:26e4` (the ESC-from-race driver reload) issues no tune command itself** -- confirmed by
   reading every instruction in `InitLoadAssets` (`26c0-26eb`): the reload (plus a front-end asset-
   arena/palette refresh) is all it does; whatever screen the caller shows next restarts music via
@@ -6337,6 +6347,23 @@ silently dropped: that the gap "could still end the tournament on the cheat's ve
 false, then that it reduces to an inert, unobservable byte value with "nothing observable to fix"
 -- also false, once a type-0 decrement is in the same race as the loss.)
 
+**Added 2026-09-24 (§9bd).** GOAL-DOS-PARITY.md's "results screen tune condition" item resolved:
+`1000:1439`'s full 242-instruction body re-disassembled fresh, confirming the tune test
+(`1410-1427`) is byte-for-byte identical to two other sites in the SAME function -- `1650-1667`
+(the outcome-gate) and `15A5-15C7` (a per-row results-label pick) -- both already found and fully
+disassembled by §9bb item 1, which ported the outcome-gate and explicitly deferred the tune site as
+the one piece left on the `lastPassed` approximation. One rule, tested three times, not
+independently-drifting copies. New `resultsPassed(state,
+finishPosition)` export (`tournament.js`) extracts it; `flow.js`'s `advanceRace` computes it
+directly (captured before `raceIndex` advances) and passes it to `raceResultMusic`, replacing the
+old indirect `lastOutcome`-derived value that fed the tune specifically. `lastPassed` itself (which
+also feeds `drawResults`'s "QUALIFY"/"FAILED" text) needed no change -- a draft that redirected it
+to the same new export too was checked against the qualifier/H2H cases folded into that branch and
+found wrong there (`resultsPassed`'s own formula disagrees with `lastOutcome` for those two), and
+reverted. Also independently confirmed, not assumed: `finishPosition` reads the same order-array
+slots `[3FC]`/`[3FE]` DOS does, including under the instant-win cheat (`36A7`'s own writes resolve
+to exactly `[0,2,1,3]` at `11D5`, matching `cheats.js`'s own `fixedOrder` hardcode).
+
 ## 9as. P1's first item: the logo intro's real per-frame animation (2026-09-24)
 
 Full account, and every cited address, in `docs/intro-and-codecard.md`'s own "The real per-frame
@@ -8090,3 +8117,128 @@ non-bonus-only reset) and re-running the suite: case 1 lands on `lives===10 && o
 reset overwrites the value but arrives too late to stop the loss from ending the tournament), case
 2 lands on `lives===2` (no reset at all reaches the bonus branch, so the delta and the win's own
 `+1` both apply to the un-reset value) -- both wrong, both fail, pass again once reverted.
+
+## 9bd. The results screen's tune condition, ported byte-exact (2026-09-24)
+
+**Scope.** GOAL-DOS-PARITY.md's next P3 item: "The results screen's tune condition. It uses a
+pass/fail boolean; the real condition is the narrower `word[3FC]`/`[3FE]` test (§9ai). Port it
+exactly." §9ai's own follow-up RE pass (`mm-re-player-visible`, 2026-09-23) had already located and
+described the real condition but left the port on the `lastPassed` approximation, flagging it as
+"a refinement to VERIFY exhaustively, not a known bug." §9bb item 1 (P3's 4th item, 2026-09-24) then
+independently found and fully disassembled two MORE sites testing the identical bytes -- the
+per-row results-label pick (`15B1`) and the outcome-message gate (`1650`) -- ported the latter,
+confirmed the port's own `lastPassed` already covers the former correctly, and explicitly deferred
+§9ai's own tune site (`1410`) as the one piece still left on the approximation: THIS item.
+
+**Fresh disassembly of `1000:1439` (`ShowRaceResultsScreenTune8or6`), the full function body
+(`13e4-16dd`, 242 instructions).** Confirms §9ai's own reading of the tune site, and (re-)confirms
+§9bb item 1's own reading of the other two: this ONE test is not used once, but at THREE separate
+sites in this same function, byte-for-byte identical (or, at the second, identical up to one
+register substitution) every time:
+1. **The tune-selection block, `1410-1427`:**
+   ```
+   1410: CMP word[3FC],0xC03   1416: JZ 1429      (-> tune 8)
+   1418: CMP byte[28C1],0x19   141D: JZ 1427      (-> tune 6, last race, skip [3FE])
+   141F: CMP word[3FE],0xC03   1425: JZ 1429      (-> tune 8)
+   1427: MOV AL,6              1429: (play AL)
+   ```
+   tune 8 iff `[3FC]==0xC03` (1st) OR (`[28C1]!=0x19` AND `[3FE]==0xC03`, 2nd, not the last race);
+   else tune 6.
+2. **A per-row results-label pick, `15A5-15C7`, inside the standings-drawing loop** (guarded by
+   `15A5-15AC`: only for the row identified as the player's own, `word[BX+0x13]==word[0xC16]`):
+   ```
+   15B1: CMP word[3FC],BX      15B5: JZ 15C7      (SI stays 0x39A)
+   15B7: CMP byte[28C1],0x19   15BC: JZ 15C4      (-> SI=0x3A2)
+   15BE: CMP word[3FE],BX      15C2: JZ 15C7      (SI stays 0x39A)
+   15C4: MOV SI,0x3A2
+   ```
+   At this point in the per-row loop `BX` already equals the CURRENT row's own car descriptor
+   address, and this block only runs for the row identified as the player's own -- so for that row
+   `BX` is car 0's own descriptor address, `0xC03`, making `CMP [3FC],BX` the literal
+   `CMP [3FC],0xC03` from site 1, just addressed indirectly through the loop's own register. `SI`
+   selects between two
+   DS-resident string pointers (`0x39A`/`0x3A2`) for the player's OWN results row. **This site was
+   already found and fully disassembled by GOAL-DOS-PARITY.md P3's 4th item (§9bb item 1, its own
+   `15B1-15C7`), not new to this pass** -- including the guard's own player-identification meaning
+   and a LIVE read confirming the two strings themselves (`DS:039A`="QUALIFY", `DS:03A2`="FAILED"),
+   and already-established as `drawResults`'s own real DOS analogue, correctly driven by `lastPassed`
+   with "no separate wiring needed... it inherits the fix for free." §9bb item 1 also explicitly
+   pointed at THIS item -- "the tune itself is still left as the `lastPassed` approximation pending
+   that other item" -- as the one piece it deliberately left unfinished.
+3. **The outcome-message gate, `1650-1667`** (`CMP [3FC],0xC03 / JZ 1676`, `CMP [28C1],0x19 / JZ
+   1667`, `CMP [3FE],0xC03 / JZ 1676`, `1667: MOV CX,2 / CALL 1C1B`) -- also §9bb item 1's own site
+   (its `1000:1658`), ported there as `reportRaceResult`'s own `isLastRace ? 1 : 2` pass-threshold
+   formula, deciding whether to show the `ONE_LIFE_LOST` outcome message at all.
+
+So of the three sites, §9ai's original `mm-re-player-visible` pass found site 1 (the tune) and
+§9bb item 1 found and fully disassembled sites 2 and 3, already establishing all three test the
+identical bytes and pointing at this item as the one piece left over: porting site 1 itself
+byte-exact, rather than the `lastPassed` approximation it had been left on. This pass's own
+contribution is re-disassembling site 1 fresh to confirm it letter-for-letter (`1410-1427`, above),
+and the actual port (`resultsPassed`, below) plus the `finishPosition`/instant-win-cheat
+verification that follows.
+
+Also present at `13EE`/`13F5-140D`: the function's OWN top-level branch on race format (`CMP
+byte[3F8],0`), taking a COMPLETELY SEPARATE, simpler path for H2H (`[3FC]==0xC03` alone, no
+`[28C1]`/`[3FE]` involved, and no tune-select/results-draw code at `140E` onward is ever reached) --
+confirming `ShowRaceResultsScreenTune8or6`'s own results-table/tune code is Challenge-only, matching
+this port's own `screenAfterRace` never returning `'RESULTS'` for `format==='twocar'`.
+
+**`finishPosition`'s own derivation, confirmed to read the SAME order-array slots `[3FC]`/`[3FE]`
+that `1439` does, including under the instant-win cheat -- the specific check this item's own scope
+warns not to skip (§9bb item 3 was caught taking exactly this kind of shortcut: waving off the
+RESULTS->OUTCOME transition as "already correct" without checking `flow.js`'s own second call
+site).** `1000:11D5` (`RunTournamentLoop`'s own order-array copy, fully re-disassembled):
+```
+11D6: DI=0x3FC   11D9: SI=0x2678
+11DF: AX=[SI]; SI+=2        (source word, one of [2678..267E])
+11E2: AX = AX / [0x2662]    (-> a car INDEX 0..3, DX=remainder discarded)
+11E9: AX = AX * 0x1B
+11EB: AX += 0xC03           (-> that car's own DESCRIPTOR address, 0xC03/0xC1E/0xC39/0xC54)
+11EE: [DI]=AX; DI+=2        (destination word, one of [3FC..402])
+11EF: loop while DI<=0x402  (4 iterations: 3FC, 3FE, 400, 402)
+```
+So `[3FC..402]` are car DESCRIPTOR ADDRESSES (the 0x1B-stride slots §9az already names
+"descriptor"), one per finishing slot, derived from `[2678..267E]` divided by a per-car stride,
+`[0x2662]` -- independently confirmed (§9am) to be P2's own car-RECORD base pointer (the DIFFERENT,
+0x164-stride struct §1 defines), written only at `4152: MOV [0x2662],0x164`, i.e. literally the
+per-car struct stride (`CAR_RECORD_SIZE`, `src/engine/car.js`, 356 B = `0x164`), not a value this
+pass had to infer. `flow.js`'s own `rankOrder.indexOf(0)+1` (`raceState.rankOrder`, an array of car
+INDICES in finishing order) is the exact same information in a different encoding --
+`rankOrder[k]===0` (car 0 occupies finishing slot k) is `[3FC+2k]==0xC03` (car 0's own descriptor
+address occupies that slot) with the address<->index mapping factored out. Confirmed against the
+instant-win cheat specifically: `1000:36A7`'s own effect (fully re-disassembled) writes
+`[2678,267A,267C,267E] = 0, 0x2C8, 0x164, 0x42C`; dividing each by `[0x2662]` (`0x164`) gives
+indices `0, 2, 1, 3` -- matching `cheats.js`'s own `fixedOrder = [0, 2, 1, 3]` hardcode exactly,
+byte-for-byte, not just "car 0 finishes 1st" in the loose sense.
+
+**Ported.** A new export, `resultsPassed(state, finishPosition)` (`tournament.js`): the SAME
+`finishPosition <= (isLastRace ? 1 : 2)` formula `reportRaceResult`'s own Challenge-fail branch
+already used inline -- extracted and reused, not duplicated, so `reportRaceResult`'s own
+`PASSED`/`ONE_LIFE_LOST` outcome and the results-screen tune are now provably ONE computation, not
+two that could drift. `reportRaceResult`'s own inline `isLastRace`/`passThreshold` locals are
+replaced with a call to this export. `flow.js`'s `advanceRace` now computes `resultsWasPassed =
+resultsPassed(tournament, result.finishPosition)` BEFORE `reportRaceResultWithOpponentSnapshot` can
+advance `tournament.raceIndex` (the same timing constraint `wasQualifier` already needed, captured
+the same way), and passes it directly to `raceResultMusic` instead of the old `lastPassed`. An
+early draft of this fix also redirected the non-round-9 branch's own `lastPassed` (which feeds
+`drawResults`'s "QUALIFY"/"FAILED" text) to this same `resultsWasPassed` value, reasoning that a
+single shared computation is more robust than two that could theoretically diverge -- checked
+against the qualifier and H2H cases folded into that same branch and found WRONG: `resultsPassed`'s
+own Challenge-shaped formula gives a false PASS for a non-last-race H2H loss and for a two-car
+qualifier loss, diverging from `lastOutcome`'s own correct reading in both. Reverted: `lastPassed`
+keeps its original `tournament.lastOutcome !== QUALIFIER_FAILED && !== ONE_LIFE_LOST` derivation,
+which needs no change here at all, because `reportRaceResult` now decides `PASSED` vs
+`ONE_LIFE_LOST` for the one case that matters (a Challenge non-qualifier race) by calling
+`resultsPassed` itself -- so `lastOutcome` already reflects the byte-exact rule for that case, and
+the drift this draft was trying to prevent cannot happen. `sound.js`'s `raceResultMusic` header
+comment updated to point at the byte-exact source; `raceResultMusic` itself (`driver.playTune(passed
+? 8 : 6)`) needed no change.
+
+**Tests.** `tools/check-tournament.mjs` test 17: `resultsPassed` directly, across every finish
+position on an ordinary race (1st/2nd pass, 3rd/4th fail) and the very last race (1st still passes,
+2nd now fails -- the one place the rule narrows). Confirmed by reintroducing a naive
+`finishPosition<=2` (dropping the last-race narrowing entirely) and re-running the suite: fails
+test 17's own last-race assertion AND the pre-existing test 9 ("the LAST race: 2nd place FAILS"),
+confirming the refactor didn't silently lose that earlier item's own coverage; passes again once
+reverted.
