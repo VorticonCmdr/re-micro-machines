@@ -169,23 +169,39 @@ export function raceIntroMusic(driver) {
  * `[3FE]` are the order array's own first two slots (`runOneRace`'s own citation of `[3FC..402]`).
  * Approximated here by `passed` (the same boolean the screen's own display text already computes,
  * `flow.js`'s `lastPassed`) rather than the exact byte test -- a confirmed [STATIC]-only reading
- * (`mm-re-player-visible`, 2026-09-23, docs/engine.md §9ai) whose `0x19`-race exception isn't yet
- * understood; flagged as a known refinement, not implemented byte-exact. */
+ * (`mm-re-player-visible`, 2026-09-23, docs/engine.md §9ai) whose `0x19`-race exception is NOW
+ * understood (GOAL-DOS-PARITY.md P3's 4th item, docs/engine.md §9bb item 1): it's the SAME
+ * last-race-only-1st-place rule `tournament.js`'s `reportRaceResult` now ports for the outcome
+ * itself (`1000:15B7`/`1658`), just re-used here for the results TUNE specifically -- still left as
+ * the `passed` approximation, not implemented byte-exact for the tune condition itself, since
+ * `lastPassed` already agrees with the byte-exact test in every case this port's own last-race
+ * pass-threshold fix now produces (a 2nd-place finish on the last race is `lastPassed=false` there
+ * too), so the two are no longer known to diverge -- flagged as a refinement to VERIFY exhaustively,
+ * not a known bug, next time this specific item is picked up. */
 export function raceResultMusic(driver, passed) {
   driver.playTune(passed ? 8 : 6)
 }
 
 /**
  * The shared "outcome message" screen ("OUTCOME" in `flow.js`), `ShowRaceOutcomeMessageTune8or6
- * 1000:1c84`: tune 8 if the outcome code is odd (1 PASSED, 3 EXTRA_LIFE, 5
- * QUALIFIED_FOR_HEAD_TO_HEAD), tune 6 if even (0 QUALIFIER_FAILED, 2 ONE_LIFE_LOST) -- **and code 4
- * (NO_BONUS) skips the whole real screen, no tune change at all**, not just a "lose" tune (`mm-re-
- * player-visible`, 2026-09-23, docs/engine.md §9ai). `outcomeCode`: `tournament.js`'s own
- * `OUTCOME` values, confirmed the same 0-5 encoding by `frontend-tables.js`'s `OUTCOME_MESSAGES`
- * header comment ("index == the outcome code docs/engine.md §7 already names"), so no translation
- * is needed -- `tournament.lastOutcome` IS the real CX byte. */
+ * 1000:1c1b` (the tune-play itself at `1000:1c84`): tune 8 if the outcome code is odd (1 PASSED, 3
+ * EXTRA_LIFE, 5 QUALIFIED_FOR_HEAD_TO_HEAD), tune 6 if even (0 QUALIFIER_FAILED, 2 ONE_LIFE_LOST, 4
+ * NO_BONUS) -- CODE 4 DOES PLAY TUNE 6, correcting a real error a `2026-09-23` pass (`mm-re-player-
+ * visible`, formerly cited here and at docs/engine.md §9ai) made and this session's own re-
+ * disassembly (GOAL-DOS-PARITY.md P3's 4th item, docs/engine.md §9an 8/§9bb) found and fixed: that
+ * pass's own claim -- "code 4 skips the whole real screen, jumping straight past its own AH=4" --
+ * does not hold up against a byte-for-byte re-read of `1c6a-1c89`; the ONLY branch between the
+ * win/lose tune choice (`1c6c: TEST CX,1`, parity-based, no code-4 special case) and the play call
+ * itself (`1c84`) is `1c80: JZ 1c89`, which depends on the `AH=9` query's own return value (already
+ * playing or not), not on CX at all -- the SAME "query-then-play, safely collapsible into one
+ * `playTune` call" idiom this file already uses everywhere else (see `titleMusic`'s own header).
+ * What code 4 DOES skip is the LATER lives-adjustment display machinery (`1cab-1d08`) that codes
+ * 2/3 alone reach -- a real but separate, not-yet-modelled visual detail, unrelated to the tune.
+ * `outcomeCode`: `tournament.js`'s own `OUTCOME` values, confirmed the same 0-5 encoding by
+ * `frontend-tables.js`'s `OUTCOME_MESSAGES` header comment ("index == the outcome code
+ * docs/engine.md §7 already names"), so no translation is needed -- `tournament.lastOutcome` IS the
+ * real CX byte. */
 export function raceOutcomeMusic(driver, outcomeCode) {
-  if (outcomeCode === 4) return // NO_BONUS: the real screen itself is skipped, jumps past its own AH=4
   driver.playTune(outcomeCode % 2 === 1 ? 8 : 6)
 }
 

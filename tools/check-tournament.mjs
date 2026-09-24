@@ -5,7 +5,7 @@
 // (docs/engine.md §9az, the qualifier's own fixed JETHRO trio and the real interactive opponent
 // picker) and P3's third item (docs/engine.md §9ba, the real elimination/replacement rule).
 //   node tools/check-tournament.mjs
-import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, QUALIFIER_OPPONENTS, OUTCOME } from '../src/frontend/tournament.js'
+import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, QUALIFIER_OPPONENTS, OUTCOME } from '../src/frontend/tournament.js'
 import { ORDER_TABLE_LAST_INDEX, MAX_BONUS_RACES } from '../src/data/frontend-tables.js'
 
 let bad = 0
@@ -326,5 +326,136 @@ function passRace(state, finishPosition, extra) {
   check('the board shows before race 1 (effectiveRaceIndex is 1, not the qualifier or the last race)', effectiveRaceIndex(s) === 1 && shouldShowBoard(s))
 }
 
-console.log(bad ? `${bad} check(s) failed` : 'check-tournament: qualifier pass/fail, the real opponent picker, the real elimination/replacement rule, Challenge/two-car race rules, streak/bonus-race schedule all match docs/engine.md §7/§9az/§9ba')
+// 9. The final race's 2nd place is a FAIL, every other race's isn't (1000:15B7/1658, fully
+// re-disassembled, GOAL-DOS-PARITY.md P3's 4th item, docs/engine.md §9bb): only 1st place passes
+// the tournament's very last race (`raceIndex === ORDER_TABLE_LAST_INDEX`); every other race
+// accepts 1st OR 2nd, as before. Two freshly-built states (not clones) isolate the 1st-vs-2nd
+// comparison at the last race from each other.
+function freshAtLastRace() {
+  const s = initTournament()
+  pickPlayerCharacter(s, 0)
+  reportRaceResult(s, { finishPosition: 1 }) // qualifier pass
+  fillEmptyOpponentSlots(s)
+  s.raceIndex = ORDER_TABLE_LAST_INDEX // synthetic fast-forward, isolating this one rule
+  return s
+}
+{
+  const s = initTournament()
+  pickPlayerCharacter(s, 0)
+  reportRaceResult(s, { finishPosition: 1 }) // qualifier pass
+  fillEmptyOpponentSlots(s)
+  const idx = s.raceIndex
+  passRace(s, 2)
+  check('a regular (non-last) race: 2nd place still passes', s.raceIndex === idx + 1 && s.lastOutcome === OUTCOME.PASSED)
+}
+{
+  const s = freshAtLastRace()
+  reportRaceResult(s, { finishPosition: 2 })
+  check('the LAST race: 2nd place FAILS (ONE_LIFE_LOST, not PASSED)', s.lastOutcome === OUTCOME.ONE_LIFE_LOST && s.lives === 2)
+}
+{
+  const s = freshAtLastRace()
+  reportRaceResult(s, { finishPosition: 1 })
+  check('the LAST race: 1st place still PASSES', s.lastOutcome === OUTCOME.PASSED)
+}
+
+// 10. The bonus-race TRIGGER has no cap (1000:1123-113A, fully re-disassembled, GOAL-DOS-PARITY.md
+// P3's 4th item, docs/engine.md §9bb): it keeps firing every time the streak reaches 0 (as long as
+// it isn't the last race), well past MAX_BONUS_RACES triggers -- only the COUNTER (`[0x342]`, the
+// selected bonus TRACK number) is capped, at `1A9F`, inside `TriggerBonusRace` itself, not the
+// trigger condition. `pendingBonusRace.race` must clamp at MAX_BONUS_RACES+1 (repeating the last
+// real bonus track) once the counter caps, not stop triggering altogether.
+{
+  const s = initTournament()
+  pickPlayerCharacter(s, 0)
+  reportRaceResult(s, { finishPosition: 1 }) // qualifier pass
+  fillEmptyOpponentSlots(s)
+  const bonusRaces = []
+  let iterations = 0
+  while (bonusRaces.length < MAX_BONUS_RACES + 2 && iterations < 200) {
+    if (s.pendingBonusRace) { bonusRaces.push(s.pendingBonusRace.race); reportRaceResult(s, { won: true }) }
+    else passRace(s, 1, { won: true })
+    iterations++
+  }
+  check(`the trigger fires at least ${MAX_BONUS_RACES + 2} times (well past MAX_BONUS_RACES=${MAX_BONUS_RACES}), never gated by the counter`, bonusRaces.length === MAX_BONUS_RACES + 2)
+  check('the bonus track number clamps at MAX_BONUS_RACES+1 once the counter caps, repeating the last real track rather than growing unboundedly', bonusRaces.slice(MAX_BONUS_RACES).every((r) => r === MAX_BONUS_RACES + 1))
+  check('the FIRST bonus race is track 1, the second track 2 (the counter sequence before it caps)', bonusRaces[0] === 1 && bonusRaces[1] === 2)
+}
+
+// 11. The `]` debug key (1000:1DCD, fully re-disassembled, GOAL-DOS-PARITY.md P3's 4th item,
+// docs/engine.md §9bb): `applyLivesCheat` zeroes lives always, but only ENDS the tournament
+// immediately for ONE_LIFE_LOST -- EXTRA_LIFE's own real caller (TriggerBonusRace) has no
+// post-call life check, so the zeroed value there is silent until some later loss.
+{
+  const s = initTournament()
+  pickPlayerCharacter(s, 0)
+  reportRaceResult(s, { finishPosition: 1 })
+  fillEmptyOpponentSlots(s)
+  s.lastOutcome = OUTCOME.ONE_LIFE_LOST
+  applyLivesCheat(s)
+  check('] on ONE_LIFE_LOST: lives zeroed AND the tournament ends immediately', s.lives === 0 && s.over === true)
+}
+{
+  const s = initTournament()
+  pickPlayerCharacter(s, 0)
+  reportRaceResult(s, { finishPosition: 1 })
+  fillEmptyOpponentSlots(s)
+  s.lastOutcome = OUTCOME.EXTRA_LIFE
+  applyLivesCheat(s)
+  check('] on EXTRA_LIFE: lives zeroed but the tournament does NOT end immediately (no caller-side check in the real bytes)', s.lives === 0 && s.over === false)
+}
+// applyLivesCheat's own reachability guard (moved into the function itself so it's actually
+// tested, an advisor review caught this gap): a no-op for every outcome OTHER than 2/3.
+{
+  for (const code of [OUTCOME.QUALIFIER_FAILED, OUTCOME.PASSED, OUTCOME.NO_BONUS, OUTCOME.QUALIFIED_FOR_HEAD_TO_HEAD]) {
+    const s = initTournament()
+    s.lives = 3
+    s.lastOutcome = code
+    applyLivesCheat(s)
+    check(`] on outcome code ${code}: no-op (lives untouched, tournament not ended)`, s.lives === 3 && s.over === false)
+  }
+}
+
+// 12. The RESULTS -> OUTCOME transition is conditional, not automatic (an advisor review caught a
+// real bug here: `flow.js`'s own `confirm()` used to show an OUTCOME screen after EVERY Challenge
+// race, including a pass -- docs/engine.md §9bb item 3). `showsOutcomeAfterResults` is the pure
+// predicate that transition now checks.
+{
+  const s = initTournament()
+  pickPlayerCharacter(s, 0)
+  reportRaceResult(s, { finishPosition: 1 })
+  fillEmptyOpponentSlots(s)
+  passRace(s, 2) // a PASS
+  check('a passed Challenge race does NOT show an OUTCOME screen after RESULTS', !showsOutcomeAfterResults(s))
+  s.lastOutcome = OUTCOME.ONE_LIFE_LOST
+  check('a failed Challenge race DOES show an OUTCOME screen after RESULTS', showsOutcomeAfterResults(s))
+}
+
+// 13. The bonus-race WIN effects are gated on `won`, not unconditional (an advisor review caught
+// two real gaps here: the track counter used to advance even on a loss, and a won bonus race never
+// actually granted a life -- docs/engine.md §9bb items 2/4, 1000:1A92-1AA5/1CFA-1D02).
+{
+  const s = initTournament()
+  pickPlayerCharacter(s, 0)
+  reportRaceResult(s, { finishPosition: 1 })
+  fillEmptyOpponentSlots(s)
+  passRace(s, 1, { won: true }) // race 1: streak 3->2
+  passRace(s, 1, { won: true }) // race 2: streak 2->1
+  passRace(s, 1, { won: true }) // race 3: streak 1->0 -> bonus race 1 triggers
+  check('bonus race 1 triggered', s.pendingBonusRace?.race === 1)
+  const livesBefore = s.lives
+  reportRaceResult(s, { won: false }) // LOSE bonus race 1
+  check('losing a bonus race grants no life', s.lives === livesBefore)
+  check('losing a bonus race does NOT advance the track counter -- the SAME track is offered next time', s.bonusRacesTaken === 0)
+  passRace(s, 1, { won: true }) // race 4: streak 3->2 (reset on the bonus resolution, regardless of win/loss)
+  passRace(s, 1, { won: true }) // race 5: streak 2->1
+  passRace(s, 1, { won: true }) // race 6: streak 1->0 -> the NEXT bonus race triggers
+  check('the next bonus race re-offers track 1 (the counter never advanced after the loss)', s.pendingBonusRace?.race === 1)
+  const livesBeforeWin = s.lives
+  reportRaceResult(s, { won: true }) // WIN this one
+  check('winning a bonus race grants exactly one extra life', s.lives === livesBeforeWin + 1)
+  check('winning a bonus race DOES advance the track counter', s.bonusRacesTaken === 1)
+}
+
+console.log(bad ? `${bad} check(s) failed` : 'check-tournament: qualifier pass/fail, the real opponent picker, the real elimination/replacement rule, Challenge/two-car race rules, streak/bonus-race schedule, the last-race 2nd-place fail, the uncapped bonus trigger, the win-gated bonus-race counter/life, the conditional RESULTS->OUTCOME transition and the ] lives cheat all match docs/engine.md §7/§9az/§9ba/§9bb')
 process.exitCode = bad ? 1 : 0

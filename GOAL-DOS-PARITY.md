@@ -331,12 +331,39 @@ docs, (6) commit.
   deliberately-deferred `FUN_1000_19F2` 4-face status panel (`drawOpponentPanel`), needed for this
   screen's own row layout and shown for both the initial pick and a replacement. Live-tested end to
   end (bounce screen, vacated-slot replacement picker, screenshots).**
-- [ ] **The Challenge-rule divergences from §9an 8**, one test each:
+- [x] **The Challenge-rule divergences from §9an 8**, one test each:
   - the final race's 2nd place is a fail (`15B7`, `1658`);
   - the bonus trigger has no cap (`1123-113A`; `[342]` counts wins only, `1A92-1AA5`);
   - a passed Challenge race shows RESULTS only (OUTCOME code 1 is emitted only at `10EC`);
   - OUTCOME code 4 plays tune 6 and shows "NO BONUS" (`1C84` runs before the `1CA3` test);
   - the `]` key zeroes lives on OUTCOME 2/3 (`1DCD`).
+  **Done, §9bb: all 5 fully re-disassembled and all 5 fixed -- 2 of them (3 and part of 2) turned
+  out to be real bugs a first pass at this item wrongly waved off, caught by later advisor review.
+  1: only 1st place passes the very last race (`15B7`/`1658`) -- `reportRaceResult`'s pass
+  threshold is now `isLastRace ? 1 : 2`; this ALSO explains an `mm-re-player-visible` pass's own
+  "0x19-race exception... could not further explain" in the separate results-tune item (§9ai,
+  corrected). 2: the bonus TRIGGER (`1123-113A`) has no cap at all -- only the bonus-TRACK counter
+  (`[0x342]`, resolution-time) is capped; the port's own extra trigger-side cap is removed. The
+  SAME resolution-time code had two MORE bugs a first draft missed: the counter's own increment
+  (and a newly-added life grant, next) must be WIN-gated (`1A92`), not unconditional, and a WON
+  bonus race never actually incremented `state.lives` at all (`1CF7-1D08`'s own real `INC [0x406]`
+  -- the outcome's own name says "extra life") -- both fixed. 3: **a REAL, currently-shipping bug,
+  not "needed no fix" as first concluded** -- checking only `screenAfterRace` (the FIRST screen
+  after a race) missed `flow.js`'s own SECOND transition, `confirm()`'s `RESULTS` branch, which
+  showed a spurious OUTCOME screen ("QUALIFIED FOR CHALLENGE!") after EVERY passed regular race; a
+  new `showsOutcomeAfterResults` predicate (true only on a loss) now gates that transition,
+  matching `1650-166A`'s own real "a PASS jumps straight past the outcome-message call" behaviour.
+  4: OUTCOME code 4 plays tune 6 like every even code -- corrects a REAL ERROR an earlier
+  `mm-re-player-visible` pass made ("code 4 skips the whole real screen... jumps straight past its
+  own AH=4"), which a fresh byte-for-byte re-read of `1c6a-1c89` (independently repeated twice)
+  found no support for whatsoever; `raceOutcomeMusic`'s wrong early-return removed. 5: the `]` key
+  (scancode `0x1B`) zeroes lives on the `ONE_LIFE_LOST`/`EXTRA_LIFE` outcome screens, ending the
+  tournament immediately only for the former (a real caller-side asymmetry: the regular-race caller
+  checks lives the instant `1C1B` returns; `TriggerBonusRace`'s own caller never does) -- ported as
+  a new `applyLivesCheat` export, its own reachability guard living INSIDE the function (moved
+  there after an advisor review noted a first draft left it untested in the caller), wired into
+  `flow.js`'s `onKeydown`. Every changed/new assertion individually confirmed by reintroducing its
+  own bug and re-running the suite.**
 - [ ] **The two INFERRED tournament rules** in `tournament.js`'s header: what ends the tournament at
   0 lives, and whether the win streak resets to 3 after a bonus race. Re-derive both from `10a0`/`115c`
   and replace the inference with cited code.

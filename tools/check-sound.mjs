@@ -257,22 +257,24 @@ function check(name, cond) {
   }
 }
 
-// Front-end music regression pin (M3.34, docs/engine.md §9ai) -- an advisor review asked for this
-// specifically: `ShowRaceOutcomeMessageTune8or6 1000:1c84`'s real rule is CX-parity WITH a skip for
-// code 4 (NO_BONUS), not a binary pass/fail, and a lost bonus race previously played the "lose"
-// tune (6) before this was corrected -- pin that it now issues no command at all.
+// Front-end music regression pin (M3.34, docs/engine.md §9ai/§9bb) -- `ShowRaceOutcomeMessageTune8or6
+// 1000:1c1b`'s real rule is CX-parity, no exception for any code: tune 8 if odd (1/3/5), tune 6 if
+// even (0/2/4). An earlier pass wrongly claimed code 4 (NO_BONUS) skips the tune entirely ("jumps
+// straight past its own AH=4") -- corrected this session (GOAL-DOS-PARITY.md P3's 4th item) by a
+// fresh byte-for-byte re-read of `1c6a-1c89`: the only branch between the tune choice and the play
+// call depends on the driver's own AH=9 "already playing" query, not on CX, so code 4 plays tune 6
+// exactly like code 0/2. Pin the corrected, exception-free parity rule for all 6 codes.
 {
   const { raceOutcomeMusic } = await import('../src/engine/sound.js')
   function mockDriver() {
     const calls = []
     return { calls, playTune: (n) => calls.push(n) }
   }
-  const expected = { 0: 6, 1: 8, 2: 6, 3: 8, 4: null, 5: 8 }
+  const expected = { 0: 6, 1: 8, 2: 6, 3: 8, 4: 6, 5: 8 }
   for (const [code, tune] of Object.entries(expected)) {
     const driver = mockDriver()
     raceOutcomeMusic(driver, Number(code))
-    if (tune === null) check(`raceOutcomeMusic(${code} NO_BONUS): issues no command`, driver.calls.length === 0)
-    else check(`raceOutcomeMusic(${code}): plays tune ${tune}`, driver.calls.length === 1 && driver.calls[0] === tune)
+    check(`raceOutcomeMusic(${code}): plays tune ${tune}`, driver.calls.length === 1 && driver.calls[0] === tune)
   }
 }
 
@@ -292,5 +294,5 @@ function check(name, cond) {
   check('raceIntroMusic takes no second argument to select a different tune', raceIntroMusic.length === 1)
 }
 
-console.log(bad ? `${bad} check(s) failed` : 'check-sound: the race engine drives the sound driver model correctly (jitter checkpoint, race-start AH=7, per-step engine pitch, sfx wiring, race-over, synthetic sfx-site coverage, M3.27\'s six new wire-ups); front-end outcome music matches the real CX-parity rule incl. the NO_BONUS skip; race-intro music never plays the unreachable tune 5 (M3.45)')
+console.log(bad ? `${bad} check(s) failed` : 'check-sound: the race engine drives the sound driver model correctly (jitter checkpoint, race-start AH=7, per-step engine pitch, sfx wiring, race-over, synthetic sfx-site coverage, M3.27\'s six new wire-ups); front-end outcome music matches the real CX-parity rule, no exception for NO_BONUS; race-intro music never plays the unreachable tune 5 (M3.45)')
 process.exitCode = bad ? 1 : 0

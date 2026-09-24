@@ -55,7 +55,7 @@ export function initTournament({ format = 'challenge' } = {}) {
     raceIndex: 0, // index into ORDER_TABLE; 0 = the qualifier (docs/engine.md §7: "Qualifier = entry 0")
     lives: 3, // DS:0406 -- only the player's own counter is modelled (docs: "only [406] is used")
     streak: 3, // [3fa], counts down from 3 to trigger a bonus race
-    bonusRacesTaken: 0, // [342], capped at MAX_BONUS_RACES
+    bonusRacesTaken: 0, // [342], the COUNTER is capped at MAX_BONUS_RACES (1A9F) -- the TRIGGER itself is not (see maybeTriggerBonusRace's own header, docs/engine.md §9bb)
     pendingBonusRace: null, // {round: 9, race} once a streak-out triggers one, cleared on report
     roster: CHARACTER_NAMES.map((name, i) => ({ index: i, name, taken: false, eliminated: false })),
     playerCharacter: null,
@@ -139,6 +139,22 @@ export function screenAfterRace(state, { wasQualifier = false, wasBonus = false 
   if (wasBonus || wasQualifier) return 'OUTCOME'
   if (state.format === 'twocar') return state.lastOutcome === null ? 'NONE' : 'OUTCOME'
   return 'RESULTS'
+}
+
+/**
+ * Whether an OUTCOME screen follows RESULTS for a regular Challenge race (the SECOND of two
+ * transitions `screenAfterRace` alone doesn't cover -- an advisor review caught this real gap,
+ * GOAL-DOS-PARITY.md P3's 4th item, docs/engine.md §9bb item 3). `1000:1650-166A`, re-disassembled:
+ * a PASS (1st place, or 2nd on any race but the last) jumps straight from `13E4`'s own decision
+ * site to the elimination-check tail (`1676`) WITHOUT ever calling `ShowRaceOutcomeMessageTune8or6
+ * 1C1B` -- ONLY a FAIL (`1667: MOV CX,2 / CALL 1C1B`) does. So after RESULTS, a regular Challenge
+ * race shows an OUTCOME screen ONLY on a loss ("ONE LIFE LOST"); a pass goes straight to whatever's
+ * next (elimination check / opponent picker / board / bonus trigger / the next race's own intro),
+ * no message screen at all. `flow.js`'s own `confirm()` must call this before transitioning
+ * RESULTS -> OUTCOME, not do so unconditionally.
+ */
+export function showsOutcomeAfterResults(state) {
+  return state.lastOutcome === OUTCOME.ONE_LIFE_LOST
 }
 
 /** The race (or bonus race) the player must run next, as `{round, race}` plus its display name. */
@@ -293,11 +309,28 @@ function advance(state) {
   }
 }
 
+/**
+ * `1000:1123-113A`, fully re-disassembled (GOAL-DOS-PARITY.md P3's 4th item, docs/engine.md §9bb):
+ * the TRIGGER itself has NO cap on `[0x342]`/`bonusRacesTaken` -- only three conditions gate it
+ * (`1123`: player won; `112B/112F`: streak reaches 0; `1131/1138`: not the last race), and none of
+ * them read `[0x342]` at all. `[0x342]`'s own cap (`MAX_BONUS_RACES`, `[0x43B]`) lives entirely
+ * INSIDE `TriggerBonusRace 1A82`'s own resolution-time increment (`1A9F: CMP [0x342],[0x43B] / JZ`,
+ * already correctly ported as the `Math.min(...)` in `reportRaceResult`'s own `pendingBonusRace`
+ * branch below) -- once `[0x342]` reaches that cap it simply STOPS incrementing, so `race:
+ * bonusRacesTaken+1` (`1169: MOV AH,[0x342]` before the increment) naturally clamps at
+ * `MAX_BONUS_RACES` (repeating the LAST bonus track, ROUND9-`MAX_BONUS_RACES`, forever) without the
+ * TRIGGER itself ever needing to stop firing. A port draft that gated the trigger on the SAME cap
+ * (removed here) was wrong -- confirmed by a full re-disassembly finding no `[0x342]`/`[43B]` read
+ * anywhere in `1123-113A`.
+ */
 function maybeTriggerBonusRace(state) {
   state.streak--
   if (state.streak > 0) return false
   if (state.raceIndex >= ORDER_TABLE_LAST_INDEX) return false // "not the last race"
-  if (state.bonusRacesTaken >= MAX_BONUS_RACES) return false
+  // No cap here (see the header above) -- state.bonusRacesTaken is itself already clamped at
+  // MAX_BONUS_RACES by reportRaceResult's own resolution-time Math.min below, so this naturally
+  // repeats race MAX_BONUS_RACES+1 (the last real bonus track) on every trigger past the 3rd,
+  // matching 1169's own pre-increment read of the SAME already-capped [0x342].
   state.pendingBonusRace = { round: 9, race: state.bonusRacesTaken + 1 }
   return true
 }
@@ -313,7 +346,15 @@ export function reportRaceResult(state, { finishPosition, won } = {}) {
   if (state.over) return
   if (state.pendingBonusRace) {
     state.lastOutcome = won ? OUTCOME.EXTRA_LIFE : OUTCOME.NO_BONUS
-    state.bonusRacesTaken = Math.min(state.bonusRacesTaken + 1, MAX_BONUS_RACES)
+    if (won) {
+      // Both effects are gated on the SAME `1000:1A92: CMP [0x291D],1 / JNZ 1AA9` branch, fully
+      // re-disassembled (GOAL-DOS-PARITY.md P3's 4th item, docs/engine.md §9bb items 2/4): a LOST
+      // bonus race skips straight to `1AA9: CALL 1C1B` with neither ever happening. An advisor
+      // review caught both real gaps in an earlier draft of this fix, which incremented the
+      // counter unconditionally and never granted a life at all.
+      state.lives++ // 1000:1CFA-1D02: INC [0x406], CX=3 (EXTRA_LIFE) only -- the outcome screen's OWN name says "extra life"
+      state.bonusRacesTaken = Math.min(state.bonusRacesTaken + 1, MAX_BONUS_RACES) // 1000:1A99-1AA5: [0x342]'s own cap, WIN-gated -- a lost bonus race re-offers the SAME track next time, it does not advance to the next one
+    }
     state.streak = 3 // confirmed-equivalent timing, not the real game's own moment -- see the file header (docs/engine.md §9t)
     state.pendingBonusRace = null
     return
@@ -335,10 +376,24 @@ export function reportRaceResult(state, { finishPosition, won } = {}) {
     return
   }
 
-  if (finishPosition >= 3) {
+  // 1000:15B7/1658, fully re-disassembled (GOAL-DOS-PARITY.md P3's 4th item, docs/engine.md §9bb):
+  // on the VERY LAST race (`[28C1]==[439]`, `ORDER_TABLE_LAST_INDEX`), 2nd place does NOT pass --
+  // `1650: CMP [0x3fc],0xC03` (did the player finish 1st?) is the ONLY passing branch reached;
+  // `165F: CMP [0x3fe],0xC03` (2nd place) is only even CONSULTED when `1658: CMP [28C1],0x19` is
+  // false (not the last race). Every OTHER race accepts 1st or 2nd. Both sites gate the SAME
+  // mechanism (one drives a results-row label, the other the actual outcome), confirmed identical.
+  const isLastRace = state.raceIndex === ORDER_TABLE_LAST_INDEX
+  const passThreshold = isLastRace ? 1 : 2
+  if (finishPosition > passThreshold) {
     state.lastOutcome = OUTCOME.ONE_LIFE_LOST
     state.lives--
-    state.streak = 3 // docs/engine.md §7: "[3fa]=3" on a 3rd/4th result, explicit
+    // docs/engine.md §7: "[3fa]=3" on a 3rd/4th result, explicit -- the real site is
+    // `RunTournamentLoop`'s own `1000:113F-114E` (re-disassembled: `1144: JZ 114E` resets the
+    // streak UNCONDITIONALLY once `[28C1]==0x19`/the last race, regardless of 2nd vs 3rd/4th place,
+    // so this applies to the last-race-2nd-place case too), NOT `1000:1667` (that address is
+    // `ShowRaceOutcomeMessageTune8or6`'s own CX=2 outcome-message/life-decrement call, a different
+    // function for a different purpose that merely happens to fire on the same losing race).
+    state.streak = 3
     if (state.lives <= 0) state.over = true // INFERRED floor, file header
     return
   }
@@ -369,4 +424,34 @@ export function reportRaceResultWithOpponentSnapshot(state, result) {
   const opponents = [...opponentCharactersFor(state)]
   reportRaceResult(state, result)
   return opponents
+}
+
+/**
+ * `1000:1DCD`'s own `]` debug key (GOAL-DOS-PARITY.md P3's 4th item, docs/engine.md §9bb, full
+ * derivation in `flow.js`'s own `onKeydown`). The reachability guard lives HERE, not in the caller
+ * (an advisor review caught that leaving it in `flow.js` alone meant it was never actually tested):
+ * reachable only while `state.lastOutcome` is `ONE_LIFE_LOST` or `EXTRA_LIFE` (the only two outcome
+ * codes whose own message screen reaches the shared wait loop `1DCD` lives in) -- every other code
+ * is a no-op, matching the real key having no effect at all on any other outcome screen. Zeroes
+ * lives unconditionally once reachable; ends the tournament immediately ONLY for `ONE_LIFE_LOST` --
+ * that outcome's own caller (`166A`'s call site) checks `[0x406]==0` the instant `1C1B` returns and
+ * exits right there, while `EXTRA_LIFE`'s own caller (`TriggerBonusRace`'s `1AA9`) has no such
+ * check at all, so the zeroed value there is silent until some LATER race loss.
+ *
+ * `state.lives<=0` (this port's own tournament-over test) is NOT a faithful match for that later
+ * moment -- flagged here, not fixed (out of THIS item's own scope; GOAL-DOS-PARITY.md's next item,
+ * "what ends the tournament at 0 lives," is where this belongs). `[0x406]` is a single BYTE
+ * (`1CE1: MOV AL,[0x406]` / `1CEA: DEC AL`, both 8-bit), so a 3rd/4th-place loss reached with
+ * `[0x406]` already at 0 (via this exact cheat) UNDERFLOWS to `0xFF`(255), not a negative value --
+ * `166D`/`1403` (the SAME `CMP byte [0x406],0` test, confirmed shared by both the Challenge and
+ * two-car formats) then read 255, NOT 0, so the real game does NOT end the tournament at that next
+ * loss at all; it silently continues with 255 lives. This port's own `state.lives<=0` (an ordinary
+ * signed JS number, `state.lives--` then a `<=0` test) ends the run immediately instead -- the
+ * OPPOSITE of the real byte-wraparound behaviour. A genuinely obscure combination (requires the
+ * debug cheat itself), left as a known, cited divergence for that next item to resolve.
+ */
+export function applyLivesCheat(state) {
+  if (state.lastOutcome !== OUTCOME.ONE_LIFE_LOST && state.lastOutcome !== OUTCOME.EXTRA_LIFE) return
+  state.lives = 0
+  if (state.lastOutcome === OUTCOME.ONE_LIFE_LOST) state.over = true
 }

@@ -37,7 +37,7 @@ import { raceStart, updateEngines, createRaceJitter, raceOverSequence, raceOverS
 import { lapLineSegments, nearestPaletteIndex } from '../engine/lapLine.js'
 import { Si2Player } from '../audio/si2Player.js'
 import { RUFF_TRUCK_TIMES } from '../data/engine-tables.js'
-import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, OUTCOME } from './tournament.js'
+import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, OUTCOME } from './tournament.js'
 import { CHARACTER_NAMES, OUTCOME_MESSAGES, resolveSmoothnessForPlay } from '../data/frontend-tables.js'
 import { drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawOpponentPanel, drawEliminatedScreen, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
 import { createSmoothnessGate } from '../engine/smoothness.js'
@@ -988,8 +988,16 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       advanceRace()
       return
     } else if (phase === 'RESULTS') {
-      phase = 'OUTCOME'
-      raceOutcomeMusic(sound, tournament.lastOutcome) // ShowRaceOutcomeMessageTune8or6 1000:1c84, docs/engine.md §9ai
+      // 1000:1650-166A: a PASS jumps straight past ShowRaceOutcomeMessageTune8or6 to the
+      // elimination-check tail -- only a FAIL (CX=2) shows an OUTCOME screen at all (GOAL-DOS-
+      // PARITY.md P3's 4th item, docs/engine.md §9bb item 3, showsOutcomeAfterResults's own header).
+      if (showsOutcomeAfterResults(tournament)) {
+        phase = 'OUTCOME'
+        raceOutcomeMusic(sound, tournament.lastOutcome) // ShowRaceOutcomeMessageTune8or6 1000:1c84, docs/engine.md §9ai
+      } else {
+        nextAfterOutcome()
+        return
+      }
     } else if (phase === 'OUTCOME') {
       nextAfterOutcome() // whether this is a regular race or the just-unlocked bonus race, currentRace() resolves it
       return
@@ -1024,6 +1032,30 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     if (phase === 'SELECT_GAME' || phase === 'ONE_PLAYER_GAME' || phase === 'CHAR_SELECT' || phase === 'BOARD') return // each phase's own dedicated reader(s) + menuReleaseTracker own its input entirely
     if (phase === 'PRESS_ANY_KEY') { confirm(); return } // 0C15: any key click
     if (phase === 'ELIMINATED') { confirm(); return } // 179B's own indefinite "any key" wait, once the bounce is done -- confirm() itself no-ops while it's still running
+    if (phase === 'OUTCOME' && e.code === 'BracketRight') {
+      // 1000:1DCD, fully re-disassembled (GOAL-DOS-PARITY.md P3's 4th item, docs/engine.md §9bb): a
+      // developer debug key, reachable ONLY from inside the shared outcome-message wait loop
+      // (1D0D-1E11) that CX=2 (ONE_LIFE_LOST) and CX=3 (EXTRA_LIFE) alone reach (every other outcome
+      // code takes the simpler 1DE5 wait instead) -- `applyLivesCheat` (tournament.js) owns that
+      // reachability guard itself, not this call site, and no-ops for every other outcome. `]`
+      // (scancode 0x1B, [0x107E]) zeroes [0x406] (lives) and RETURNS from
+      // ShowRaceOutcomeMessageTune8or6 immediately, with NO further wait. The two reachable callers
+      // react differently, and applyLivesCheat reproduces both: the regular-race caller (166A's own
+      // call, reached for CX=2) checks `[0x406]==0` the INSTANT the call returns (166D) and ends the
+      // tournament right there, so `]` on ONE_LIFE_LOST is an immediate "quit with 0 lives";
+      // TriggerBonusRace's own call (1AA9, reached for CX=3) has NO such check afterward (1AAC:
+      // RET, unconditional) -- so `]` on EXTRA_LIFE just plants a lives-zeroed value silently, with
+      // no visible effect until whatever race-loss the player next reaches -- at which point, in
+      // the REAL game, [0x406] being a single BYTE (166D/1403's own CMP byte [0x406],0) means the
+      // NEXT loss's own DEC AL underflows 0 to 0xFF(255), so the tournament does NOT end there --
+      // it silently continues with 255 lives. This port's own `state.lives<=0` (an ordinary signed
+      // number) ends the run at that point instead, the OPPOSITE of the real behaviour -- a known,
+      // deliberately unfixed divergence (applyLivesCheat's own header), left for the goal file's
+      // next item ("what ends the tournament at 0 lives") to resolve.
+      applyLivesCheat(tournament)
+      if (tournament.over) nextAfterOutcome()
+      return
+    }
     if (e.code === 'Space' || e.code === 'Enter') confirm()
   }
   window.addEventListener('keydown', onKeydown)

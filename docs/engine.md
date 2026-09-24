@@ -4437,15 +4437,37 @@ confirming this section's own tune-1..8 mapping site-for-site, and additionally 
   this fixed: a lost bonus race previously played tune 6 ("lose") on the `OUTCOME` screen; the real
   game changes nothing there (silently continues whatever the race-intro screen was already
   playing). Ported as `raceOutcomeMusic` above.
+  **Corrected 2026-09-24 (GOAL-DOS-PARITY.md P3's 4th item, docs/engine.md §9bb item 4): BOTH
+  bolded claims above are WRONG, not just the first.** A fresh, independently-repeated (twice)
+  byte-for-byte re-read of `1000:1c6a-1c89` found NO branch anywhere in that range that depends on
+  CX at all, let alone one that skips CX=4 specifically: the win/lose tune choice (`1c6c: TEST
+  CX,1`) is pure parity, and the ONLY conditional between it and the `AH=4` play call (`1c80: JZ
+  1c89`) depends on the sound driver's own `AH=9` "already playing" query result, not on CX. Code 4
+  plays tune 6 exactly like every other even code, unconditionally (net of the SAME query-dedup
+  every OTHER outcome code also gets) -- confirming this pass's OWN claim that a lost bonus race
+  plays tune 6 was directionally RIGHT, but for the wrong reason (plain CX-parity, not a "the real
+  game silently continues instead" exemption -- `TriggerBonusRace 1A82`'s own tail (`1A8F: MOV
+  CX,4` when lost, fully re-disassembled) DOES call `1C1B` for a lost bonus race, reaching the SAME
+  `1c84` play call as every other outcome; it does not skip the outcome screen or its tune at all).
+  `raceOutcomeMusic` corrected to remove the wrong `outcomeCode===4` early return;
+  `tools/check-sound.mjs`'s own pin updated from "5 codes plus a NO_BONUS exception" to "6 codes,
+  exception-free parity".
 - **`ShowRaceResultsScreenTune8or6 1000:1439`'s real condition is narrower than "passed the race"**:
   tune 8 iff `word[3FC]==0xC03` (car 0 occupies the order array's own first slot, i.e. placed 1st)
   OR (`byte[28C1]!=0x19` AND `word[3FE]==0xC03`, placed 2nd) -- an apparent exception on the
   tournament's 25th-of-26 race (`byte[28C1]` 1-based) that this pass could not further explain.
-  **Left as the existing `lastPassed` approximation** (not implemented byte-exact): the `0x19`
-  exception's real meaning is unresolved, and `word[3FC]`/`[3FE]`'s exact encoding (`0xC03`) beyond
-  "the order array's first two slots" wasn't pinned down either -- a wrong guess here risks a
-  subtly-incorrect rule replacing a known-approximate one. Flagged as a genuine, still-open
-  refinement rather than closed.
+  **The `0x19` exception is now explained, 2026-09-24 (GOAL-DOS-PARITY.md P3's 4th item,
+  docs/engine.md §9bb item 1)**: it's the SAME "only 1st place passes the tournament's very last
+  race" rule `1000:15B7`/`1658` gate for the OUTCOME itself, re-used here for the RESULTS tune --
+  `tournament.js`'s own `reportRaceResult` now ports that rule for the outcome (`isLastRace ? 1 :
+  2` as the pass threshold), which means `lastPassed` (the boolean this file's own `raceResultMusic`
+  still uses as an approximation) now agrees with the byte-exact tune test in every case this port
+  can produce -- a 2nd-place finish on the last race is `lastPassed=false` there too. **Still left
+  as the `lastPassed` approximation, not implemented byte-exact** for the tune condition
+  specifically (the underlying OUTCOME rule is now byte-exact; the TUNE condition itself is a
+  separate, not-yet-fully-verified refinement -- see `sound.js`'s own updated header) -- and
+  `word[3FC]`/`[3FE]`'s exact encoding (`0xC03`) beyond "the order array's first two slots" still
+  wasn't independently pinned down by this pass either.
 - **`1000:26e4` (the ESC-from-race driver reload) issues no tune command itself** -- confirmed by
   reading every instruction in `InitLoadAssets` (`26c0-26eb`): the reload (plus a front-end asset-
   arena/palette refresh) is all it does; whatever screen the caller shows next restarts music via
@@ -6239,6 +6261,54 @@ turned out to be an unrelated, harmless refresh optimization (a red herring); th
 SQUASHES instead, via a per-step row-count shrink (`1000:1767`) independently confirmed against three
 functions and ported with a new `cropRows` blit option -- see §9ba's own dedicated paragraph.
 
+**Added 2026-09-24 (§9bb).** GOAL-DOS-PARITY.md P3's 4th item resolved: the 5 still-open Challenge-
+rule divergences from §9an 8's own bullet list, all 5 fixed. 1: the tournament's very last race
+accepts only 1st place, not 2nd (`1000:15B7`/`1658`, correcting `reportRaceResult`'s flat
+`finishPosition>=3` fail threshold -- also resolves a loose end an earlier `mm-re-player-visible`
+pass, §9ai, left as "an apparent exception... could not further explain" in the SEPARATE
+results-tune goal item). 2: the bonus-race TRIGGER (`1123-113A`) has no cap at all, only the bonus-
+TRACK counter (`[0x342]`) is capped, at `TriggerBonusRace`'s own resolution time -- an extra,
+wrong cap on the trigger itself is removed from `maybeTriggerBonusRace`; a first pass at this item
+also missed two further real bugs in that SAME resolution-time code, caught by a later advisor
+review: the counter's own increment (and the newly-added life grant, below) must be WIN-gated
+(`1A92`), which the port's own draft did unconditionally, and a WON bonus race never actually
+incremented `state.lives` at all (`1CF7-1D08`'s own real `INC [0x406]`) -- both fixed. 3: a passed
+Challenge race shows RESULTS only -- **a real, currently-shipping bug, not "already correct" as a
+first pass at this item concluded** (an advisor review caught that checking only `screenAfterRace`,
+which decides the FIRST screen, missed `flow.js`'s own SECOND transition, `confirm()`'s `RESULTS`
+branch, which showed a spurious OUTCOME screen -- "QUALIFIED FOR CHALLENGE!" -- after EVERY passed
+regular race): a new `showsOutcomeAfterResults` predicate now gates that transition, true only on a
+loss, matching `1650-166A`'s own real "a PASS jumps straight past the outcome-message call"
+behaviour. 4: OUTCOME code 4 (NO_BONUS) plays tune 6 like every other even code, correcting a real
+error an earlier `mm-re-player-visible` pass made ("code 4 skips the whole real screen... jumps
+straight past its own AH=4") that this session's fresh, twice-independently-repeated re-disassembly
+of `1c6a-1c89` found no support for -- `raceOutcomeMusic`'s own early-return removed. 5: the `]` key
+(scancode `0x1B`) zeroes lives while viewing the `ONE_LIFE_LOST`/`EXTRA_LIFE` outcome screen, ending
+the tournament immediately only for the former (a real caller-side asymmetry in the bytes) -- ported
+as a new `applyLivesCheat` export (its own reachability guard moved inside the function itself,
+after an advisor review noted the original draft left it untested in the caller), wired into
+`flow.js`'s `onKeydown`. Full derivation, every correction, all 5 items: §9bb.
+New open items surfaced by this same pass, deliberately NOT fixed (out of scope for this item), NOT
+yet added to any GOAL-DOS-PARITY.md checklist item -- both need their own new bullet next time P3
+or P5 is picked up:
+**`UNKNOWN_outcome_screen_timeout`** -- the real `1C1B` wait loops both have a real ~700-tick
+(`0x2BC`, ~10s) timeout AND exit on a plain key RELEASE (`[0x107E]`, the SAME global release latch
+`RunTwoItemMenu`/the title's own exit test already use, §9av) or fire, not a keyDOWN (`1D0D`:
+`1D2B`'s own timeout test, `1DD4`'s own `[0x107E]!=0` release exit, `1DDB`'s own fire exit; `1DE5`:
+its own timeout plus `17FF`'s shared blink/wait helper) -- unlike this port's own OUTCOME phase,
+which waits indefinitely on `keydown` (Space/Enter only), no timeout, matching every OTHER menu
+phase's own idiom in this project but not this specific screen's real exit conditions. The SAME
+release-not-keydown mismatch also applies to `]` itself (`1DCD` tests the release latch, this
+port's own handler fires on `keydown`). **The `]`-cheat's own real byte-wraparound consequence at 0
+lives** (`applyLivesCheat`'s own header, `src/frontend/tournament.js`) -- `[0x406]` is a single
+byte, so a loss reached with it already at 0 underflows to 255 rather than ending the tournament;
+this port's own `state.lives<=0` test does not reproduce that -- belongs to GOAL-DOS-PARITY.md's
+own still-open item, "what ends the tournament at 0 lives" (P3's next item), which already has
+most of its own evidence in hand from this session: `166D`(Challenge)/`1403`(two-car) both test
+`CMP byte [0x406],0` right after `1C1B` returns; the lives writes themselves are `1CEA`(decrement,
+CX=2)/`1D00`(increment, CX=3), both on `AL`; the qualifier's own fail path (`10E7`) is separate and
+involves no lives at all.
+
 ## 9as. P1's first item: the logo intro's real per-frame animation (2026-09-24)
 
 Full account, and every cited address, in `docs/intro-and-codecard.md`'s own "The real per-frame
@@ -7600,3 +7670,201 @@ after `1A4A`'s scan finds no more `0xB` slots), not the missing-wait bug a third
 initially suspected from `16DE`'s own tail alone (which, read in isolation, has nothing after its
 own `1796: CALL 1A4A` besides `POPA;RET` -- correct, because the wait already happened INSIDE the
 callee, at `0C15`, before `1A4A` ever returns).
+
+## 9bb. P3's 4th item: the five Challenge-rule divergences from §9an 8 (2026-09-24)
+
+**Scope.** GOAL-DOS-PARITY.md P3's 4th item, `§9an 8`'s own "The Challenge flow (same spec, not
+requested, not ported)" bullet list, narrowed to its 5 still-open entries (the other 3 -- tune 5
+unreachable, the main-menu tune, the 3x replacement picker -- were resolved by M3.45/M3.50-51/M3.55
+respectively, already ticked off there). Each is its own independently re-disassembled rule; none
+depend on each other.
+
+### 1. The final race's 2nd place is a FAIL (`1000:15B7`/`1000:1658`)
+
+Both sites share the identical shape, fully re-disassembled: `CMP byte [0x28C1],0x19` (is this the
+tournament's very last race, `ORDER_TABLE_LAST_INDEX`) gates whether a SECOND comparison
+(`word[0x3FE]==0xC03`, did the player finish 2nd) is even consulted. `1000:1650-166A` is the real
+decision site: `CMP [0x3FC],0xC03` (1st place) alone reaches the PASS tail (`1676`, the elimination-
+check block P3's 3rd item ported) unconditionally; the `[0x3FE]` (2nd place) check is skipped
+entirely when `[28C1]==0x19`, so on the last race ONLY 1st place passes -- every other placement,
+including 2nd, falls through to `CX=2; CALL 1C1B` (`ONE_LIFE_LOST`), the SAME call a normal 3rd/4th
+loss uses, so it inherits that path's own life-decrement/streak-reset/game-over logic unchanged.
+`1000:15B1-15C7` is a second, cosmetic site with the identical `[28C1]==0x19` gate, choosing which
+of two real strings (`DS:039A`="QUALIFY", `DS:03A2`="FAILED", both read live and confirmed) to draw.
+**Not "a 2nd-place finisher's own row" in general -- gated to the PLAYER's own row specifically**
+(a wording error an advisor review caught): `1000:15A8: CMP AX,[0xC16]` (`[0xC16]=[0xC03+0x13]`,
+the PLAYER's own fixed descriptor-frame address) skips this whole label computation (`15AC: JNZ
+15E5`) for every row EXCEPT the one currently matching the player's own identity, so `15B1-15C7`'s
+own `[3FC]`/`[3FE]` comparison against `BX` only ever runs once per results screen, already scoped
+to the player. **This port DOES have a structurally equivalent mechanism -- an earlier draft of
+this section wrongly claimed the port had none at all, without checking `screens.js` first, caught
+by the SAME advisor review**: `drawResults` already draws a single overall "QUALIFY"/"FAILED" label
+(the exact same two strings, confirmed by grep) -- not an approximation of a per-row label, but the
+SAME "one label, for the player specifically" design the real bytes use -- driven by a `passed`
+boolean, itself derived from
+`flow.js`'s own `lastPassed = tournament.lastOutcome !== QUALIFIER_FAILED && !== ONE_LIFE_LOST` --
+which automatically becomes `false` for the last-race-2nd-place case too, now that
+`reportRaceResult`'s own outcome fix (below) correctly sets `lastOutcome=ONE_LIFE_LOST` there. No
+separate wiring needed for this cosmetic site; it inherits the fix for free.
+**This also resolves a loose end an earlier `mm-re-player-visible` pass (2026-09-23, docs/engine.md
+§9ai) left explicitly unexplained**: `ShowRaceResultsScreenTune8or6 1000:1439`'s own real tune
+condition (a SEPARATE goal item, the results-screen tune, not yet ported byte-exact) has "an
+apparent exception on the tournament's 25th-of-26 race... this pass could not further explain" --
+that exception IS this rule; the `raceResultMusic` header comment is updated below to point at it,
+though the tune itself is still left as the `lastPassed` approximation pending that other item.
+Ported: `reportRaceResult`'s own pass-threshold is now `isLastRace ? 1 : 2` instead of the previous
+flat `finishPosition>=3` FAIL / `<=2` PASS split, `isLastRace = state.raceIndex ===
+ORDER_TABLE_LAST_INDEX` (evaluated the SAME pre-advance way `checkElimination`'s own
+`completedRaceIndex` already is).
+
+### 2. The bonus trigger has no cap (`1000:1123-113A`; `[0x342]` counts wins only, `1000:1A92-1AA5`)
+
+Fully re-disassembled: the TRIGGER (`1123-113A`, inside `RunTournamentLoop`) gates on exactly three
+conditions -- the player won (`1123: CMP [0x3FC],0xC03`), the streak reaches 0
+(`112B: DEC [0x3FA]`/`112F: JNZ`), and it isn't the last race (`1131/1134/1138`) -- and reads
+`[0x342]`/`[0x43B]` NOWHERE. The cap lives entirely inside `TriggerBonusRace 1A82`'s own
+RESOLUTION-time tail (`1A9F: CMP [0x342],[0x43B](MAX_BONUS_RACES) / JZ 1AA9` skips the INC once
+capped), which this port's own `reportRaceResult` already modelled correctly-in-shape (`Math.min
+(...)` in the `pendingBonusRace` branch) -- the bug this item's own name describes was a SEPARATE,
+ADDITIONAL cap `maybeTriggerBonusRace` wrongly placed on the TRIGGER itself, stopping it from firing
+again once `bonusRacesTaken` reached `MAX_BONUS_RACES`. Since `[0x342]`/`bonusRacesTaken` is read
+(via `1169: MOV AH,[0x342]`, BEFORE its own increment) to pick WHICH of the real 3 bonus tracks
+(`ROUND91`/`92`/`93`) loads -- `race = [0x342]+1` -- and `[0x342]` naturally stops incrementing once
+capped, the REAL effect of an uncapped trigger is simply that the tournament keeps re-running
+`ROUND93` (the last real bonus track) for every streak-out past the 3rd, for as long as the player
+keeps winning every 3rd race, all the way to the tournament's own last race. Fixed: the trigger-side
+cap check is removed; the race-number formula (`state.bonusRacesTaken + 1`) was ALREADY correct and
+is unchanged, and naturally inherits the clamp from the counter's own existing resolution-time cap.
+
+**Two further, genuinely separate bugs an advisor review caught in the SAME branch, both real and
+both fixed in the same pass (not part of the item's own original 5-bullet list, but directly
+adjacent code this item was already touching):**
+- **`[0x342]`'s own resolution-time increment is WIN-gated, and the port's version wasn't.**
+  `1000:1A92: CMP [0x291D],1 / JNZ 1AA9` -- a LOST bonus race jumps straight to the outcome-message
+  call, skipping `1A99-1AA5` (the counter increment) entirely. This port's own `reportRaceResult`
+  incremented `bonusRacesTaken` unconditionally, win or lose -- meaning a LOST bonus race would
+  still advance to offer the NEXT track, when the real game re-offers the SAME one. Fixed:
+  `bonusRacesTaken`'s own increment moved inside `if (won)`.
+- **A WON bonus race never granted a life.** `1000:1CF7-1D08` (inside the shared outcome-message
+  function, the CX=3/`EXTRA_LIFE` branch specifically): `INC AL` / `MOV [0x406],AL` -- a real,
+  literal `lives++`, matching the outcome's own NAME. This port's `reportRaceResult` set
+  `lastOutcome=EXTRA_LIFE` and showed the right message, but never actually incremented
+  `state.lives` -- a real, player-visible gap (a win that should extend the run instead had no
+  effect at all, so the port's own tournament would end sooner than the real game's on an
+  otherwise-identical play sequence). Fixed: `state.lives++` added, gated the SAME `if (won)` as the
+  track counter above (both effects share the identical real gate, `1A92`).
+
+### 3. A passed Challenge race shows RESULTS only (`OUTCOME` code 1 is emitted only at `1000:10EC`)
+
+Fully re-disassembled: `1000:10EC`'s own `CX=1; CALL 1C1B` is reached EXCLUSIVELY from the
+QUALIFIER-pass block (`10C8-10F9`, gated on `[28C1]==0`, the qualifier) -- confirmed by tracing every
+other path into `1C1B` in this same investigation. `1000:1650-166A` is the regular-race decision
+site (SHARED with item 1 above): a PASS (`1650: JZ 1676` on 1st place, or `1665: JZ 1676` on 2nd
+place when not the last race) jumps straight to the elimination-check tail (`1676`) WITHOUT EVER
+calling `1C1B` -- ONLY a FAIL (`1667: MOV CX,2 / CALL 1C1B`) does. So OUTCOME code 1 (`PASSED`) is
+semantically QUALIFIER-EXCLUSIVE, AND -- the actually load-bearing fact this item needed -- a
+regular mid-tournament Challenge PASS never shows an OUTCOME screen of ANY kind (not just never
+code 1), by construction: RESULTS is the only screen, and confirm just advances straight to
+whatever's next.
+
+**A real, currently-shipping bug an advisor review caught: this file's own first draft checked only
+`screenAfterRace` (which screen shows FIRST after a race) and stopped there, concluding "already
+correct" without checking the SECOND transition.** `flow.js`'s own `confirm()`, in its `RESULTS`
+branch, transitioned unconditionally to `phase='OUTCOME'` and called `raceOutcomeMusic` regardless
+of `lastOutcome`'s value -- so after EVERY passed regular Challenge race, the port showed RESULTS,
+then (on the next confirm) a SPURIOUS OUTCOME screen reading `OUTCOME_MESSAGES[1]` = "QUALIFIED FOR
+CHALLENGE!" with tune 8 -- a message that only makes sense for the QUALIFIER, shown on every single
+regular race pass instead. This is exactly the bug the item's own title describes ("shows RESULTS
+only"); it was real, and the pre-existing `screenAfterRace` assertion this file's own first draft
+cited never exercised the SECOND transition at all, so it couldn't have caught it. Fixed: a new
+pure predicate, `tournament.js`'s `showsOutcomeAfterResults(state)` (true only for
+`lastOutcome===ONE_LIFE_LOST`, the one case that DOES reach `1C1B` per the decision site above),
+which `confirm()`'s `RESULTS` branch now checks before transitioning -- on a PASS it calls
+`nextAfterOutcome()` directly instead, skipping the OUTCOME phase entirely, matching the real bytes'
+own "PASS jumps straight past `1C1B`" behaviour exactly.
+
+### 4. OUTCOME code 4 plays tune 6 and shows "NO BONUS" (`1000:1C84` runs before the `1000:1CA3` test)
+
+**Corrects a real error an earlier `mm-re-player-visible` pass (2026-09-23) made and this session's
+fresh re-disassembly caught.** That pass claimed "code 4 (NO_BONUS) skips the whole real screen,
+jumping straight past its own AH=4, not just landing on the 'lose' tune" (docs/engine.md §9ai,
+`sound.js`'s own header comment, both corrected in place). A byte-for-byte re-read of
+`1000:1c1b-1c89` (independently re-fetched twice, matching exactly) found NO CX-dependent branch
+anywhere between the win/lose tune choice (`1c6c: TEST CX,1` -- parity-based: odd -> tune 8, even ->
+tune 6, no code-4 exception) and the play call itself (`1c84`). The ONLY branch in that range,
+`1c80: JZ 1c89`, depends on the driver's own `AH=9` "already playing" query result, not on CX --
+the SAME "query-then-play, safely collapsible to one unconditional `playTune` call" idiom this
+project's own `sound.js` already uses everywhere else (see `titleMusic`'s own header). So CX=4 plays
+tune 6 exactly like CX=0/2 (all even codes) -- no exception. **What CX=4 genuinely DOES skip** is
+the LATER lives-adjustment display machinery (`1cab-1d08`, reached only by CX=1/2/3/5 en route to
+the shared `1D0D` wait loop) -- `1ca3: CMP CX,4 / JZ 1de5` routes it to the SAME simpler wait
+`1de5` that CX=0 (`QUALIFIER_FAILED`) uses instead, which is a real, but separate and much smaller,
+visual difference (no lives-count blink) this port doesn't model at all (out of scope for this
+item -- neither outcome screen shows a lives count currently). `OUTCOME_MESSAGES[4]='NO BONUS'` was
+ALREADY correct (no fix needed there). Fixed: `raceOutcomeMusic`'s own `if (outcomeCode===4) return`
+early-return removed; it now plays the correct parity-based tune unconditionally for all 6 codes.
+
+### 5. The `]` key zeroes lives on OUTCOME 2/3 (`1000:1DCD`)
+
+Fully re-disassembled: `1D0D` (the SAME shared wait loop with the lives-adjustment display from
+item 4 above) is reached ONLY for CX=2 (`ONE_LIFE_LOST`) and CX=3 (`EXTRA_LIFE`) -- confirmed by
+tracing `1C1B`'s own full CX dispatch chain (CX=0/4 -> `1DE5`; CX=1/5 -> also `1DE5`, after their
+own brief lives-text draw at `1cab-1cd1`; only CX=2/3 fall through to `1D0D` itself). Inside that
+loop's own input-poll (`1DC8: CALL 2D5B`), `1DCD: CMP byte [0x107E],0x1B` tests the LAST-PRESSED
+SCANCODE against `0x1B` -- the standard PC XT scancode for the `]`/`}` key (not ESC, which is a
+DIFFERENT scancode; `0x1B` here is unambiguous since `[0x107E]` is confirmed elsewhere in this
+codebase to hold a raw scancode, not an ASCII code) -- and if it matches, `1E12: MOV [0x406],0; RET`
+zeroes lives and returns FROM the outcome-message function immediately, with NO further wait. This
+is a developer debug shortcut (buried in the shipped binary, not a documented player feature),
+matching the "reproduce the original including its cheats" precedent already set by the
+`25011968`/`CHEATS.BIN` handling elsewhere in this port. **The two reachable outcome codes have
+genuinely different downstream consequences**, both reproduced: CX=2's own real caller
+(`166A`'s call site, inside `ShowRaceResultsScreenTune8or6`) checks `166D: CMP [0x406],0` the
+INSTANT the call returns and ends the tournament right there (`STC`, propagating all the way up
+through `RunTournamentLoop`'s own `1110: JC 115B` exit) -- so `]` on `ONE_LIFE_LOST` is effectively
+"quit with 0 lives" immediately; CX=3's own real caller (`TriggerBonusRace`'s `1AA9: CALL 1C1B` /
+`1AAC: RET`, unconditional) has NO such check at all -- so `]` on `EXTRA_LIFE` just plants a
+zeroed-lives value silently, with no immediate visible effect, until whatever race-loss the player
+NEXT reaches.
+
+**At THAT later point, this port's own tournament-over test diverges from the real bytes -- flagged,
+deliberately NOT fixed here (out of scope for this item; belongs to GOAL-DOS-PARITY.md's own next
+item, "what ends the tournament at 0 lives").** `[0x406]` is a single BYTE (`1CE1: MOV AL,[0x406]` /
+`1CEA: DEC AL`, both 8-bit, re-confirmed from this same disassembly pass). A 3rd/4th-place loss
+reached with `[0x406]` already at 0 (via this exact cheat) UNDERFLOWS to `0xFF`(255), not a negative
+value -- `166D`/`1403` (the SAME `CMP byte [0x406],0` test, confirmed shared by BOTH the Challenge
+and two-car formats -- `1403` re-disassembled specifically to check this) then read 255, not 0, so
+the real game does NOT end the tournament at that next loss; it silently continues with 255 lives.
+This port's own `state.lives<=0` (an ordinary signed JS number: `state.lives--` then a `<=0` test)
+ends the run immediately instead -- the OPPOSITE of the real byte-wraparound behaviour. A genuinely
+obscure combination (needs the debug cheat itself to reach at all), left as a known, cited
+divergence with starting citations (`166D`/`1CEA`/`1403`) for that next item. Ported as a new pure
+export, `tournament.js`'s `applyLivesCheat(state)` -- the
+reachability guard (`lastOutcome` being `ONE_LIFE_LOST` or `EXTRA_LIFE`, no-op otherwise) lives
+INSIDE this function, not in the caller (an advisor review caught that leaving it only in
+`flow.js` meant it was never actually tested); zeroes lives, ends the tournament immediately only
+for `ONE_LIFE_LOST`. `flow.js`'s own `onKeydown` just calls it unconditionally on `phase==='OUTCOME'
+&& e.code==='BracketRight'`, matching the real function's own reachability exactly via the shared
+helper rather than duplicating the check at the call site.
+
+**Port.** `src/frontend/tournament.js`: the pass-threshold fix (item 1); `maybeTriggerBonusRace`'s
+own extra trigger-side cap removed, and its win-gated counter/life bugs fixed (item 2); new
+`showsOutcomeAfterResults` export and the real `confirm()` fix it enables (item 3); new
+`applyLivesCheat` export, with its own reachability guard (item 5). `src/engine/sound.js`:
+`raceOutcomeMusic`'s early-return removed (item 4), header comment corrected (also corrects
+`raceResultMusic`'s own header to point at item 1's `0x19`-exception resolution). `src/frontend/
+flow.js`: `confirm()`'s `RESULTS` branch now checks `showsOutcomeAfterResults` before transitioning
+(item 3); `onKeydown` gained the `]`-key handler (item 5).
+
+**Tests.** `tools/check-tournament.mjs` gained: test 9 (the last-race-2nd-place fail, plus a
+regular-race baseline proving 2nd still passes everywhere else), test 10 (the bonus trigger firing
+`MAX_BONUS_RACES+2` times without ever being gated, and the race-number sequence `1,2,3,3` proving
+the counter's own pre-existing cap still clamps the TRACK choice correctly even though the TRIGGER
+no longer stops), test 11 (`applyLivesCheat`'s own asymmetric behaviour on `ONE_LIFE_LOST` vs
+`EXTRA_LIFE`, plus its own no-op on every other outcome code), test 12
+(`showsOutcomeAfterResults` true only on a loss), test 13 (the bonus-race win-gate: losing grants
+no life and doesn't advance the track counter; winning grants exactly one life and does advance
+it). `tools/check-sound.mjs`'s existing outcome-music pin rewritten from "5 codes plus a NO_BONUS
+exception" to "6 codes, exception-free parity". Every new/changed assertion was individually
+confirmed by reintroducing its own bug and re-running the suite: each fails specifically and only
+its own check(s), then passes again once reverted.
