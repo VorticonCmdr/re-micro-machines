@@ -134,7 +134,7 @@ export function drawChampion(buf, arena, { playerName }) {
 }
 
 /** P3's first item: DrawTournamentBoard 1000:18d8 (docs/engine.md §9ay, src/frontend/board.js).
- * `raceIndex`: `tournament.js`'s own `boardRaceIndex(state)` -- NOT `state.raceIndex` directly, see
+ * `raceIndex`: `tournament.js`'s own `effectiveRaceIndex(state)` -- NOT `state.raceIndex` directly, see
  * its own header for why a pending bonus race needs `-1`. One MINATURE.CHR icon is drawn per entry
  * in `ORDER_TABLE[1..raceIndex]` (the qualifier, entry 0, never gets one -- `FUN_1000_198e`'s own
  * pre-increment); for a REGULAR race `raceIndex` is the one about to run, so the newest icon is a
@@ -148,10 +148,15 @@ export function drawChampion(buf, arena, { playerName }) {
  * screen in this file (none of which draw it either -- a pre-existing simplification this item's
  * own research surfaced, not unique to the board, deliberately not retrofitted across 8+ screens in
  * this commit). The divider bar `FillRowsFrontView` draws is ALSO gated on `[0x156]` (not just the
- * second WORDS frame, as an earlier draft of this comment wrongly said) -- `[0x156]` is provably 0
- * whenever `18d8` runs (its only writer sits in `FUN_1000_1E20`, two-human Head to Head's own entry
- * point, a code path that never calls `RunTournamentLoop`/`115c`/`18d8` at all, under any format),
- * so the board never draws a divider; this file draws none either. The case background position
+ * second WORDS frame, as an earlier draft of this comment wrongly said). `[0x156]` is a PERSISTENT
+ * global (`FUN_1000_1E20`, two-human Head to Head's own entry, is its only writer, setting it to 1)
+ * -- so "18d8 never shares a call graph with 1E20" does NOT by itself prove it is 0 at board time,
+ * since a prior H2H session could leave it at 1. What actually guarantees 0 here: `RunMainMenu
+ * KeepTitleTune 1000:0220` (SELECT GAME) resets it at its own entry (`1000:0238`), and SELECT GAME
+ * is the ONLY path to the Challenge entry point that calls `18d8` (`0220`->"ONE PLAYER"->`02e0`->
+ * "Challenge"->`102b`->...->`18d8`) -- so every board call is necessarily preceded by a fresh
+ * `0220` entry that JUST reset it, regardless of what an earlier H2H session left behind. So the
+ * board never draws a divider; this file draws none either. The case background position
  * (`BOARD_CASE_Y`) is hand-placed like every other screen in this file, not measured against a
  * DOSBox frame -- the icons themselves, and WORDS' own real (0x48, 8) position, use the real bytes. */
 const BOARD_CASE_Y = 24

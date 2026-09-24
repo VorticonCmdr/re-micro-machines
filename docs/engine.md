@@ -6749,12 +6749,19 @@ the first draft's claim that only the second frame was gated) the 3-line shaded 
 `RET`, past every one of those three draws at once, not past just the first of them. Traced
 `[0x156]`'s own writers (a `search_byte_patterns` sweep, not just `get_xrefs_to`, per CLAUDE.md rule
 2): the ONLY site that ever sets it nonzero is `FUN_1000_1E20` (`1000:1E4A`, two-human Head to
-Head's own entry point) -- and, as corrected above, two-human H2H is a code path that never calls
-`RunTournamentLoop`/`115C`/`18D8` at all (not, as the first draft said, because `115C`'s own `[3F8]`
-format check excludes it -- `[3F8]` and two-human H2H are unrelated; `[0x156]` is simply never
-written by anything reachable from `18D8`'s own call graph). So `[0x156]` is PROVABLY always 0 for
-the tournament board, the second `WORDS.CHR` frame AND the divider bar are both dead code here, and
-this screen draws no divider at all. **`BADGE.CHR` is NOT ported here** -- `0400` is shared by every
+Head's own entry point). **A second advisor review caught that this alone does not prove `[0x156]`
+is 0 at board time**: it is a PERSISTENT global, so "two-human H2H's own code path never shares a
+call graph with `18D8`" does not rule out a PRIOR H2H session leaving it at 1 before the player
+returns to SELECT GAME and starts a Challenge run. What actually guarantees 0: `RunMainMenu
+KeepTitleTune 1000:0220` (SELECT GAME) resets it to 0 at its own entry (`1000:0238`), and SELECT
+GAME is the ONLY path to the Challenge entry point that ever calls `18D8`
+(`0220`->"ONE PLAYER"->`02E0`->"Challenge"->`102B`->...->`18D8`) -- so every board call is
+necessarily preceded by a fresh `0220` entry that JUST reset it, regardless of what an earlier H2H
+session left behind. (`[3F8]` and two-human H2H remain unrelated to each other, as corrected above
+-- that correction stands; only THIS specific "why is `[0x156]` provably 0" argument needed fixing.)
+So `[0x156]` is PROVABLY always 0 for the tournament board, the second `WORDS.CHR` frame AND the
+divider bar are both dead code here, and this screen draws no divider at all. **`BADGE.CHR` is NOT
+ported here** -- `0400` is shared by every
 front-end screen except SELECT GAME/TITLE/CHAR_SELECT (15 call sites: `27F5` OPTIONS, `2A82`
 credits, `2AB5` joystick config, `92F0` redefine keys, `2BED` `SelectGameSetLvl`, `02E0`/`036C` ONE
 PLAYER GAME, `1225`/`127E` the race intro, `143F` results, `1ADD` champion, `1C3B` outcome, `18EC`
@@ -6776,11 +6783,27 @@ architecture every P1/P2 phase already uses), `src/data/frontend-tables.js` (`BO
 SAME `enterTwoItemMenu`-style real-time RAF driver every other P2 menu phase uses -- combined P1|P2
 reader, shared `menuReleaseTracker`, `forceBoardSteps` debug hook). `tools/check-board.mjs`
 (`npm run board`): `shouldShowBoard`'s real three-way gate (qualifier, last race, two-car format),
-including the pending-bonus-race `boardRaceIndex` correction; the `AWAIT_RELEASE` debounce; the
+including the pending-bonus-race `effectiveRaceIndex` correction; the `AWAIT_RELEASE` debounce; the
 blink toggling at exactly `0x24`=36 ticks (not 35, and not one early/late either); a fresh fire
 press or any release exiting immediately mid-blink; and the idle timeout firing at the real 720-tick
 cycle boundary (not 700). `tools/check-screens.mjs` gained two `drawTournamentBoard` smoke cases.
 `tools/check-tables.mjs` gained a `BOARD_ICON_POSITIONS` byte check (39/39 tables now match).
+
+**A second, more consequential instance of the same bug, found while researching P3's second item
+(`boardRaceIndex` renamed `effectiveRaceIndex`, since it turned out not to be board-specific).**
+`flow.js`'s `runOneRace` was passing `tournament.raceIndex` straight through as BOTH `spawnCars`'s
+`tournamentIndex` (feeds `tuningFieldsFor`'s own `KID_MODIFIER` lookup and the `DRONE_MAX_VEL_
+HANDICAP`/threshold adjustments) and `raceCtx.tournamentIndex` (read every tick by `ai.js`'s
+drone speed-limit adjustments at `tournamentIndex===0x17`/`>=0x13`, and by `states.js`'s `7008`
+respawn safe-point nudge at `tournamentIndex===0x16`) -- the SAME already-advanced value the board
+item's own fix already established is wrong for a pending bonus race, here affecting the ACTUAL
+PHYSICS of the bonus race itself (`1a82` calls `115c`, which calls `RunRaceMainLoop 3039` directly,
+so the bonus race runs with DOS's own un-incremented `[28C1]` throughout, not just at its own board/
+intro screens). Fixed by threading `effectiveRaceIndex(tournament)` through both. No existing check
+exercises a real bonus race with a `tournamentIndex` near `0x16`/`0x17`/`0x13` closely enough to have
+caught this by number-movement (`finish`/`rounds`/`trace`/`ai` don't run real multi-race tournaments
+with bonus races); the full regression suite re-ran clean with no results moving, confirming this
+fix touches only the pending-bonus-race path those checks don't exercise, not a regression.
 
 **Live check.** Driven through the real boot chain in a Chrome tab (title -> SELECT GAME -> ONE
 PLAYER GAME (Challenge) -> character select -> PRESS ANY KEY -> the qualifier's own RACE_INTRO ->

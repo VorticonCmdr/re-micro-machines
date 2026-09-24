@@ -37,7 +37,7 @@ import { raceStart, updateEngines, createRaceJitter, raceOverSequence, raceOverS
 import { lapLineSegments, nearestPaletteIndex } from '../engine/lapLine.js'
 import { Si2Player } from '../audio/si2Player.js'
 import { RUFF_TRUCK_TIMES } from '../data/engine-tables.js'
-import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, currentRace, reportRaceResult, shouldShowBoard, boardRaceIndex, OUTCOME } from './tournament.js'
+import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, currentRace, reportRaceResult, shouldShowBoard, effectiveRaceIndex, OUTCOME } from './tournament.js'
 import { CHARACTER_NAMES, OUTCOME_MESSAGES, resolveSmoothnessForPlay } from '../data/frontend-tables.js'
 import { drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
 import { createSmoothnessGate } from '../engine/smoothness.js'
@@ -545,7 +545,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   let boardAcc = 0
   function paintBoard() {
     menuBuf.fill(0)
-    drawTournamentBoard(menuBuf, arena, { raceIndex: boardRaceIndex(tournament), blinkOn: boardState.blinkOn })
+    drawTournamentBoard(menuBuf, arena, { raceIndex: effectiveRaceIndex(tournament), blinkOn: boardState.blinkOn })
     paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
     statusEl.textContent = 'BOARD'
   }
@@ -647,14 +647,20 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     const strt = strtList.find((s) => s.round === round && s.race === race)
     const raceFormat = tournament.format === 'twocar' ? 2 : 1
     // `UNKNOWN_kidmodifier_use` resolved 2026-09-22 -- `tournament.opponents` (the 3 drones' own
-    // selected characters, auto-picked at character-select time per this file's own header note)
-    // now feeds spawnCars's real per-car tuning handicap, not just `raceCtx.tournamentIndex`.
-    const cars = spawnCars(strtList, round, race, { raceFormat, tournamentIndex: tournament.raceIndex, opponentCharacters: tournament.opponents })
+    // selected characters) feeds spawnCars's real per-car tuning handicap, not just
+    // `raceCtx.tournamentIndex`. Both use `effectiveRaceIndex`, not `tournament.raceIndex` directly
+    // -- during a pending bonus race DOS's own `[28C1]` (and every `[28C1]`-keyed physics read
+    // during THAT race: ai.js's speed-limit adjustments, states.js's `7008` respawn nudge) is one
+    // less than this port's own already-advanced `raceIndex` (docs/engine.md §9ay,
+    // `tournament.js`'s own `effectiveRaceIndex` header for the full account -- found alongside the
+    // tournament board item, but not board-specific).
+    const tIndex = effectiveRaceIndex(tournament)
+    const cars = spawnCars(strtList, round, race, { raceFormat, tournamentIndex: tIndex, opponentCharacters: tournament.opponents })
     currentCars = cars
     const camera = initCameraState(strt)
     // controllerTypes [2658..265E]: P1's real chosen device (settings.p1Control, 1000:2D00's own
     // 1-based enum -- JOY1/JOY2/MOUSE never reachable yet, P6), every other car the CPU (6).
-    const raceCtx = { ...roundCtx(round, race, { raceFormat }), brk, tournamentIndex: tournament.raceIndex, world, stepIncrement: 1, sound, camera, controllerTypes: [settings.p1Control, 6, 6, 6] }
+    const raceCtx = { ...roundCtx(round, race, { raceFormat }), brk, tournamentIndex: tIndex, world, stepIncrement: 1, sound, camera, controllerTypes: [settings.p1Control, 6, 6, 6] }
     if (round === 9) raceCtx.ruffTruxTime = RUFF_TRUCK_TIMES[race - 1]
     const raceState = {}
     currentRaceState = raceState

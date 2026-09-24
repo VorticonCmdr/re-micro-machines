@@ -120,34 +120,40 @@ export function currentRace(state) {
 }
 
 /**
- * The effective `[28C1]` at the moment `SetupTournamentRace 1000:115c`/`DrawTournamentBoard
- * 1000:18d8` actually run for the race about to be set up -- NOT always `state.raceIndex` itself.
- * For a regular race this IS `state.raceIndex`: DOS's own `[28C1]` was already incremented by the
+ * The effective `[28C1]` at the moment `SetupTournamentRace 1000:115c` actually sets up and runs
+ * the race about to happen -- NOT always `state.raceIndex` itself, and NOT board-specific (despite
+ * its origin in the board item, §9ay): this is DOS's own real tournament-position value for
+ * whatever race is about to run, and every `[28C1]`-keyed read during that race (the board's own
+ * gate/icon count, `ai.js`'s drone speed-limit adjustments, `states.js`'s `7008` respawn nudge, and
+ * `spawnCars`/`tuningFieldsFor`'s own `tournamentIndex` handicap) needs the SAME value.
+ *
+ * For a REGULAR race this IS `state.raceIndex`: DOS's own `[28C1]` was already incremented by the
  * PRIOR race's own `RunTournamentLoop 1000:10a0` loop tail (`1000:10f9`) before `115c` runs again.
  * For a PENDING bonus race it is `state.raceIndex - 1`: `TriggerBonusRace 1000:1a82` calls `115c`
- * (`1000:1a87`) BEFORE `10a0`'s own `INC [28C1]` (`1000:10f9`) -- `1a82` is called FROM inside the
- * SAME loop iteration that is about to fall through to that `INC`, so at the exact moment `115c`/
- * `18d8` run for a bonus race, `[28C1]` still holds the JUST-WON race's own index, one less than
- * this port's own `state.raceIndex` (which `reportRaceResult`'s `advance()` call already
- * incremented unconditionally, in the SAME synchronous call that set `pendingBonusRace` -- matching
- * DOS's own EVENTUAL net effect once the triggering race and its bonus race both resolve, but not
- * DOS's own INTERMEDIATE value while the bonus race is still pending). Both `shouldShowBoard` and
- * the icon count `screens.js`'s `drawTournamentBoard` draws must use this SAME effective value.
+ * (`1000:1a87`, which itself runs the WHOLE bonus race via `115c`'s own `CALL 3039`) BEFORE `10a0`'s
+ * own `INC [28C1]` (`1000:10f9`) -- `1a82` is called FROM inside the SAME loop iteration that is
+ * about to fall through to that `INC`, so at the exact moment `115c`/`18d8`/the bonus race's own
+ * physics run, `[28C1]` still holds the JUST-WON race's own index, one less than this port's own
+ * `state.raceIndex` (which `reportRaceResult`'s `advance()` call already incremented
+ * unconditionally, in the SAME synchronous call that set `pendingBonusRace` -- matching DOS's own
+ * EVENTUAL net effect once the triggering race and its bonus race both resolve, but not DOS's own
+ * INTERMEDIATE value while the bonus race is still pending). Every one of the readers named above
+ * must use this SAME effective value, not `state.raceIndex` directly.
  */
-export function boardRaceIndex(state) {
+export function effectiveRaceIndex(state) {
   return state.pendingBonusRace ? state.raceIndex - 1 : state.raceIndex
 }
 
 /**
  * Whether the tournament board screen shows before the NEXT race (`SetupTournamentRace 1000:115c`,
  * docs/engine.md §9ay): Challenge format only (`[3f8]==1`, two-car/H2H, skips the `CALL 18d8`
- * entirely), never before the qualifier (`boardRaceIndex===0`, `18d8`'s own internal early RET),
- * never before the very last race (`boardRaceIndex===ORDER_TABLE_LAST_INDEX`, the champion
- * decider) -- all three checked against `boardRaceIndex`, not `state.raceIndex` directly (see its
- * own header for the pending-bonus-race distinction).
+ * entirely), never before the qualifier (`effectiveRaceIndex===0`, `18d8`'s own internal early
+ * RET), never before the very last race (`effectiveRaceIndex===ORDER_TABLE_LAST_INDEX`, the
+ * champion decider) -- all three checked against `effectiveRaceIndex`, not `state.raceIndex`
+ * directly (see its own header for the pending-bonus-race distinction).
  */
 export function shouldShowBoard(state) {
-  const i = boardRaceIndex(state)
+  const i = effectiveRaceIndex(state)
   return state.format !== 'twocar' && i !== 0 && i !== ORDER_TABLE_LAST_INDEX
 }
 

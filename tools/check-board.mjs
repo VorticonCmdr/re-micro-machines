@@ -2,7 +2,7 @@
 // 1000:18d8` shown from `SetupTournamentRace 1000:115c` (docs/engine.md §9ay). Proves:
 //  - shouldShowBoard's real three-way gate: Challenge format only, never before the qualifier,
 //    never before the very last race -- including the pending-bonus-race index correction
-//    (`boardRaceIndex`, `TriggerBonusRace 1000:1a82` calls `115c` BEFORE `10a0`'s own `INC [28C1]`);
+//    (`effectiveRaceIndex`, `TriggerBonusRace 1000:1a82` calls `115c` BEFORE `10a0`'s own `INC [28C1]`);
 //  - board.js's own AWAIT_RELEASE debounce (an already-held fire button at entry doesn't confirm);
 //  - the blink toggles every BOARD_BLINK_HALF_PERIOD_TICKS (36, not 35 -- `17ff`'s own `CX+1`-tick
 //    loop, the same off-by-one class `frontMenu.js`'s own idle-cancel test already caught once);
@@ -11,7 +11,7 @@
 //    (720, not exactly 700 -- `[261F]` is sampled only once per full blink cycle, `1000:1921`).
 //   node tools/check-board.mjs
 import { boardInitialState, boardStep, BOARD_BLINK_HALF_PERIOD_TICKS, BOARD_TIMEOUT_TICKS } from '../src/frontend/board.js'
-import { initTournament, shouldShowBoard, boardRaceIndex } from '../src/frontend/tournament.js'
+import { initTournament, shouldShowBoard, effectiveRaceIndex } from '../src/frontend/tournament.js'
 import { ORDER_TABLE_LAST_INDEX, BOARD_ICON_POSITIONS } from '../src/data/frontend-tables.js'
 
 let bad = 0
@@ -31,7 +31,7 @@ check('BOARD_ICON_POSITIONS has 26 entries', BOARD_ICON_POSITIONS.length === 26)
   check('qualifier (raceIndex 0): no board', !shouldShowBoard(challenge))
   challenge.raceIndex = 1
   check('a regular mid-tournament race: board shown', shouldShowBoard(challenge))
-  check('boardRaceIndex is raceIndex for a regular race', boardRaceIndex(challenge) === 1)
+  check('effectiveRaceIndex is raceIndex for a regular race', effectiveRaceIndex(challenge) === 1)
   challenge.raceIndex = ORDER_TABLE_LAST_INDEX
   check('the very last race (champion decider): no board', !shouldShowBoard(challenge))
 
@@ -43,16 +43,17 @@ check('BOARD_ICON_POSITIONS has 26 entries', BOARD_ICON_POSITIONS.length === 26)
 // 1b. A pending bonus race uses raceIndex-1 (1a82 calls 115c BEFORE 10a0's own INC [28C1]): the
 // port's own reportRaceResult already advanced raceIndex when it set pendingBonusRace, one ahead
 // of what DOS's own [28C1] holds at the exact moment 115c/18d8 run for the bonus race itself.
+// (There is no "bonus race triggered by the very last regular race" case to test: tournament.js's
+// own maybeTriggerBonusRace refuses to trigger once raceIndex>=ORDER_TABLE_LAST_INDEX, so a
+// pending bonus race's post-advance raceIndex can never exceed ORDER_TABLE_LAST_INDEX+1 in a way
+// that would also require the board to skip -- an earlier draft of this test asserted exactly that
+// unreachable combination, caught by an advisor review.)
 {
   const s = initTournament({ format: 'challenge' })
   s.raceIndex = 5
   s.pendingBonusRace = { round: 9, race: 1 }
-  check('pending bonus race: boardRaceIndex is raceIndex-1, not raceIndex', boardRaceIndex(s) === 4)
+  check('pending bonus race: effectiveRaceIndex is raceIndex-1, not raceIndex', effectiveRaceIndex(s) === 4)
   check('pending bonus race: board still shown (4 is neither 0 nor the last index)', shouldShowBoard(s))
-  // The edge the real gate implies: a bonus race triggered one race before the end (raceIndex-1
-  // lands on the last regular entry) skips the board too, exactly like a regular race would there.
-  s.raceIndex = ORDER_TABLE_LAST_INDEX + 1
-  check('pending bonus race whose trigger WAS the last regular race: no board', !shouldShowBoard(s))
 }
 
 // 2. AWAIT_RELEASE: fire already held at entry does not exit; releasing it, then a fresh press, does.

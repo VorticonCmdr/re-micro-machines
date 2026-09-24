@@ -230,7 +230,7 @@ docs, (6) commit.
   Challenge format only (`[3F8]!=1`, `115c`'s own call-site check, before `18d8`'s own internal
   `[28C1]==0`/`[43A]` gates), never before the very last race, and -- caught by advisor review
   before commit -- a pending bonus race's own board call happens BEFORE `[28C1]` advances
-  (`tournament.js`'s `boardRaceIndex`). Icon positions/frames confirm §9t's own formula
+  (`tournament.js`'s `effectiveRaceIndex`). Icon positions/frames confirm §9t's own formula
   byte-checked against the live table; for a regular race the newest icon PREVIEWS the upcoming
   race, not a trophy for one just finished. The newest icon blinks (`FUN_1000_17ff`, simplified to
   the existing `AWAIT_RELEASE` idiom; the real tick constants are 36/720, not 35/700).

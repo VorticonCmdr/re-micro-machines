@@ -7,13 +7,13 @@
 // EXCEPT the very last race (`[28c1]==[439]`, the champion decider) -- and ONLY in the Challenge
 // (4-car) format; `115c` checks `[3f8]==1` (two-car/H2H) and skips the whole `CALL 18d8` before
 // ever reaching it, so the two-car format never shows this screen at all. `tournament.js`'s
-// `shouldShowBoard`/`boardRaceIndex` are `115c`'s own three-way gate, transcribed directly (not
+// `shouldShowBoard`/`effectiveRaceIndex` are `115c`'s own three-way gate, transcribed directly (not
 // `18d8`'s internal one alone), including the pending-bonus-race index correction their own header
 // comment explains.
 //
 // What it shows, once entered (`18d8` -> its helper `FUN_1000_198e`): CASE.CHR/CASE.MAP's "vehicle
 // display case" background, then one MINATURE.CHR icon per race in `ORDER_TABLE[1..raceIndex]`,
-// where `raceIndex` (`tournament.js`'s `boardRaceIndex`) is generally the race ABOUT TO run, not
+// where `raceIndex` (`tournament.js`'s `effectiveRaceIndex`) is generally the race ABOUT TO run, not
 // one already finished -- so the newest icon is a PREVIEW of the upcoming race's own class, not a
 // trophy for the last one (see `screens.js`'s `drawTournamentBoard` for the one exception: a
 // pending bonus race, where it genuinely is the just-completed race, since round 9 itself is never
