@@ -141,6 +141,105 @@ span — but the gap itself is not chased further this session (a new, narrower,
 question, `UNKNOWN_intro_loop_vs_total_gap`, not blocking: the port paces the loop at the real
 vsync rate, which is the faithful choice regardless of how that pre-loop gap eventually resolves).
 
+## The real code-card screen (P1, GOAL-DOS-PARITY.md, 2026-09-24) `[STATIC]` + `[PROVEN]` (live)
+
+Full re-disassembly of FONT.BIN from scratch (`ndisasm -b16 game/FONT.BIN`, this session -- not
+the prior "symbols + cursor + patch sites" pass above), live-confirmed in DOSBox. Ported in
+`src/formats/fontbin.js` (the "code-card SCREEN" section, full addresses in its own header
+comment) and wired into `src/frontend/flow.js`'s new `CODECARD` phase; proven in
+`tools/check-codecard.mjs` (`npm run codecard`).
+
+**Glyphs.** The screen's text is drawn with `INT 10h AH=13h`, letting the BIOS render it with its
+own built-in 8x14 ROM font -- FONT.BIN never embeds glyph bitmaps for it. That font isn't in any
+shipped game file, so with the user's explicit approval (2026-09-24) it was captured live instead:
+once FONT.BIN sets mode 10h, the `INT 43h` vector at `0000:010C` points at the active 8x14 font
+(`C000:09F5` this DOSBox session -- read the vector fresh each time, it is not guaranteed fixed
+across builds); a `mem_read` of 3584 bytes (256 glyphs x 14 rows) from there is the whole table,
+committed as `src/data/bios-font-8x14.js` (platform data, not game data -- the same table sits in
+ROM on every real EGA/VGA card of the era).
+
+**Screen layout, `[STATIC]` by disassembly.** Mode 10h, 640x350, entered by `call 0x33c` (which
+also blanks the palette to all-black via 16 calls to `AH=10h AL=0`). Two flat colour fills happen
+before anything else draws: `0x3bc` (rows 0-167, colour 9 -- `CX=0x1A40` words = 168 scanlines at
+80 bytes/row) and `0x3c6` (rows 172-347, colour 10 -- `CX=0x1B80` words = 176 rows from
+`DI=0x35C0` = row 172). Rows 168-171 and 348-349 are never explicitly written by either fill;
+mode 10h's own `INT 10h AX=0x10` mode-set already zeroes the buffer, so they stay colour 0. Both
+fills go through `0x385`, which sets GC5=2 (write mode 2) before `rep stosw` -- with `BH=BL` in
+both callers (`0x0909`/`0x0A0A`) this is a plain flat fill, not a pattern.
+
+**Symbol grid.** Drawn once, off-screen (`A000:8000`, via the generic planar blitter `0x4D4`/
+`0x4F7`, which computes the VGA byte offset as `Y*80 + X/8 + [page offset]` -- independently
+re-derived and cross-checked against the existing `docs/track-graphics.md`-class blit convention),
+then copied to the visible page at `(216,179)` by `0x5B3` -- confirmed exactly from the copy's own
+target address (`DI=0x380B` linear = row 179, col 216). That copy only moves 25 of the strip's 26
+bytes/row (`rep movsb` with `CX=0x19`): **200 of the real 208 pixel columns reach the screen**.
+Checked against the actual decoded strip this session (not assumed): columns 200-207 hold 648
+non-zero (real ink) pixels, so this crop is a genuine, reproducible original-game effect, not a
+safe truncation to skip -- the port crops its own render to the same 200px width.
+
+**The target column/row (`1000:0190`).** `AL = [0040:006C]` (the BIOS tick counter's own low
+byte, free-running, not `INT 1Ah`); `column = AL & 0xF` (0-15, shown as `'A'+column`), `row =
+(AL>>3) & 0xF` (0-15, shown as `row+1`, 1-16 -- bit 3 is shared between the two fields, a real
+correlation). `0x2F4-033B` looks the answer up: `AL = card[targetRow*16 + targetCol]` (the
+expected symbol) and `DL = cursorRow*8 + cursorCol` (the player's own chosen cell -- since the
+8x8 on-screen grid is the strip drawn in its natural, unshuffled order, cell `(r,c)` always shows
+symbol `r*8+c`). The compare (`CMP AL,DL`) is one of the two patched sites this document's own
+"Why any answer passes" section already covers, so it never actually gates anything in this copy
+-- but the DISPLAYED "COLUMN x and ROW y" text is genuinely live, re-read fresh every round.
+**Live-confirmed** (this session): booting fresh showed "COLUMN A and ROW 15"; a second boot
+showed "COLUMN G and ROW 7"; within one boot, round 1 showed "COLUMN G and ROW 7" and round 2
+(same boot) showed "COLUMN F and ROW 1" -- a fresh read each round, not cached.
+
+**Text.** Three trilingual paragraphs (English/French/German stacked, CP437, no CR/LF -- the
+whole block is a flat 12-row x 80-column, 960-byte teletype write that wraps at column 80, which
+is why 960 = 12x80 and the block boundaries abut exactly: welcome `0x67F`, "wrong symbol"
+(unreachable in this patched copy) `0xA3F` = `0x67F+0x3C0`, "Correct, now one more" `0xDFF` =
+`0xA3F+0x3C0`). `AH=13h`'s `BL` in a graphics mode XOR-combines instead of overwriting when its
+top bit is set (a documented real BIOS behaviour): `BL=0xFF` for the paragraph text and `BL=0xF8`
+for the target overlay, against background colour 9, give `9^0xF=6` (paragraph ink) and `9^0x8=1`
+(overlay ink) -- both colours visually confirmed against the live DOSBox capture (blue background,
+lighter-blue/white text, a third shade for the "COLUMN x"/"ROW y" values). The target
+column-letter and row-digits get poked into the SAME three fixed slots regardless of language,
+once per language (English row1 col7/17/18, French row5 col41/59/60, German row9 col10/22/23) --
+the row's tens digit is skipped entirely when `row+1 < 10` (`0x43C`'s own `JZ`), confirmed live
+(round 1's "ROW 7" showed one digit; round 2's "ROW 13" showed two).
+
+**Cursor.** Persistent pixel position (`[cs:0x2558]`/`[cs:0x255a]`), never reset between accept
+rounds -- **live-confirmed**: moving the cursor during round 1, accepting, and watching the
+"Correct, now one more" interstitial and then round 2 both showed the cursor still at round 1's
+own position. Starts at `(226,181)` = cell `(0,0)`. The 4-direction wrap (`1000:01E9-02EE`, all
+four branches read in full) is NOT uniform: RIGHT/LEFT wrap in reading order (past the last column
+of a row moves to the next/previous row's first/last column; past the last/first row wraps to the
+first/last row) -- but **UP/DOWN wrap column-major instead** (past the top/bottom row of a column
+moves to the bottom/top of the PREVIOUS/NEXT column, and past the first/last column wraps the
+column too). **Live-confirmed**: RIGHT then DOWN from `(0,0)` lands on cell `(1,1)`, matching the
+reading-order half exactly. The column-major half of UP/DOWN was caught by an advisor review
+(a first draft of this section had it wrong, defaulting to the same reading-order wrap as
+RIGHT/LEFT) and re-verified directly against the bytes before porting.
+
+**The two-round flow.** `call 0x190` runs the whole draw-target/draw-text/draw-cursor/read-input
+sequence and is called twice (`0xA8` for round 1, `0x137` for round 2), both patched to
+unconditionally "pass". Round 1's own success (`0x103-0x136`) shows "Correct, now one more just to
+check that it wasn't a fluke." (`0x11D`, `bp=0xDFF`) and waits for ANY key (`0x133`, `AH=0;INT
+16h` -- not specifically ENTER) before starting round 2. Round 1's own clear (`0x118-0x11A`, the
+SAME `0x3bc` plane-fill as the very first screen) only touches rows 0-167 -- **live-confirmed**:
+the grid and the round-1 cursor stayed visible under the "Correct" text in the actual DOSBox
+capture. Round 2's own success falls straight through to the mode-3/`retf` epilogue (`0x141`) --
+no second interstitial, no second wait -- **live-confirmed**: pressing ENTER on round 2 went
+straight to GAME OPTIONS.
+
+**Consequences for the port.** `src/formats/fontbin.js` exports `moveCursor`/`targetFromTickByte`/
+`expectedSymbolAt`/`cursorCellIndex`/`composeCodeCardScreen`, all pure and DOM-free (matching this
+project's engine-module convention); `flow.js`'s `CODECARD` phase owns the two-round state machine
+and the 640x350xy canvas resize (painted with `aspect43: true`, `src/render/raster.js`'s own
+already-existing-but-previously-unused option, for mode 10h's non-square pixels on a real 4:3
+screen). The target's own "BIOS tick counter" non-determinism is reproduced with a real elapsed-
+time read (`performance.now()` at ~18.2 Hz), the same "as non-deterministic as the original"
+approach this project already uses for `DS:0002`-derived choices elsewhere (tournament.js's own
+header, docs/engine.md). Since both compare sites are patched in this copy, the port never
+computes or checks the real answer either -- ENTER always advances, matching the shipped binary
+exactly (not a simplification -- copying what the bytes actually do).
+
 ## Open items
 
 Resolved 2026-09-23 (M3.30, this session — see the sections above for full derivations): `UNKNOWN_codecard_pristine_bytes` (both patch sites' original bytes inferred with high confidence from the intact `+0xE9` site's own idiom and the function's control flow; a minor `+0xB0`→`+0xB2` citation correction found along the way), `UNKNOWN_codecard_cursor_origin` (live capture confirms no rendering bug — the cursor correctly frames cell (0,0); the numeric discrepancy is most likely the cursor sprite being centred on the cell rather than corner-aligned, since the cursor graphic (32×22) is larger than the cell (20×18)), `UNKNOWN_intro_live_timing` (live-timed via a BIOS-tick-counter breakpoint, immune to tool-latency overshoot: 4.72 s real intro duration, mode-13h-set to mode-0Eh-exit; +0.16 s more to the code-card screen; the exit-code half needed no live check, already settled by existing static analysis).
@@ -150,3 +249,7 @@ Resolved 2026-09-24 (P1, this session — see "The real per-frame animation" abo
 Still open, investigated and not further resolvable without new information: `UNKNOWN_gfx1_header` (exhaustively re-confirmed unread; version-number and several checksum hypotheses tested against the real file bytes and ruled out — see the `GFX1.GFX` section above).
 
 New, narrow, not blocking: `UNKNOWN_intro_loop_vs_total_gap` (the ~0.23 s between the loop's own derived 314-iteration/~4.49 s duration and the M3.30 whole-process 4.72 s figure — plausibly the pre-loop setup, not independently timed; would need a fresh live session bracketing the loop itself, e.g. breakpoints at `CS:097F`'s first hit and `CS:07C6`'s own `RET`, reading `0040:006C` at each, the same technique M3.30 used).
+
+Resolved 2026-09-24 (P1, this session — see "The real code-card screen" above, fresh from-scratch disassembly plus a live DOSBox session): the screen layout (background bands, the symbol grid's own 200-of-208-column crop, colours via the `AH=13h` graphics-mode XOR), the target column/row formula and its live non-determinism, the trilingual text block layout and the column-letter/row-digit overlay positions, the exact 4-direction cursor wrap (RIGHT/LEFT reading-order, UP/DOWN column-major — corrected mid-session after an advisor review caught a first draft defaulting UP/DOWN to the same reading-order wrap as RIGHT/LEFT), and the two-round flow (the "Correct, now one more" interstitial only clearing rows 0-167, the cursor persisting across rounds, round 2 having no second interstitial). Also newly closed: the BIOS 8×14 glyph source (captured live from DOSBox's own `INT 43h` vector, committed as `src/data/bios-font-8x14.js` with the user's explicit approval, 2026-09-24).
+
+New, narrow, not blocking: `UNKNOWN_codecard_pixel_diff` (this session's own render was cross-checked visually against several live DOSBox captures — screenshots, not persisted as reference files — and matches exactly to the eye, but a true byte-exact pixel diff needs raw indexed VRAM, which requires reading and combining all 4 of mode 10h's planar bit-planes rather than the single flat `mem_read` that worked for mode 13h's linear framebuffer elsewhere in this project (`tools/refs/race_R21_a000.bin`); left for Part F, which does this properly for every static screen at once).

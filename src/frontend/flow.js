@@ -42,6 +42,7 @@ import { CHARACTER_NAMES, OUTCOME_MESSAGES } from '../data/frontend-tables.js'
 import { drawTitleScreen, drawMainMenu, drawCharacterSelect, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion } from './screens.js'
 import { createSmoothnessGate } from '../engine/smoothness.js'
 import { introInitialState, introStep, smPalette, SCREEN_W as LOGO_W, SCREEN_H as LOGO_H } from '../formats/gfx1.js'
+import { composeCodeCardScreen, fontbinPalette, targetFromTickByte, moveCursor, CURSOR_X0, CURSOR_Y0, CODECARD_W, CODECARD_H } from '../formats/fontbin.js'
 
 const DEFAULT_KEYS2 = [0x4b, 0x4d, 0x48, 0x50, 0x1f] // left,right,accel,brake,fire
 const STEP_DT = 1 / 35 // 35 Hz physics (docs/engine.md §2), matching play.js's own constant
@@ -60,7 +61,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   const brkBuffer = createBrkBuffer()
 
   statusEl.textContent = 'Loading front-end assets…'
-  const [{ arena }, introPalBytes, settingsBytes, driverBytes, strtList, gfx1Bytes, smBytes, cheatsBytes] = await Promise.all([
+  const [{ arena }, introPalBytes, settingsBytes, driverBytes, strtList, gfx1Bytes, smBytes, cheatsBytes, fontbinBytes] = await Promise.all([
     buildArena(read),
     read('INTRO.PAL'),
     read('SETTINGS.DAT').catch(() => null),
@@ -69,6 +70,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     read('GFX1.GFX').catch(() => null), // the Codemasters logo intro (M3.10, "optional, cheap") --
     read('SM.EXE').catch(() => null),   // missing either one just skips straight to the title screen
     read('GAME1/CHEATS.BIN'),
+    read('FONT.BIN').catch(() => null), // P1's code-card screen -- missing it just skips straight to TITLE
   ])
   const menuPal = decodePalette(introPalBytes).rgb
   const settings = settingsBytes ? parseSettings(settingsBytes) : null
@@ -128,6 +130,55 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
   function leaveLogo() {
     if (introRafId != null) { cancelAnimationFrame(introRafId); introRafId = null }
+    if (fontbinBytes) enterCodeCard(); else leaveCodeCard()
+  }
+
+  // P1's second item (GOAL-DOS-PARITY.md, docs/intro-and-codecard.md's "The real code-card
+  // screen"): FONT.BIN's mode-10h screen, shown after the logo, before the title. Both compare
+  // sites are byte-patched in this copy (see fontbin.js's patchState header), so ENTER is always
+  // accepted -- but the real screen (the welcome paragraph, the live target column/row, the
+  // symbol grid, the cursor) is shown for real, twice, exactly as the disassembly runs it: round
+  // 1 -> "Correct, now one more" interstitial (grid/cursor stay visible underneath) -> round 2 ->
+  // straight to the title, no second interstitial.
+  const codecardPalette = fontbinBytes ? fontbinPalette(fontbinBytes) : null
+  let codecard = null // { round, stage: 'prompt'|'correct', target, cursor }
+  function freshTarget() {
+    // [0x40:6C]'s own low byte, live and free-running -- see fontbin.js's targetFromTickByte header.
+    return targetFromTickByte(Math.floor(performance.now() / (1000 / 18.2)) & 0xff)
+  }
+  function enterCodeCard() {
+    canvas.width = CODECARD_W
+    canvas.height = CODECARD_H
+    codecard = { round: 1, stage: 'prompt', target: freshTarget(), cursor: { x: CURSOR_X0, y: CURSOR_Y0 } }
+    phase = 'CODECARD'
+    paintCodeCard()
+  }
+  function paintCodeCard() {
+    const composed = composeCodeCardScreen(fontbinBytes, codecard)
+    paint(canvas, CODECARD_W, CODECARD_H, indexedToRgba(composed.indexed, codecardPalette), { zoom: 1, aspect43: true })
+    statusEl.textContent = codecard.stage === 'prompt' ? 'CODE CARD (arrows move, ENTER accepts)' : 'CODE CARD'
+  }
+  function codeCardMove(dir) {
+    if (phase !== 'CODECARD' || codecard.stage !== 'prompt') return
+    codecard.cursor = moveCursor(codecard.cursor, dir)
+    paintCodeCard()
+  }
+  function codeCardConfirm() {
+    if (phase !== 'CODECARD') return
+    if (codecard.stage === 'prompt') {
+      // 1000:02F4-033B computes AL=expected/DL=chosen and compares -- patched to always "pass"
+      // (fontbin.js's patchState); the port skips the (unused) compare for the same reason.
+      if (codecard.round === 1) { codecard.stage = 'correct'; paintCodeCard() }
+      else leaveCodeCard() // round 2's own success falls straight to the mode-3 return, no interstitial
+    } else {
+      // "Correct, now one more": any key dismisses it (0133's `int 16h ah=0`), round 2 starts with
+      // a fresh target but the SAME cursor position (never reset between rounds).
+      codecard = { round: 2, stage: 'prompt', target: freshTarget(), cursor: codecard.cursor }
+      paintCodeCard()
+    }
+  }
+  function leaveCodeCard() {
+    codecard = null
     canvas.width = MENU_VIEW.w
     canvas.height = MENU_VIEW.h
     phase = 'TITLE'
@@ -135,7 +186,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     paintMenu()
   }
 
-  let phase = introState ? 'LOGO' : 'TITLE'
+  let phase = introState ? 'LOGO' : fontbinBytes ? 'CODECARD' : 'TITLE'
   let menuCursor = 0
   let charCursor = 0
   let charWho = 'player' // 'player' ("WHO DO YOU WANT TO BE ?") or 'opponent' (H2H: "WHO DO YOU WANT TO RACE ?")
@@ -446,6 +497,16 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       return // the race's own createKeyboardReader owns the rest of a race's input
     }
     if (phase === 'LOGO') return // no key skips the intro -- see the P1 header comment above
+    if (phase === 'CODECARD') {
+      // 1000:01E9-02EE: only the 4 arrows move the cursor; only ENTER (AL=0xD) accepts -- Space
+      // does nothing here, unlike every menu screen's own Space-or-Enter convention.
+      if (e.code === 'ArrowRight') codeCardMove('right')
+      else if (e.code === 'ArrowLeft') codeCardMove('left')
+      else if (e.code === 'ArrowUp') codeCardMove('up')
+      else if (e.code === 'ArrowDown') codeCardMove('down')
+      else if (e.code === 'Enter') codeCardConfirm()
+      return
+    }
     if (phase === 'LOADING') return
     if (phase === 'PRESS_ANY_KEY') { confirm(); return } // 0C15: any key click
     if (phase === 'CHAR_SELECT' && e.code === 'Escape') { phase = 'MENU'; menuCursor = 0; titleMusic(sound); paintMenu(); return } // ESC at a select -> main menu
@@ -469,6 +530,8 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     canvas.height = LOGO_H
     introLast = performance.now()
     introRafId = requestAnimationFrame(introTick)
+  } else if (phase === 'CODECARD') {
+    enterCodeCard()
   } else { titleMusic(sound); paintMenu() }
 
   return {

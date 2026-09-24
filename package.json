@@ -15,6 +15,7 @@
     "tables": "node tools/check-tables.mjs",
     "car": "node tools/check-car.mjs",
     "intro": "node tools/check-intro.mjs",
+    "codecard": "node tools/check-codecard.mjs",
     "step": "node tools/check-step.mjs",
     "trace": "node tools/check-trace.mjs",
     "ai": "node tools/check-ai.mjs",

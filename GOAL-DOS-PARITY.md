@@ -120,7 +120,7 @@ Don't read `docs/engine.md` from start to finish. It is 6,000 lines. Jump to sec
 ## Regression suite (run before every commit; all must pass)
 
 ```bash
-for s in catalog lz chrtable tables car intro step trace ai play sound rounds finish twocar tournament \
+for s in catalog lz chrtable tables car intro codecard step trace ai play sound rounds finish twocar tournament \
          menu screens opl-toggle smoothness si2 live smoke; do npm run -s $s || echo "FAIL $s"; done
 npm run build
 ```
@@ -163,11 +163,19 @@ docs, (6) commit.
   314-iteration timeout; holding A+B together is the one real keyboard effect (holds the exit
   open). `src/formats/gfx1.js` (`introInitialState`/`introStep`), `src/frontend/flow.js`,
   `tools/check-intro.mjs` (`npm run intro`), `docs/intro-and-codecard.md`, `docs/engine.md` §9as.
-- [ ] **Code-card screen.** `FONT.BIN` runs in mode 10h: an 8×8 symbol grid and "COLUMN x and ROW y".
+- [x] **Code-card screen.** `FONT.BIN` runs in mode 10h: an 8×8 symbol grid and "COLUMN x and ROW y".
   `src/formats/fontbin.js` decodes it, but the page doesn't show it. Show it after the logo, with
   cursor movement, and accept ENTER on any cell twice (this copy is patched; see
   `docs/intro-and-codecard.md`). Mode 10h is 640×350. Render it at that resolution and scale it into
   the same canvas.
+  **Done M3.48 (2026-09-24):** full from-scratch disassembly of `FONT.BIN`, live-confirmed in
+  DOSBox (the live target column/row, the RIGHT+DOWN cursor move, the "Correct, now one more"
+  interstitial, round 2's no-second-interstitial ending, the UP/DOWN column-major wrap caught and
+  fixed after an advisor review). The BIOS 8×14 ROM font was captured live and committed as
+  `src/data/bios-font-8x14.js` with the user's explicit approval. `src/formats/fontbin.js`
+  (the code-card SCREEN section), `src/frontend/flow.js`'s `CODECARD` phase,
+  `tools/check-codecard.mjs` (`npm run codecard`), `docs/intro-and-codecard.md`, `docs/engine.md`
+  §9at.
 - [ ] **GAME OPTIONS screen** (`RunOptionsScreenWithSettingsDat 1000:2770`). It shows first, before the
   title. Implement F1–F7: F1/F2 control device, F3 sound (BLASTER/SPEAKER), F4 smoothness
   (1 HIGH, 2 GOOD, 3 MEDIUM, 4 LOW), F5 redefine keys (`1000:92f0`), F6 credits (`1000:2a82`),

@@ -6148,3 +6148,32 @@ frame in `tools/check-intro.mjs`. New, narrow, not blocking: `UNKNOWN_intro_loop
 (the loop's own derived duration is ~0.23 s short of the M3.30 whole-process figure; plausibly the
 pre-loop setup, not separately timed -- see the linked section for the live check that would
 settle it).
+
+## 9at. P1's second item: the real code-card screen (2026-09-24)
+
+Full account, and every cited address, in `docs/intro-and-codecard.md`'s own "The real code-card
+screen" section -- this entry is a pointer for the subsystem index, as §9as was for the logo.
+
+Full from-scratch disassembly of `FONT.BIN` (not the prior "symbols + cursor + patch sites" pass),
+live-confirmed in DOSBox. Ported `flow.js`'s missing code-card screen into a new `CODECARD` phase
+between `LOGO` and `TITLE`: the real 640x350 mode-10h layout (two flat background fills, colours 9
+and 10, with a 4-row gap between them that stays colour 0), the symbol grid at (216,179) cropped to
+200 of its real 208 pixel columns (the original's own page-copy routine does this too -- checked
+against the decoded strip, not assumed), the live target column/row read from the BIOS tick
+counter's low byte (`col=AL&0xF`, `row=(AL>>3)&0xF`, re-read fresh every round -- live-confirmed
+changing between boots and between the two rounds of one boot), the trilingual (English/French/
+German) welcome text with the target's column-letter/row-digit overlay poked into 3 fixed slots per
+language, and the exact 4-direction cursor wrap -- RIGHT/LEFT wrap in reading order, but **UP/DOWN
+wrap column-major** (an advisor review caught a first draft's own mistake here, defaulting UP/DOWN
+to the same reading-order wrap RIGHT/LEFT use; re-verified directly against the bytes before
+porting). The two-round accept flow (both compare sites patched to always "pass", per this file's
+existing patch-site account) shows "Correct, now one more" between rounds without disturbing the
+grid or the cursor underneath (only rows 0-167 clear), and round 2 falls straight through to the
+title with no second interstitial -- all four of these exact behaviours were watched live in
+DOSBox, not just read from the bytes. The BIOS's own 8x14 ROM font (needed for the text, since
+FONT.BIN calls `INT 10h AH=13h` and never embeds the glyphs itself) was captured live from
+DOSBox's `INT 43h` vector and committed as `src/data/bios-font-8x14.js`, with the user's explicit
+approval, as platform data rather than game data. New, narrow, not blocking:
+`UNKNOWN_codecard_pixel_diff` (a true byte-exact pixel diff needs mode 10h's 4 planar bit-planes
+combined, not the single flat `mem_read` mode 13h's linear framebuffer allowed elsewhere in this
+project; left for Part F).

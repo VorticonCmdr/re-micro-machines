@@ -55,7 +55,9 @@ and stays local to your machine.
   music-and-sfx driver (`DRIVER1.BIN`) reimplemented as a from-scratch YM3812 synthesizer, the logo
   intro (a real per-frame animation on `game.html` -- the 48-record reveal, banner slide and
   diagonal shine, timed and skippable exactly as the original: a mouse click, not a key), and the
-  (patched-out) code-card copy protection.
+  code-card copy-protection screen (also wired into `game.html`'s own boot sequence now -- the
+  live target column/row, the symbol grid, cursor movement, and the two-round accept flow; both
+  real compares are patched in this copy, so ENTER always advances, exactly as it does in DOS).
 - **The race engine**: 35 Hz fixed-timestep physics (steering, velocity, collisions, terrain
   hazards per round, checkpoints/laps, airborne/ramps, the full car state machine), the drone AI,
   and per-round camera — all reproduced from the disassembly, not approximated.
@@ -82,9 +84,8 @@ and stays local to your machine.
 - Two-human head-to-head, the interactive tournament-opponent/replacement pickers, the tournament
   board and options/redefine-keys/joystick-calibration screens, and palette fades — all named
   explicitly in `docs/engine.md`'s front-end sections, with the reason each was cut.
-- The code-card copy-protection screen is decoded (`src/formats/fontbin.js`) and viewable in
-  `viewer.html`, but not wired into the game's own boot sequence as a curiosity.
-- Gamepad/mouse input (keyboard only).
+- Gamepad/mouse input during a race (keyboard only) -- mouse input elsewhere (the logo intro's
+  click-to-skip) is implemented.
 - A handful of narrow, explicitly-tagged `[UNKNOWN]` items remain — grep `docs/engine.md` and
   `docs/sound.md` for `UNKNOWN_` to see exactly what and why.
 
