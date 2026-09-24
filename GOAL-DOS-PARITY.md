@@ -120,7 +120,7 @@ Don't read `docs/engine.md` from start to finish. It is 6,000 lines. Jump to sec
 ## Regression suite (run before every commit; all must pass)
 
 ```bash
-for s in catalog lz chrtable tables car intro codecard step trace ai play sound rounds finish twocar tournament \
+for s in catalog lz chrtable tables car intro codecard options step trace ai play sound rounds finish twocar tournament \
          menu screens opl-toggle smoothness si2 live smoke; do npm run -s $s || echo "FAIL $s"; done
 npm run build
 ```
@@ -176,7 +176,7 @@ docs, (6) commit.
   (the code-card SCREEN section), `src/frontend/flow.js`'s `CODECARD` phase,
   `tools/check-codecard.mjs` (`npm run codecard`), `docs/intro-and-codecard.md`, `docs/engine.md`
   §9at.
-- [ ] **GAME OPTIONS screen** (`RunOptionsScreenWithSettingsDat 1000:2770`). It shows first, before the
+- [x] **GAME OPTIONS screen** (`RunOptionsScreenWithSettingsDat 1000:2770`). It shows first, before the
   title. Implement F1–F7: F1/F2 control device, F3 sound (BLASTER/SPEAKER), F4 smoothness
   (1 HIGH, 2 GOOD, 3 MEDIUM, 4 LOW), F5 redefine keys (`1000:92f0`), F6 credits (`1000:2a82`),
   F7 joystick calibration (`1000:2ab5`). RETURN plays, and ESC quits: show a "quit to DOS" end
@@ -185,6 +185,19 @@ docs, (6) commit.
   it to `localStorage` in the same 32-byte layout. Seed it from the real `game/SETTINGS.DAT` on
   first run. Move the header's Smoothness select into this screen. Keep the header control only if
   it stays in sync with this screen.
+  **Done M3.49 (2026-09-24):** full re-disassembly, live-confirmed in DOSBox (mounted read-only).
+  F1/F2's real asymmetric device gate (P1 never reaches JOY2/MOUSE), F4's real 5-value cycle
+  including AUTO (a correction to docs/engine.md §9t's own prior wrong claim), F5's cumulative
+  redefine-keys layout with SPACE/duplicate rejection, F6's credits, the dirty-flag save rule
+  (ESC never writes; RETURN writes only if `[0xF63]` was touched, even by a same-value cycle), the
+  25011968 cheat's dumb-reset matcher and its lives-to-10 effect, and `localStorage` persistence
+  (seed priority: saved -> `game/SETTINGS.DAT` -> DS-image default) are all ported and live-
+  confirmed. F7 (joystick calibration) is gated correctly (never drawn/no real effect without a
+  joystick) but its own analog-read body is deferred to P6 with the rest of joystick input, per
+  this file's own scope note. `src/frontend/options.js` (new), `src/formats/globaldata.js`
+  (`serializeSettings`/`DEFAULT_SETTINGS`), `src/frontend/screens.js`/`src/data/frontend-tables.js`
+  (the new screens), `src/frontend/flow.js`'s `OPTIONS` phase, `tools/check-options.mjs`
+  (`npm run options`), `docs/engine.md` §9au (also corrects §9t's AUTO claim).
 
 ### P2: title and menus
 - [ ] **Title attract loop** (`RunTitleScreenAttractLoop 1000:0100`). It shows LOGO, the copyright,
@@ -329,7 +342,12 @@ commits.
 - [ ] `UNKNOWN_pr0_header_use` (`docs/track-graphics.md`).
 - [ ] The remaining unnamed race-draw helpers (`8634`, `8386`, `8712`, …; `docs/track-graphics.md`).
   Name them in Ghidra, document them, and check that each is ported.
-- [ ] The "AUTO" string's purpose (§9t, left unnamed).
+- [x] The "AUTO" string's purpose (§9t, left unnamed). **Resolved as a byproduct of P1's GAME
+  OPTIONS item (M3.49, docs/engine.md §9au):** AUTO is smoothness value 5, reachable via F4 --
+  corrects §9t's own prior "proven NOT part of the set" claim, which checked only the display
+  side, not F4's own input cycling. Resolves at RETURN to a real 1-4 value via a VGA-retrace
+  CPU-speed probe (`AutoDetectSmoothnessByRetraceLoops 1000:3AD0`); the port resolves it to 1
+  (HIGH) unconditionally, since any modern machine trivially clears the real threshold.
 - [ ] `UNKNOWN_sfx_semantics`: every sfx id is wired to its site; the audible meaning was only
   rendered, never heard. Listen to each through `npm run tunes`-style renders, then close it.
 - [ ] `UNKNOWN_microu_runs_standalone`: try `MICROU.EXE` alone in DOSBox once, then close it.

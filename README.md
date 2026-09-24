@@ -67,11 +67,23 @@ and stays local to your machine.
   opponents rather than an interactive picker, for instance) and why.
 - **Sound**: real OPL2 synthesis running in an `AudioWorklet`, ticked off the audio clock the way
   the original driver was, with an optional strict-YM3812 mode (see below).
+- **The real GAME OPTIONS screen** (`game.html`, shown after the code card, before the title): F1/
+  F2 cycle the control device (P1 can never reach JOY2/MOUSE, a real, live-confirmed asymmetry —
+  both currently only ever reach KEYS1/KEYS2, since no joystick/mouse input is wired up yet), F3
+  the sound driver, F4 the smoothness (1–4, plus a real 5th value, AUTO, that resolves to the
+  smoothest setting at RETURN — the original's own hardware-speed probe has no meaningful browser
+  equivalent), F5 redefines the KEYS1/KEYS2 keyboard bindings, F6 shows the credits; RETURN plays
+  and persists SETTINGS.DAT's own 32-byte layout to `localStorage` (seeded from the real
+  `game/SETTINGS.DAT`, written only when something was actually touched, matching the original's
+  own dirty-flag rule exactly), ESC quits for real, immediately, no confirmation. The
+  `25011968` cheat code works too (10 lives after every race).
 - **Two "polish" settings**, both faithful to the original rather than added for their own sake:
-  - **Smoothness** (1–4): the original's own display-vs-physics-rate tradeoff — physics always
-    runs at 35 Hz, this only controls how often the screen redraws. On modern hardware there's no
-    performance reason to use anything but 1 (the smoothest); it's here for parity with the
-    original's own options screen, not because the browser needs it.
+  - **Smoothness** (1–4, or AUTO on `game.html`'s own OPTIONS screen): the original's own
+    display-vs-physics-rate tradeoff — physics always runs at 35 Hz, this only controls how often
+    the screen redraws. On modern hardware there's no performance reason to use anything but 1
+    (the smoothest); it's here for parity with the original's own options screen, not because the
+    browser needs it. (`index.html`'s single-race page keeps a header select instead, since it has
+    no boot chain of its own to host a real OPTIONS screen.)
   - **Strict OPL2**: the shipped game never enables the real YM3812's waveform-select register, so
     a real AdLib card would have played every voice as a plain sine wave. The DOSBox build this
     port's audio was verified against emulates an OPL3 chip in OPL2 mode instead, which (like most
@@ -81,11 +93,14 @@ and stays local to your machine.
 
 ## What's not implemented
 
-- Two-human head-to-head, the interactive tournament-opponent/replacement pickers, the tournament
-  board and options/redefine-keys/joystick-calibration screens, and palette fades — all named
-  explicitly in `docs/engine.md`'s front-end sections, with the reason each was cut.
+- Two-human head-to-head, the interactive tournament-opponent/replacement pickers, and the
+  tournament board screen — all named explicitly in `docs/engine.md`'s front-end sections, with
+  the reason each was cut. Palette fades exist (the README previously said otherwise); see
+  `docs/engine.md` §9an for the one real difference (the port fades in at race start, the original
+  doesn't).
 - Gamepad/mouse input during a race (keyboard only) -- mouse input elsewhere (the logo intro's
-  click-to-skip) is implemented.
+  click-to-skip) is implemented. The GAME OPTIONS screen's own F7 (joystick calibration) is gated
+  correctly (never shown without a joystick) but its analog-read body isn't ported, same reason.
 - A handful of narrow, explicitly-tagged `[UNKNOWN]` items remain — grep `docs/engine.md` and
   `docs/sound.md` for `UNKNOWN_` to see exactly what and why.
 

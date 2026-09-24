@@ -21,6 +21,42 @@
 
 import { toU8, u16le } from './bytes.js'
 
+// The DS image's own static defaults (193C:0F5F/0F61/263A/106C), used ONLY when SETTINGS.DAT
+// can't be read at all (RunOptionsScreenWithSettingsDat 1000:2778-27E0's own fall-through when
+// the file open/read fails) -- re-read live this session, not guessed. In practice the shipped
+// game/SETTINGS.DAT always loads successfully (P1=KEYS2, P2=KEYS1, matching flow.js's own
+// DEFAULT_KEYS2), so this fallback is the rare "file genuinely missing" path, not the common one.
+// [0xF64] (sound) is set separately, unconditionally, BEFORE the file read even attempts (2782-
+// 278C): 1 (BLASTER) only if Sound Blaster autodetection succeeded, else 2 (SPEAKER) -- this port
+// never models SB autodetection, so its own fallback is always 2.
+export const DEFAULT_SETTINGS = {
+  p1Control: 4, // KEYS1
+  p2Control: 5, // KEYS2
+  smoothness: 1, // HIGH
+  soundDriver: 2, // SPEAKER
+  joystick1: { left: 0, right: 0 },
+  joystick2: { left: 0, right: 0 },
+  keys1: [0x2c, 0x2d, 0x10, 0x1e, 0x2e], // Z, X, Q, A, C
+  f1f3: [0x3b, 0x3c, 0x3d],
+  keys2: [0x4b, 0x4d, 0x48, 0x50, 0x52], // arrows + Insert
+  dSpaceV: [0x20, 0x39, 0x2f], // D, SPACE, V
+}
+
+/** The inverse of parseSettings: packs the same fields back into a 32-byte buffer, the exact
+ * layout RunOptionsScreenWithSettingsDat writes at RETURN (1000:2A32-2A67, only when dirty --
+ * see flow.js's OPTIONS phase). `settings` is parseSettings's own shape (raw is ignored; every
+ * other field is re-packed, so callers can hand back a mutated copy of a parsed settings object). */
+export function serializeSettings(settings) {
+  const b = new Uint8Array(32)
+  const words = [
+    settings.p1Control, settings.p2Control, settings.smoothness, settings.soundDriver,
+    settings.joystick1.left, settings.joystick1.right, settings.joystick2.left, settings.joystick2.right,
+  ]
+  words.forEach((w, i) => { b[i * 2] = w & 0xff; b[i * 2 + 1] = (w >> 8) & 0xff })
+  b.set([...settings.keys1, ...settings.f1f3, ...settings.keys2, ...settings.dSpaceV], 16)
+  return b
+}
+
 export const CONTROL_NAME = { 1: 'JOY 1', 2: 'JOY 2', 3: 'MOUSE', 4: 'KEYS 1', 5: 'KEYS 2' }
 export const SOUND_DRIVER_NAME = { 0: 'DRIVER0 (none)', 1: 'DRIVER1 (BLASTER/OPL2)', 2: 'DRIVER2 (SPEAKER)' }
 

@@ -17,7 +17,7 @@ import { resolveSource } from '../io/resolveSource.js'
 import { loadTileBank, buildWordMap, vehicleFrames, TILE_BYTES } from '../formats/race.js'
 import { decodePalette } from '../formats/pal.js'
 import { decompress } from '../formats/lz.js'
-import { parseStrtPos, parseSettings, parseCheats } from '../formats/globaldata.js'
+import { parseStrtPos, parseSettings, parseCheats, serializeSettings, DEFAULT_SETTINGS, CONTROL_NAME } from '../formats/globaldata.js'
 import { buildArena } from '../formats/chr.js'
 import { indexedToRgba, paint } from '../render/raster.js'
 import { composeRaceView, bannerBlinkPhase } from '../render/raceView.js'
@@ -29,7 +29,7 @@ import { runStep } from '../engine/step.js'
 import { advanceRotorFrame } from '../engine/states.js'
 import { droneControlByte } from '../engine/ai.js'
 import { initCameraState } from '../engine/camera.js'
-import { createKeyboardReader, createPauseKeyReader, recordingReader } from '../engine/input.js'
+import { createKeyboardReader, createPauseKeyReader, recordingReader, SCANCODE_TO_KEY_CODE } from '../engine/input.js'
 import { createPauseState, updatePause } from '../engine/pause.js'
 import { createRaceEndState, updateRaceEnd } from '../engine/raceEnd.js'
 import { createFadeState, updateFade, applyFade } from '../engine/fade.js'
@@ -38,16 +38,33 @@ import { lapLineSegments, nearestPaletteIndex } from '../engine/lapLine.js'
 import { Si2Player } from '../audio/si2Player.js'
 import { RUFF_TRUCK_TIMES } from '../data/engine-tables.js'
 import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, currentRace, reportRaceResult, OUTCOME } from './tournament.js'
-import { CHARACTER_NAMES, OUTCOME_MESSAGES } from '../data/frontend-tables.js'
-import { drawTitleScreen, drawMainMenu, drawCharacterSelect, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion } from './screens.js'
+import { CHARACTER_NAMES, OUTCOME_MESSAGES, resolveSmoothnessForPlay } from '../data/frontend-tables.js'
+import { drawTitleScreen, drawMainMenu, drawCharacterSelect, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawOptionsScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
 import { createSmoothnessGate } from '../engine/smoothness.js'
 import { introInitialState, introStep, smPalette, SCREEN_W as LOGO_W, SCREEN_H as LOGO_H } from '../formats/gfx1.js'
 import { composeCodeCardScreen, fontbinPalette, targetFromTickByte, moveCursor, CURSOR_X0, CURSOR_Y0, CODECARD_W, CODECARD_H } from '../formats/fontbin.js'
+import { cycleControl, cycleSound, cycleSmoothness, advanceCheatCursor, redefineKeyAccepted, redefineGroupOf, redefineSlotInGroup, REDEFINE_TOTAL_SLOTS, REDEFINE_SLOTS_PER_GROUP } from './options.js'
 
-const DEFAULT_KEYS2 = [0x4b, 0x4d, 0x48, 0x50, 0x1f] // left,right,accel,brake,fire
 const STEP_DT = 1 / 35 // 35 Hz physics (docs/engine.md §2), matching play.js's own constant
 
-export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStrictCheckbox, smoothnessSelect, lapLineToggle }) {
+// KeyboardEvent.code -> PC/XT scancode, the inverse of input.js's own table -- F5's redefine-keys
+// screen (1000:9357-9379) reads a raw scancode from any key on the keyboard, not just the 5-key
+// subset a race reader cares about.
+const REDEFINE_KEY_SCANCODES = Object.fromEntries(Object.entries(SCANCODE_TO_KEY_CODE).map(([sc, code]) => [code, Number(sc)]))
+
+const SETTINGS_STORAGE_KEY = 'mm-settings-dat-v1'
+function bytesToBase64(bytes) { return btoa(String.fromCharCode(...bytes)) }
+function base64ToBytes(b64) { return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)) }
+/** localStorage's own persisted SETTINGS.DAT (32 raw bytes, base64), or null if there isn't one
+ * yet -- the seed-from-game/SETTINGS.DAT case falls through to the caller. */
+function loadStoredSettings() {
+  try {
+    const b64 = window.localStorage.getItem(SETTINGS_STORAGE_KEY)
+    return b64 ? parseSettings(base64ToBytes(b64)) : null
+  } catch { return null } // private mode / localStorage disabled -- behave as if never saved
+}
+
+export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStrictCheckbox, lapLineToggle }) {
   const source = await resolveSource({ statusEl, pickButton, dropZone })
   const read = (p) => source.read(p)
   if (pickButton) pickButton.hidden = true
@@ -73,24 +90,37 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     read('FONT.BIN').catch(() => null), // P1's code-card screen -- missing it just skips straight to TITLE
   ])
   const menuPal = decodePalette(introPalBytes).rgb
-  const settings = settingsBytes ? parseSettings(settingsBytes) : null
-  const keys2 = settings ? settings.keys2 : DEFAULT_KEYS2
   const cheats = parseCheats(cheatsBytes)
+
+  // P1's third boot item (GOAL-DOS-PARITY.md, docs/engine.md §9au): SETTINGS.DAT persistence.
+  // DOS reads the file once and writes it back only when something changed (RunOptionsScreen
+  // WithSettingsDat 1000:27E5's own [0xEFF] "read once" gate, 2A13-2A6D's own dirty-flag write).
+  // A browser has no writable game/ directory, so the port keeps the SAME 32-byte layout in
+  // localStorage instead: SETTINGS_STORAGE_KEY holds it as base64, seeded from the real
+  // game/SETTINGS.DAT the first time (matching the goal's own instruction), falling further back
+  // to the DS image's own static defaults (globaldata.js's DEFAULT_SETTINGS) only if that file is
+  // missing too.
+  const settings = loadStoredSettings() ?? (settingsBytes ? parseSettings(settingsBytes) : { ...DEFAULT_SETTINGS })
+  let settingsDirty = false
+  function persistSettingsIfDirty() {
+    if (!settingsDirty) return // 2A13: `[0xF63]==0` skips the write entirely
+    try { window.localStorage.setItem(SETTINGS_STORAGE_KEY, bytesToBase64(serializeSettings(settings))) } catch { /* private mode / quota -- silently keep the in-memory value, matching a real write failure's own silent JC 2A6E */ }
+    settingsDirty = false
+  }
+  let keys2 = settings.keys2
 
   const sound = new Si2Player()
   await sound.start(driverBytes.buffer ?? driverBytes, { strictOpl2: !!oplStrictCheckbox?.checked }) // M3.10 OPL waveform toggle
   window.addEventListener('keydown', () => sound.resume()) // see play.js's own comment on this pattern
 
-  // M3.10 smoothness (src/engine/smoothness.js): n=1 (SETTINGS.DAT's own default here) is the
-  // smoothest/most-often-drawn setting, not the choppiest -- see that module's header. A fresh
-  // gate is created per race (in runOneRace, below), not once here: an advisor review caught that
-  // a single session-lifetime gate's draw-period only lines up correctly for the first race --
-  // every later race starts mid-period against whatever step count the previous race ended on.
-  let smoothnessN = settings ? settings.smoothness : 1
-  if (smoothnessSelect) {
-    smoothnessSelect.value = String(smoothnessN)
-    smoothnessSelect.addEventListener('change', () => { smoothnessN = Number(smoothnessSelect.value) })
-  }
+  // M3.10 smoothness (src/engine/smoothness.js): n=1 is the smoothest/most-often-drawn setting,
+  // not the choppiest -- see that module's header. A fresh gate is created per race (in
+  // runOneRace, below), not once here: an advisor review caught that a single session-lifetime
+  // gate's draw-period only lines up correctly for the first race -- every later race starts
+  // mid-period against whatever step count the previous race ended on. The header's own
+  // <select id="smoothness"> is gone (P1, GOAL-DOS-PARITY.md): F4 on the real OPTIONS screen is
+  // the one control now, including AUTO (5), which resolveSmoothnessForPlay resolves at RETURN.
+  let smoothnessN = resolveSmoothnessForPlay(settings.smoothness)
 
   canvas.width = MENU_VIEW.w
   canvas.height = MENU_VIEW.h
@@ -179,14 +209,105 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
   function leaveCodeCard() {
     codecard = null
+    enterOptions()
+  }
+
+  // P1's third boot item (GOAL-DOS-PARITY.md, docs/engine.md §9au): RunOptionsScreenWithSettingsDat
+  // 1000:2770, shown after the code card, before the title. F1/F2 cycle the control device (P1 can
+  // never reach JOY2/MOUSE, regardless of hardware -- a real, live-confirmed asymmetry, not a
+  // simplification; both currently only ever reach KEYS1/KEYS2 since no joystick/mouse input is
+  // wired up yet, P6); F3 the sound driver; F4 the smoothness (including AUTO); F5 opens the
+  // redefine-keys sub-screen; F6 the credits; ENTER commits (writing SETTINGS.DAT only if
+  // something actually changed) and plays; ESC quits -- for real, live-confirmed: an immediate,
+  // unconfirmed drop to the DOS prompt, no "are you sure".
+  let options = null // { sub: 'main'|'credits'|'redefine', cheatCursor, redefineScratch, redefineSlotIndex }
+  let cheatActive = false // DS:0F69 -- survives past the OPTIONS phase itself (options is reset to null on leaving), tournament.js's own lives-to-10 effect reads this
+  const deviceAvail = { joy1: false, joy2: false, mouse: false } // no joystick/mouse input yet -- P6
+  function enterOptions() {
     canvas.width = MENU_VIEW.w
     canvas.height = MENU_VIEW.h
+    options = { sub: 'main', cheatCursor: 0, redefineScratch: [], redefineSlotIndex: 0 }
+    phase = 'OPTIONS'
+    paintOptions()
+  }
+  function paintOptions() {
+    menuBuf.fill(0)
+    if (options.sub === 'credits') drawCreditsScreen(menuBuf, arena)
+    else if (options.sub === 'redefine') drawRedefineKeysScreen(menuBuf, arena, { slots: options.redefineScratch, slotIndex: options.redefineSlotIndex })
+    else drawOptionsScreen(menuBuf, arena, { settings, cheatActive })
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
+    statusEl.textContent = 'GAME OPTIONS'
+  }
+  /** F1-F7 dispatch (1000:28BE-2A08); anything else falls through to the cheat-code check. */
+  function optionsMenuKey(code) {
+    if (code === 'F1') { settings.p1Control = cycleControl(settings.p1Control, settings.p2Control, true, deviceAvail); settingsDirty = true }
+    else if (code === 'F2') { settings.p2Control = cycleControl(settings.p2Control, settings.p1Control, false, deviceAvail); settingsDirty = true }
+    else if (code === 'F3') { settings.soundDriver = cycleSound(settings.soundDriver); settingsDirty = true }
+    else if (code === 'F4') { settings.smoothness = cycleSmoothness(settings.smoothness); settingsDirty = true }
+    else if (code === 'F5') { settingsDirty = true; options.sub = 'redefine'; options.redefineScratch = []; options.redefineSlotIndex = 0 }
+    else if (code === 'F6') { options.sub = 'credits' }
+    else return false
+    paintOptions()
+    return true
+  }
+  function optionsConfirm() {
+    // 1000:2A6E-2A7E: AUTO resolves here, right before the settings write and the game actually
+    // starting -- see frontend-tables.js's own resolveSmoothnessForPlay header for why the port
+    // resolves it to 1 (HIGH) unconditionally rather than replicating the real CPU-speed probe.
+    settings.smoothness = resolveSmoothnessForPlay(settings.smoothness)
+    smoothnessN = settings.smoothness
+    keys2 = settings.keys2
+    persistSettingsIfDirty()
+    options = null
     phase = 'TITLE'
     titleMusic(sound)
     paintMenu()
   }
+  function optionsEscape() {
+    // 1000:28BE-28C2: STC;RET -- the real game drops straight to DOS, no write (the dirty flag is
+    // never even consulted on this path). No further input is read once here.
+    options = null
+    phase = 'QUIT'
+    menuBuf.fill(0)
+    drawQuitToDosScreen(menuBuf, arena)
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
+    statusEl.textContent = 'Quit to DOS (this is a port -- close the tab, or reload to play again)'
+  }
+  function optionsKey(e) {
+    if (options.sub === 'credits') { options.sub = 'main'; paintOptions(); return } // 1000:2AAD: any key dismisses it
+    if (options.sub === 'redefine') { redefineKey(e); return }
+    if (e.code === 'Escape') { optionsEscape(); return }
+    if (e.code === 'Enter') { optionsConfirm(); return }
+    if (optionsMenuKey(e.code)) return
+    // 1000:28FE-2924: every other key is checked against the 25011968 cheat sequence (raw digits,
+    // not a specific key group) -- see options.js's own advanceCheatCursor header.
+    const digit = /^Digit[0-9]$/.test(e.code) ? e.code.slice(5) : null
+    const { cursor, completed } = advanceCheatCursor(options.cheatCursor, digit)
+    options.cheatCursor = cursor
+    if (completed) { cheatActive = true; settingsDirty = true }
+    if (completed || digit != null) paintOptions()
+  }
+  /** The redefine-keys sub-screen (1000:9357-93A9): a plain keydown scancode map covers this
+   * screen's own reachable keys (digits/letters -- the same set FONT.BIN's own scancode->display
+   * table names, plus arrows/space, which are valid TARGETS even though this table shows them as
+   * '?'). ESC (1000:935E) returns to the main options screen without saving any of this pass. */
+  function redefineKey(e) {
+    if (e.code === 'Escape') { options.sub = 'main'; paintOptions(); return } // 93BB: plain RET, not the top-level quit signal
+    const scancode = REDEFINE_KEY_SCANCODES[e.code]
+    if (scancode == null) return // not on the real keyboard-scancode path this screen reads (e.g. a modifier) -- ignored
+    if (!redefineKeyAccepted(scancode, options.redefineScratch)) return // SPACE, or a duplicate within this pass
+    options.redefineScratch[options.redefineSlotIndex] = scancode
+    options.redefineSlotIndex++
+    if (options.redefineSlotIndex >= REDEFINE_TOTAL_SLOTS) {
+      // 1000:93AC-93BA: KEYS1 -> slots 0-4, KEYS2 -> slots 8-12 (5-7 and 13-15 untouched).
+      settings.keys1 = options.redefineScratch.slice(0, REDEFINE_SLOTS_PER_GROUP)
+      settings.keys2 = options.redefineScratch.slice(REDEFINE_SLOTS_PER_GROUP, REDEFINE_TOTAL_SLOTS)
+      options.sub = 'main'
+    }
+    paintOptions()
+  }
 
-  let phase = introState ? 'LOGO' : fontbinBytes ? 'CODECARD' : 'TITLE'
+  let phase = introState ? 'LOGO' : fontbinBytes ? 'CODECARD' : 'OPTIONS'
   let menuCursor = 0
   let charCursor = 0
   let charWho = 'player' // 'player' ("WHO DO YOU WANT TO BE ?") or 'opponent' (H2H: "WHO DO YOU WANT TO RACE ?")
@@ -261,15 +382,17 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     const cars = spawnCars(strtList, round, race, { raceFormat, tournamentIndex: tournament.raceIndex, opponentCharacters: tournament.opponents })
     currentCars = cars
     const camera = initCameraState(strt)
-    // controllerTypes [2658..265E]: the player on the keyboard (KEYS2 = 5), every other car the CPU (6).
-    const raceCtx = { ...roundCtx(round, race, { raceFormat }), brk, tournamentIndex: tournament.raceIndex, world, stepIncrement: 1, sound, camera, controllerTypes: [5, 6, 6, 6] }
+    // controllerTypes [2658..265E]: P1's real chosen device (settings.p1Control, 1000:2D00's own
+    // 1-based enum -- JOY1/JOY2/MOUSE never reachable yet, P6), every other car the CPU (6).
+    const raceCtx = { ...roundCtx(round, race, { raceFormat }), brk, tournamentIndex: tournament.raceIndex, world, stepIncrement: 1, sound, camera, controllerTypes: [settings.p1Control, 6, 6, 6] }
     if (round === 9) raceCtx.ruffTruxTime = RUFF_TRUCK_TIMES[race - 1]
     const raceState = {}
     currentRaceState = raceState
     const jitter = createRaceJitter()
     const smoothGate = createSmoothnessGate(smoothnessN) // fresh per race -- see the comment above
     raceStart(sound)
-    const humanReader = recordingReader(createKeyboardReader(keys2, window))
+    // KEYS1(4) or KEYS2(5) -- the only two devices reachable yet (P6 adds JOY1/JOY2/MOUSE).
+    const humanReader = recordingReader(createKeyboardReader(settings.p1Control === 4 ? settings.keys1 : keys2, window))
     // Pause/fade/cheats (docs/engine.md §9q/§9ai): the same modules `play.js` wires into its own
     // loop, ported here for the first time (M3.34) -- `game.html` previously had none of the three.
     // Fresh per race, same as `humanReader`/`smoothGate` above: a reader created once at boot would
@@ -401,6 +524,10 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       lastPassed = result.won
     } else {
       reportRaceResult(tournament, { finishPosition: result.finishPosition })
+      // The 25011968 cheat (DS:0F69, set on the OPTIONS screen): lives forced to 10 after every
+      // race, docs/engine.md §7's own "cheat [F69] -> 10 after every race" (re-confirmed this
+      // session against the fresh OPTIONS disassembly).
+      if (cheatActive) tournament.lives = 10
       const names = [CHARACTER_NAMES[tournament.playerCharacter], ...tournament.opponents.map((i) => CHARACTER_NAMES[i])]
       // Two-car: racePosition can be stale for car 1 (car 2 can hold a slot, docs/engine.md §9am), so
       // the two places come from the result itself.
@@ -507,6 +634,8 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       else if (e.code === 'Enter') codeCardConfirm()
       return
     }
+    if (phase === 'OPTIONS') { optionsKey(e); return }
+    if (phase === 'QUIT') return // real DOS is gone at this point; nothing left to read
     if (phase === 'LOADING') return
     if (phase === 'PRESS_ANY_KEY') { confirm(); return } // 0C15: any key click
     if (phase === 'CHAR_SELECT' && e.code === 'Escape') { phase = 'MENU'; menuCursor = 0; titleMusic(sound); paintMenu(); return } // ESC at a select -> main menu
@@ -532,6 +661,8 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     introRafId = requestAnimationFrame(introTick)
   } else if (phase === 'CODECARD') {
     enterCodeCard()
+  } else if (phase === 'OPTIONS') {
+    enterOptions()
   } else { titleMusic(sound); paintMenu() }
 
   return {

@@ -2491,8 +2491,26 @@ Cross-validated against the adjacent sound-driver label draw in the SAME functio
 `SI=0xF3D` = "NONE" used **directly**, no base-minus-one adjustment, `CX=[0xF64]`) -- a genuinely
 0-based enum (0=NONE, 1=BLASTER, 2=SPEAKER) matching CLAUDE.md's already-established "sound driver
 0-2" ordering exactly, confirming the walk-convention reasoning holds in both the 1-based and 0-based
-direction at once, not just asserted for whichever one was needed. **"AUTO" (`0xF38`) is now proven
-NOT part of the smoothness set** -- the smoothness walk never reaches `CX=5` -- closing the specific
+direction at once, not just asserted for whichever one was needed.
+
+**Corrected 2026-09-24 (P1, §9au): "AUTO" (`0xF38`) IS part of the smoothness set -- the claim
+this paragraph made below was wrong.** P1's own OPTIONS-screen work re-disassembled F4's cycling
+logic fresh (`1000:29CC-29D8`) rather than trusting this paragraph's display-side walk alone, and
+found `CMP CH,5 / JLE` -- the wrap only resets past `CH=5`, so the real cycle is 5 values, HIGH/
+GOOD/MEDIUM/LOW/**AUTO**, live-confirmed on a real DOSBox GAME OPTIONS screen (four F4 presses
+from HIGH shows "AUTO" on screen). The mistake: this paragraph checked the DISPLAY walk's own
+upper bound (does `DrawMenuStringByIndex` ever get asked for a 5th label) without separately
+checking whether the INPUT side (F4) can ever produce `CX=5` -- it can, and the string table has a
+real 5th entry there waiting for it (`0xF22 + 1 + len(HIGH)+len(GOOD)+len(MEDIUM)+len(LOW) =
+0xF38`, confirmed both by this byte-offset arithmetic and live). AUTO resolves at RETURN
+(`1000:2A6E-2A7E`) to a real 1-4 value via a VGA-retrace CPU-speed probe
+(`AutoDetectSmoothnessByRetraceLoops 1000:3AD0`, already named in this project's own Ghidra plate
+comments from an earlier session that never cross-checked it against this paragraph's own
+contradictory claim). Full account, and the port's own resolution (AUTO -> HIGH unconditionally,
+since any modern machine trivially clears the real DOS-era threshold): §9au. The original claim
+below is kept verbatim as a record of the mistake (PLAN.md §8's own "re-verify, don't just re-read
+a prior claim" pitfall, one more instance of it) -- despite its own confident wording, it is FALSE:
+**"AUTO" (`0xF38`) is now proven NOT part of the smoothness set** -- the smoothness walk never reaches `CX=5` -- closing the specific
 ambiguity the open item raised ("whether they're LOW/MEDIUM/AUTO at all"); AUTO's own purpose was not
 traced this session (no code cross-references `0xF38`/`0xF37` were found by either xref or bare-operand
 search) and is left as a narrower, separately-named open item rather than guessed at.
@@ -6177,3 +6195,116 @@ approval, as platform data rather than game data. New, narrow, not blocking:
 `UNKNOWN_codecard_pixel_diff` (a true byte-exact pixel diff needs mode 10h's 4 planar bit-planes
 combined, not the single flat `mem_read` mode 13h's linear framebuffer allowed elsewhere in this
 project; left for Part F).
+
+## 9au. P1's third item: the real GAME OPTIONS screen (2026-09-24)
+
+Full re-disassembly of `RunOptionsScreenWithSettingsDat 1000:2770` and its four sub-screens
+(`ShowCredits 2A82`, `AttemptJoystickCalibration 2AB5`, `RunRedefineKeysScreen 92F0`,
+`AutoDetectSmoothnessByRetraceLoops 3AD0`), live-confirmed in DOSBox (`game/` mounted read-only).
+Ported into `src/frontend/flow.js`'s new `OPTIONS` phase, between `CODECARD` and `TITLE`; the
+pure cycling/matching logic lives in the new `src/frontend/options.js` (mirroring `gfx1.js`'s/
+`fontbin.js`'s own step-function pattern for the two earlier P1 items); proven in
+`tools/check-options.mjs` (`npm run options`).
+
+**F1/F2, the real device-cycling gate -- asymmetric, not a simplification.** Both keys share one
+inner "keep incrementing until a valid choice is found" loop (`1000:2943-296B` for F1,
+`296E-29A8` for F2), but the two are NOT mirror images: **P1 can never reach JOY2 or MOUSE, full
+stop, regardless of hardware** (`1000:295D-2965`: `BL==1` or `BL==2` unconditionally re-loops, no
+device-presence check at all) -- P1 only ever cycles JOY1 (gated on `[2625]!=0`, at least one
+stick)/KEYS1/KEYS2. **P2 can reach any of the five**, each gated on real presence: JOY1 needs
+`[2625]!=0`, JOY2 needs `[2625]==2` (both sticks, not just "a second one"), MOUSE needs
+`[2627]!=0`. Both also skip whatever the OTHER player currently has (no sharing one device).
+Live-confirmed with no joystick or mouse present (this port's own state today, P6 not started):
+one F1 press and one F2 press each cycled silently through every rejected candidate and landed
+back on their own starting value -- a real "no visible change", not a bug, matching
+`options.js`'s own `controlAvailable`/`cycleControl`.
+
+**F3 (sound) and F4 (smoothness), live-confirmed wraps.** F3: NONE(0)->BLASTER(1)->SPEAKER(2)->
+NONE (`1000:29AA-29C3`); also reloads the driver for whatever was CURRENTLY selected before
+advancing (an existing Ghidra plate comment from an earlier session, re-confirmed, not re-derived
+fresh). F4: HIGH(1)..LOW(4)..**AUTO(5)**->HIGH (`1000:29CC-29D8`) -- see the correction to this
+file's own §9t above; AUTO resolves at RETURN (`1000:2A6E-2A7E`) via
+`AutoDetectSmoothnessByRetraceLoops 1000:3AD0`, a VGA-retrace-synchronized busy-loop counting how
+many ~1000-iteration passes fit in one frame (>=0x18 -> HIGH, >=0x14 -> GOOD, >=0xD -> MEDIUM,
+else LOW) -- a real hardware-speed probe with no meaningful browser equivalent (any machine this
+port runs on trivially clears the `>=0x18` threshold an 800MHz-in-1994 sense of "fast" set), so
+`frontend-tables.js`'s `resolveSmoothnessForPlay` resolves AUTO to 1 unconditionally rather than
+attempting to replicate timing that can't mean the same thing on modern hardware.
+
+**F5, the redefine-keys screen (`92F0`), live-confirmed cumulative layout.** NOT cleared between
+groups -- only once, at entry. "KEYS 1" and its 5 confirmed labels stay on screen while "KEYS 2"
+and its own 5 draw below them; a real DOSBox screenshot this session showed exactly this (KEYS 1's
+full block, then "KEYS 2 / LEFT" appended beneath it). SPACE (`0x39`) is rejected outright
+(`1000:9362-9364`, loops back to the same slot); a scancode already used earlier in this SAME
+10-key pass is rejected too (`936E-9373`, checked only against this pass's own keys, not any
+previous SETTINGS.DAT) -- live-confirmed both (a Space press on BRAKE re-prompted BRAKE; the
+scancode-to-display-char table `1000:ADF0` was read in full and matches `frontend-tables.js`'s
+`REDEFINE_DISPLAY_CHAR` exactly). ESC here returns to the main options screen without saving any
+of this pass (`93BB`: a plain `RET`) -- live-confirmed, a different code path from the top-level
+ESC (below). Only 10 of the 16 SETTINGS.DAT scancodes are ever touched (KEYS1 slots 0-4, KEYS2
+slots 8-12); F1-F3 (5-7) and D/SPACE/V (13-15) are copied through untouched
+(`1000:93AC-93BB`).
+
+**F6, the credits (`2A82`).** 10 lines, `DS:0F75`, dismissed by any key -- text extracted directly
+from the DS image and live-confirmed pixel-for-pixel against a real DOSBox capture (this session).
+
+**ESC vs RETURN, and the dirty-flag save rule.** Live-confirmed both: ESC from the MAIN options
+screen (`1000:28BE-28C2`, `STC;RET`) drops straight to the real DOS prompt, `C:\>`, no
+confirmation, no write -- the dirty flag (`[0xF63]`) is never even consulted on this path. RETURN
+(`1000:2A0E-2A6D`) writes the full 32 bytes ONLY if `[0xF63]!=0` -- and `[0xF63]` is set by F1-F5
+and F7 UNCONDITIONALLY, before doing anything else, even when the resulting value doesn't actually
+change (an F1 press that cycles all the way back to its own starting value still marks the
+settings dirty) or when F7 has no joystick to calibrate. The port's own `settingsDirty` flag
+mirrors this exactly (set in `optionsMenuKey` before the value even changes), so a `RETURN` with
+nothing touched still round-trips through `serializeSettings` if ANY F-key was pressed, matching
+the real bytes' own "dirty on touch, not on change" rule -- not the more intuitive "only save if
+something is actually different" a naive port might implement instead.
+
+**The 25011968 cheat (`DS:0F6B-0F72`).** Matched against `[0x107E]` as raw **number-row
+scancodes**, not ASCII (`03 06 0B 02 02 0A 07 09` decodes via the standard PC/XT set to digits
+2,5,0,1,1,9,6,8) -- the port compares against the typed digit character instead, an equivalent,
+simpler representation of the same real bytes. A mismatch resets the cursor to 0 WITHOUT
+re-testing the mismatched key against digit 0 (`1000:291E`, an unconditional `MOV [0xF73],0xF6B`)
+-- typing "225011968" does NOT trigger it, only a clean run of the whole sequence does; live- and
+unit-confirmed (`tools/check-options.mjs`). Completion sets `[0xF69]` (draws a live-confirmed "!"
+in the corner of the options screen, `1000:289D-28AA`, `SI=0xF00`) and `[0xF6A]` (a second flag,
+one further reader found this session at `1000:1398` inside the shared race-intro wait helper
+`179B` -- not traced further, out of this item's own scope, a new narrow open item). `[0xF69]`'s
+own documented effect (docs/engine.md §7: "cheat `[F69]` -> 10 after every race") is wired into
+`flow.js`'s `advanceRace`, setting `tournament.lives = 10` after every non-bonus race report while
+the cheat is active.
+
+**SETTINGS.DAT persistence.** DOS reads the file once per session (`[0xEFF]` gate,
+`1000:2778-27E0`) and writes it back only when dirty. A browser has no writable `game/`, so the
+port keeps the identical 32-byte layout in `localStorage` (`mm-settings-dat-v1`, base64) instead,
+via `globaldata.js`'s new `serializeSettings` (the exact inverse of the already-existing
+`parseSettings`, round-trip-proven byte-exact against both the real shipped `game/SETTINGS.DAT`
+and the DS image's own no-file default). Seed priority, live- and unit-confirmed: the
+`localStorage` value (if a previous session saved one) -> `game/SETTINGS.DAT` (if present, the
+common case) -> the DS image's own static defaults (`globaldata.js`'s `DEFAULT_SETTINGS`, re-read
+live from `193C:0F5F/0F61/263A/106C` this session -- P1=KEYS1, P2=KEYS2, HIGH, SPEAKER, the
+DS-image default KEYS2 fire key is Insert `0x52`, not the shipped file's own `S`). Live-confirmed
+end to end: cycling F3 to NONE and pressing RETURN persists `soundDriver:0` to `localStorage`; a
+fresh page load then seeds from THAT instead of the shipped file's own BLASTER default; pressing
+ESC instead leaves `localStorage` untouched.
+
+**Wired into the race itself.** `controllerTypes[0]` (previously hardcoded `5`) now carries the
+real `settings.p1Control` value (`1000:2D00`'s own `BuildInputReaderTable`, already a 1-based
+1-5/6 enum matching this project's own existing `step.js` convention exactly, needing no
+translation); the keyboard reader picks `settings.keys1` or `settings.keys2` to match. The
+header's own `<select id="smoothness">` on `game.html` is removed (F4 is the one real control now,
+including AUTO, which the header control had no way to represent) -- `index.html`'s own
+single-race page keeps its header control unchanged, since it never goes through the boot chain
+this item covers.
+
+**Method note.** The AUTO correction above is this session's own clearest instance of PLAN.md
+§8's "re-verify, don't just re-read a prior claim" pitfall: a live DOSBox capture (four F4 presses
+showing "AUTO" on a real GAME OPTIONS screen) settled in one screenshot what a purely static
+re-read of the SAME already-cited addresses could have gotten wrong a second time, because the
+original mistake was a scope gap (checked the display side, not the input side) that rereading the
+display side again would not have caught.
+
+New open items, not blocking: `UNKNOWN_f6a_reader` (`[0xF6A]`'s own effect at `1000:1398`, inside
+the shared race-intro wait helper -- found, not traced); `UNKNOWN_joystick_calibration_body`
+(`2B8B`/`2B8F`'s own real analog-port-timing reads, deferred to P6 with the rest of joystick
+input); `UNKNOWN_options_pixel_diff` (same shape as codecard's own, left for Part F).

@@ -80,6 +80,92 @@ export function trackName(round, race) {
 // over), 1 = qualifier/Challenge pass, 2 = 3rd/4th in the Challenge (one life lost, re-run),
 // 3 = bonus-race win (extra life), 4 = bonus-race loss (no bonus), 5 = two-car-mode pass
 // ("outcome 1 (5 in two-car mode)").
+// --- P1 GAME OPTIONS screen (RunOptionsScreenWithSettingsDat 1000:2770), DS:0E17 -----------------
+// One contiguous NUL-terminated string block, re-read live this session (193C:0E17..0F68):
+// 7 menu-line headers, 3 footer hints, "SETTINGS.DAT", "PLAY WHICH GAME SET ?", "!", 5 control
+// names (globaldata.js's own CONTROL_NAME), a blank string, 5 smoothness labels (index 5 = AUTO,
+// live-confirmed reachable via F4 -- corrects docs/engine.md §9t's prior "AUTO proven NOT part of
+// the set" claim, which only checked the display walk's own upper bound, not whether F4's cycle
+// (1000:29D3, `CMP CH,5 / JLE`) can actually produce it), 3 sound driver names, "GAME OPTIONS".
+export const OPTIONS_MENU_LINES_ADDR = 0xe17
+export const OPTIONS_MENU_LINES = [
+  'F1 PLAYER 1 CONTROL',
+  'F2 PLAYER 2 CONTROL',
+  'F3 SOUND',
+  'F4 SMOOTHNESS',
+  'F5 REDEFINE KEYS',
+  'F6 CREDITS',
+  'F7 CONFIGURE JOYSTICK', // only drawn when a joystick is detected (JoystickCount != 0, 1000:2822) -- P6 scope, never shown by this port yet
+]
+export const OPTIONS_FOOTER_ADDR = 0xe8c
+export const OPTIONS_FOOTER = [
+  'USE ESCAPE TO QUIT GAME',
+  'PRESS RETURN TO PLAY GAME',
+  'SPACE PAUSES IN GAME',
+]
+export const OPTIONS_TITLE_ADDR = 0xf5b
+export const OPTIONS_TITLE = 'GAME OPTIONS'
+
+// Smoothness labels, DS:0F23 (walked from the blank slot at 0F22 -- CX = the raw 1..5 value, no
+// -1 adjustment; AUTO at CX=5 verified two ways: the string table's own byte layout (0F22 + 1 +
+// len("HIGH")+len("GOOD")+len("MEDIUM")+len("LOW") = 0xF38, matching `AutoDetectSmoothnessByRetraceLoops`'s
+// own EOL comment citing the same address) and live, this session (F4 pressed 4 times from HIGH
+// shows "AUTO" on a real DOSBox GAME OPTIONS screen). AUTO resolves at RETURN
+// (1000:2A6E-2A7E) to a real 1-4 value from a VGA-retrace CPU-speed probe (1000:3AD0) -- a timing
+// benchmark with no browser equivalent; since any modern machine trivially clears the "HIGH"
+// threshold (>=0x18 loop iterations per retrace, an 800MHz-in-1994 sense of "fast"), the port
+// resolves AUTO to 1 (HIGH) unconditionally rather than attempting to replicate the probe.
+export const SMOOTHNESS_LABELS_ADDR = 0xf23
+export const SMOOTHNESS_LABELS = ['HIGH', 'GOOD', 'MEDIUM', 'LOW', 'AUTO']
+export const SMOOTHNESS_AUTO = 5
+export function resolveSmoothnessForPlay(value) { return value === SMOOTHNESS_AUTO ? 1 : value }
+
+// Sound driver labels, DS:0F3D -- the SAME short form the options screen itself displays (0-based:
+// 0 NONE/DRIVER0.BIN, 1 BLASTER/DRIVER1.BIN, 2 SPEAKER/DRIVER2.BIN). globaldata.js's
+// SOUND_DRIVER_NAME is the longer form used elsewhere (viewer-style); this is what F3 shows.
+export const SOUND_LABELS_ADDR = 0xf3d
+export const SOUND_LABELS = ['NONE', 'BLASTER', 'SPEAKER']
+
+// The credits screen (ShowCredits 1000:2a82), DS:0F75, 10 lines, drawn once and dismissed by any key.
+export const CREDITS_LINES_ADDR = 0xf75
+export const CREDITS_LINES = [
+  '   CODE BY   LYNDON HOMEWOOD',
+  '                GARY RANSON',
+  '                JON CARTWRIGHT',
+  '   MUSIC     GEZ GOURLEY',
+  '   GRAFIX    BRIAN HARTLEY',
+  '                MARK NEESAM',
+  '                PETE RANSON',
+  '',
+  '  PRODUCED BY BIG RED SOFTWARE',
+  '   COPYRIGHT CODEMASTERS 1994',
+]
+
+// The redefine-keys screen (RunRedefineKeysScreen 1000:92f0), DS:0AE3D (group headers) and
+// DS:0AE4B (the 5 per-slot labels, walked the same way as CONTROL_NAME/SMOOTHNESS_LABELS).
+// Slot order matches globaldata.js's own documented SETTINGS.DAT layout (LEFT, RIGHT, ACCELERATE,
+// BRAKE, SELECT). Live-confirmed this session: pressing a key shows it next to its label, SPACE
+// (scancode 0x39) is silently rejected (re-prompts the same slot), and a scancode already used
+// earlier in this same 10-key pass is rejected too (1000:936E-9373, checked only against the keys
+// collected so far, not the previous SETTINGS.DAT contents).
+export const REDEFINE_GROUP_LABELS_ADDR = 0xae3d
+export const REDEFINE_GROUP_LABELS = ['KEYS 1', 'KEYS 2']
+export const REDEFINE_SLOT_LABELS_ADDR = 0xae4b
+export const REDEFINE_SLOT_LABELS = ['LEFT', 'RIGHT', 'ACCELERATE', 'BRAKE', 'SELECT']
+
+// scancode -> displayed character on the redefine-keys screen (1000:ADF0, word pairs, 0-terminated;
+// unmatched scancodes fall back to '?', DH's own default init at 1000:937D-9380). Numbers and
+// letters only -- the real game only expects a plain keyboard key here, not an arrow/function key
+// (those are read and stored correctly regardless, they just display as '?').
+export const REDEFINE_DISPLAY_CHAR_ADDR = 0xadf0
+export const REDEFINE_DISPLAY_CHAR = {
+  0x02: '1', 0x03: '2', 0x04: '3', 0x05: '4', 0x06: '5', 0x07: '6', 0x08: '7', 0x09: '8', 0x0a: '9', 0x0b: '0',
+  0x10: 'Q', 0x11: 'W', 0x12: 'E', 0x13: 'R', 0x14: 'T', 0x15: 'Y', 0x16: 'U', 0x17: 'I', 0x18: 'O', 0x19: 'P',
+  0x1e: 'A', 0x1f: 'S', 0x20: 'D', 0x21: 'F', 0x22: 'G', 0x23: 'H', 0x24: 'J', 0x25: 'K', 0x26: 'L',
+  0x2c: 'Z', 0x2d: 'X', 0x2e: 'C', 0x2f: 'V', 0x30: 'B', 0x31: 'N', 0x32: 'M',
+}
+export const REDEFINE_DISPLAY_CHAR_DEFAULT = '?'
+
 export const OUTCOME_MESSAGES_ADDR = 0x81f
 export const OUTCOME_MESSAGES = [
   'FAILED TO QUALIFY!',

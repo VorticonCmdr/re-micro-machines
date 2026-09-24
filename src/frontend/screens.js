@@ -10,7 +10,8 @@
 // INTRO.CHR showcase frame at plausible, centred positions for exactly that reason.
 import { CHR_TABLE } from '../formats/chr.js'
 import { drawString, drawStringCentred, blitChr, MENU_VIEW } from '../render/menuView.js'
-import { CHARACTER_NAMES, CHARACTER_SKILLS, trackName } from '../data/frontend-tables.js'
+import { CHARACTER_NAMES, CHARACTER_SKILLS, trackName, OPTIONS_MENU_LINES, OPTIONS_FOOTER, OPTIONS_TITLE, SMOOTHNESS_LABELS, SOUND_LABELS, CREDITS_LINES, REDEFINE_GROUP_LABELS, REDEFINE_SLOT_LABELS, REDEFINE_DISPLAY_CHAR, REDEFINE_DISPLAY_CHAR_DEFAULT } from '../data/frontend-tables.js'
+import { CONTROL_NAME } from '../formats/globaldata.js'
 
 function rec(name) {
   return CHR_TABLE.find((r) => r.name === name)
@@ -86,4 +87,67 @@ export function drawChampion(buf, arena, { playerName }) {
   blitChr(buf, arena, cup, 0, (MENU_VIEW.w - cup.width) >> 1, 40)
   drawStringCentred(buf, arena, rec('FONT2.CHR'), 'CHAMPIONSHIP WINNER!!', 90)
   drawStringCentred(buf, arena, rec('FONT1.CHR'), playerName, 120)
+}
+
+/** P1's third boot item: RunOptionsScreenWithSettingsDat 1000:2770 (GOAL-DOS-PARITY.md,
+ * docs/engine.md §9au). F1-F6 (F7 is never drawn here: it only appears with a real joystick
+ * detected, 1000:2822, and no joystick/mouse input is wired up yet -- P6), each with its current
+ * value; the footer hints; a "!" once the 25011968 cheat completes (1000:289D-28AA). Laid out by
+ * hand for this substrate's 256-wide buffer, like every other screen in this file -- not measured
+ * against a DOSBox frame (no live capture of this exact layout was taken; the SCREEN'S OWN
+ * behaviour, not its pixel position, was verified live this session). */
+export function drawOptionsScreen(buf, arena, { settings, cheatActive = false }) {
+  drawStringCentred(buf, arena, rec('FONT2.CHR'), OPTIONS_TITLE, 4)
+  const values = [
+    CONTROL_NAME[settings.p1Control], CONTROL_NAME[settings.p2Control],
+    SOUND_LABELS[settings.soundDriver], SMOOTHNESS_LABELS[settings.smoothness - 1], '', '',
+  ]
+  OPTIONS_MENU_LINES.slice(0, 6).forEach((label, i) => {
+    const y = 26 + i * 12
+    drawString(buf, arena, rec('FONT1.CHR'), label, 8, y)
+    if (values[i]) drawString(buf, arena, rec('FONT1.CHR'), values[i], 176, y) // longest value is 7 chars (BLASTER/MEDIUM): 176+7*8=232, fits MENU_VIEW.w=256
+  })
+  OPTIONS_FOOTER.forEach((line, i) => drawStringCentred(buf, arena, rec('FONT1.CHR'), line, 170 + i * 10))
+  if (cheatActive) drawString(buf, arena, rec('FONT1.CHR'), '!', 248, 4)
+}
+
+/** ShowCredits 1000:2a82: 10 lines, dismissed by any key. */
+export function drawCreditsScreen(buf, arena) {
+  drawStringCentred(buf, arena, rec('FONT2.CHR'), 'MICRO MACHINES', 10)
+  CREDITS_LINES.forEach((line, i) => drawString(buf, arena, rec('FONT1.CHR'), line, 8, 40 + i * 14))
+}
+
+/** RunRedefineKeysScreen 1000:92f0: NOT cleared between the two groups (only once, at entry) --
+ * "KEYS 1" and its 5 labels stay on screen while "KEYS 2" and its own 5 are drawn below them, live-
+ * confirmed this session (a single DOSBox screenshot showed both groups stacked together). `slots`:
+ * the 10-scancode scratch array so far (undefined past the current one); `slotIndex`: 0-9, the
+ * slot currently being prompted for (or `REDEFINE_TOTAL_SLOTS` once the whole pass is done). */
+export function drawRedefineKeysScreen(buf, arena, { slots, slotIndex }) {
+  let y = 8
+  for (let group = 0; group < 2; group++) {
+    if (slotIndex < group * REDEFINE_SLOT_LABELS.length) break // this group hasn't started yet
+    drawString(buf, arena, rec('FONT2.CHR'), REDEFINE_GROUP_LABELS[group], 8, y)
+    y += 17
+    for (let i = 0; i < REDEFINE_SLOT_LABELS.length; i++) {
+      const slot = group * REDEFINE_SLOT_LABELS.length + i
+      if (slot > slotIndex) break
+      drawString(buf, arena, rec('FONT1.CHR'), REDEFINE_SLOT_LABELS[i], 16, y)
+      const scancode = slots[slot]
+      if (scancode != null) drawString(buf, arena, rec('FONT1.CHR'), redefineKeyChar(scancode), 168, y)
+      y += 10
+    }
+  }
+}
+
+/** redefineKeyChar: the character 1000:ADF0's table shows for `scancode` (falls back to '?'). */
+export const redefineKeyChar = (scancode) => REDEFINE_DISPLAY_CHAR[scancode] ?? REDEFINE_DISPLAY_CHAR_DEFAULT
+export { REDEFINE_SLOT_LABELS }
+
+/** ESC from the top-level options screen (1000:28BE-28C2, `STC;RET`): the real game drops straight
+ * to the DOS prompt, no confirmation. A browser tab can't literally exit, so this is the port's
+ * own terminal state -- same convention as other port-only end states in this project (docs
+ * intro-and-codecard.md's own precedent for states DOS has no browser equivalent for). */
+export function drawQuitToDosScreen(buf, arena) {
+  drawStringCentred(buf, arena, rec('FONT2.CHR'), 'QUIT', 80)
+  drawStringCentred(buf, arena, rec('FONT1.CHR'), 'RELOAD TO PLAY AGAIN', 110)
 }

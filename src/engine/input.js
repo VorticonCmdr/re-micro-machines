@@ -4,10 +4,13 @@
 // `RunRedefineKeysScreen`'s slot labels) -- LEFT/RIGHT/ACCELERATE/BRAKE/SELECT(fire) map to bits
 // 0x80/0x40/0x20/0x10/0x08, the same layout every reader (human or AI) produces.
 
-// Standard PC/XT scancode -> browser KeyboardEvent.code, for the codes SETTINGS.DAT's default
-// KEYS2 binding actually uses (arrows + S) plus the rest of formats/globaldata.js's SCANCODE_NAME
-// table, so a custom SETTINGS.DAT (any letter/arrow key) still resolves.
-const SCANCODE_TO_KEY_CODE = {
+// Standard PC/XT scancode -> browser KeyboardEvent.code (the same table flow.js's own OPTIONS
+// screen uses in the other direction for F5's redefine-keys sub-screen, options.js/1000:ADF0),
+// covering every key SETTINGS.DAT's own 1000:106C table or a custom redefine pass can produce:
+// letters, the number row, arrows and space.
+export const SCANCODE_TO_KEY_CODE = {
+  0x02: 'Digit1', 0x03: 'Digit2', 0x04: 'Digit3', 0x05: 'Digit4', 0x06: 'Digit5',
+  0x07: 'Digit6', 0x08: 'Digit7', 0x09: 'Digit8', 0x0a: 'Digit9', 0x0b: 'Digit0',
   0x1e: 'KeyA', 0x30: 'KeyB', 0x2e: 'KeyC', 0x20: 'KeyD', 0x12: 'KeyE', 0x21: 'KeyF', 0x22: 'KeyG',
   0x23: 'KeyH', 0x17: 'KeyI', 0x24: 'KeyJ', 0x25: 'KeyK', 0x26: 'KeyL', 0x32: 'KeyM', 0x31: 'KeyN',
   0x18: 'KeyO', 0x19: 'KeyP', 0x10: 'KeyQ', 0x13: 'KeyR', 0x1f: 'KeyS', 0x14: 'KeyT', 0x16: 'KeyU',
