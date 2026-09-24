@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createMenuBuffer, MENU_VIEW } from '../src/render/menuView.js'
-import { drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion } from '../src/frontend/screens.js'
+import { drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard } from '../src/frontend/screens.js'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const GAME = join(ROOT, 'game')
@@ -50,6 +50,8 @@ const cases = [
   ['drawResults (missing name, defensive)', () => drawResults(createMenuBuffer(), arena, { standings: [{ name: 'WALTER', position: 1 }, { name: undefined, position: 2 }], passed: true })],
   ['drawOutcome', () => drawOutcome(createMenuBuffer(), arena, { message: 'QUALIFIED FOR CHALLENGE!' })],
   ['drawChampion', () => drawChampion(createMenuBuffer(), arena, { playerName: 'WALTER' })],
+  ['drawTournamentBoard (raceIndex 1, blinking on)', () => drawTournamentBoard(createMenuBuffer(), arena, { raceIndex: 1, blinkOn: true })],
+  ['drawTournamentBoard (raceIndex 24, the last one shown, blinking off)', () => drawTournamentBoard(createMenuBuffer(), arena, { raceIndex: 24, blinkOn: false })],
 ]
 
 for (const [name, fn] of cases) {
@@ -71,6 +73,11 @@ for (const [name, fn] of cases) {
   const buf = createMenuBuffer()
   drawResults(buf, arena, { standings: [{ name: 'WALTER', position: 1 }], passed: true })
   check('drawResults paints something', nonEmpty(buf))
+}
+{
+  const buf = createMenuBuffer()
+  drawTournamentBoard(buf, arena, { raceIndex: 1, blinkOn: true })
+  check('drawTournamentBoard paints something', nonEmpty(buf))
 }
 
 console.log(bad ? `${bad} check(s) failed` : `check-screens: all ${cases.length} screen renderers run clean against synthetic data (RESULTS/OUTCOME/CHAMPION included, unreachable live this session)`)

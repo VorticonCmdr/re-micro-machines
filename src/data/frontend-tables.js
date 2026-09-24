@@ -220,3 +220,17 @@ export const ONE_PLAYER_ITEM_LABELS = ['Head to Head', 'Challenge'] // [LEFT, RI
 // own exit test is `cumulative < 0x40`, so the 13th step lands exactly on the boundary).
 export const CAROUSEL_STEP_TABLE_ADDR = 0x185
 export const CAROUSEL_STEP_TABLE = [2, 2, 2, 2, 4, 4, 4, 4, 8, 8, 8, 8, 8]
+
+// P3's first item (GOAL-DOS-PARITY.md, docs/engine.md §9ay): the tournament board's own 26-word
+// icon-position table (DrawTournamentBoard 1000:18d8's own helper FUN_1000_198e, re-read live this
+// session, 193C:0312). Each word's low byte is an X unit, high byte a Y unit: X = xUnit*8+0xC,
+// Y = yUnit*8+0x4E (198e's own `SHL CX,3; ADD CX,0xC`/`SHL CX,3; ADD CX,0x4E`). Entry i (0-based)
+// is drawn for `ORDER_TABLE[i+1]` -- 198e's own SI walks ORDER_TABLE with a pre-increment, so board
+// position 0 uses ORDER_TABLE[1], not [0] (the qualifier never gets a board icon, docs/engine.md §9t).
+export const BOARD_ICON_POSITIONS_ADDR = 0x312
+export const BOARD_ICON_UNITS_RAW = [
+  [15, 3], [0, 0], [15, 0], [0, 9], [20, 3], [0, 6], [20, 0], [0, 3], [5, 9], [0, 12],
+  [25, 3], [5, 3], [15, 6], [5, 6], [5, 0], [10, 9], [5, 12], [25, 0], [20, 6], [10, 0],
+  [10, 3], [10, 12], [10, 6], [25, 6], [0, 0], [0, 0],
+]
+export const BOARD_ICON_POSITIONS = BOARD_ICON_UNITS_RAW.map(([xUnit, yUnit]) => ({ x: xUnit * 8 + 0xc, y: yUnit * 8 + 0x4e }))

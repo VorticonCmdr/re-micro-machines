@@ -104,6 +104,7 @@ check('SELECT_GAME_TITLE', FT.SELECT_GAME_TITLE_ADDR, nulWalkedBytes([FT.SELECT_
 check('ONE_PLAYER_LABEL', FT.ONE_PLAYER_LABEL_ADDR, nulWalkedBytes([FT.ONE_PLAYER_LABEL]))
 check('TWO_PLAYER_LABEL', FT.TWO_PLAYER_LABEL_ADDR, nulWalkedBytes([FT.TWO_PLAYER_LABEL]))
 check('CAROUSEL_STEP_TABLE', FT.CAROUSEL_STEP_TABLE_ADDR, FT.CAROUSEL_STEP_TABLE)
+check('BOARD_ICON_POSITIONS', FT.BOARD_ICON_POSITIONS_ADDR, wordsToBytes(FT.BOARD_ICON_UNITS_RAW.map(([xUnit, yUnit]) => xUnit | (yUnit << 8))))
 
 console.log(bad ? `${bad} table(s) mismatched, ${ok} ok` : `${ok}/${ok} tables match MICROU.EXE`)
 process.exitCode = bad ? 1 : 0

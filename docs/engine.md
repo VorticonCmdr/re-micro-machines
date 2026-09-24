@@ -6152,6 +6152,15 @@ byte for A329), making an apparently "unknown writer" resolve to "no writer, by 
 code" rather than a missed trace. Worth remembering next time an item is phrased as "X has no writer"
 -- check whether X is a `CS:`-relative constant before assuming a search gap.
 
+**Added 2026-09-24 (§9ay).** GOAL-DOS-PARITY.md P3's first item resolved and ported: the tournament
+board screen (`DrawTournamentBoard 1000:18d8`), including its own real when-shown gate (re-derived
+from `SetupTournamentRace 1000:115c`, not `18d8` alone: Challenge format only, never the qualifier,
+never the very last race), the icon-position/frame formula (confirming §9t's own prior derivation
+byte-for-byte against the live table), and the blink/timeout exit logic (`FUN_1000_17ff`, simplified
+to the project's existing `AWAIT_RELEASE` idiom, documented). New, deliberately unported open item:
+the round-9 "reveal" branch (`1000:192b-198d`) draws past `MINATURE.CHR`'s own real 38-frame table (a
+genuine benign OOB read in the original) -- a rare cosmetic flourish, not pixel-replicated.
+
 ## 9as. P1's first item: the logo intro's real per-frame animation (2026-09-24)
 
 Full account, and every cited address, in `docs/intro-and-codecard.md`'s own "The real per-frame
@@ -6566,3 +6575,134 @@ does not replicate exactly, defaulting to LEFT/+1 instead, documented in `charSe
 header); `UNKNOWN_26cf_prompt_blink` (`FUN_1000_0c96`'s own `[0x26CF]`-gated prompt-text flicker
 during IDLE, not ported -- a cosmetic nicety); `UNKNOWN_carousel_pixel_diff` (same shape as every
 other screen's own pixel-diff item, left for Part F).
+
+## 9ay. P3's first item: the tournament board screen (2026-09-24)
+
+**Scope.** GOAL-DOS-PARITY.md P3's first checklist item: `DrawTournamentBoard 1000:18d8`, the
+`CASE.CHR` map with `MINATURE` icons at the `DS:0312` positions §9t already named but never reduced
+to a formula or wired to a screen ("both were M3.9's own deliberate scope cuts, not reopened" --
+§9t's own words, at the time correctly deferring this exact item to a future session, which this is).
+Full re-disassembly of `DrawTournamentBoard 1000:18d8` (58 instructions), its own icon-loop helper
+`FUN_1000_198e` (42 instructions, confirms §9t's formula byte-for-byte), the shared wait/poll helper
+`FUN_1000_17ff` (32 instructions), and -- the item's own explicit ask, "find exactly when it is
+shown" -- a full re-disassembly of `RunTournamentLoop 1000:10a0` (54 instructions) and
+`SetupTournamentRace 1000:115c` (38 instructions), which turned out to be where `18d8` is actually
+called from, not `10a0` itself.
+
+**When it is shown -- `SetupTournamentRace 1000:115c`, not `RunTournamentLoop 1000:10a0` directly.**
+`115c` computes `[28BF]`/`[28C0]` (round/race) for the race about to run -- from `ORDER_TABLE[[28C1]]`
+normally, or from the pending-bonus-race pair (`[343]!=0` -> round 9, race `[342]+1`) -- THEN, before
+calling the race's own intro (`11F8`) and running it (`3039`), gates a `CALL 18D8` on **two** extra
+conditions beyond `18d8`'s own internal ones:
+- `[3F8]!=1` -- **Challenge (4-car) format only.** The two-car/Head-to-Head-vs-CPU format never
+  reaches the `CALL 18D8` at all (`1186-118B: CMP [3F8],1 / JZ 119A` skips straight to the intro).
+  This resolves the "find exactly when" ask more precisely than `18d8`'s own internal gates alone
+  would suggest: the format check happens at the CALL SITE, not inside the screen.
+- `[28C1]!=[439]` (0x19) -- **never before the very last race** (the champion decider, entry 25).
+- Both apply equally to a bonus race: `[343]!=0`'s own round/race computation runs FIRST, but the
+  `CALL 18D8` gate still reads the SAME (already-advanced) `[28C1]`, so a bonus race triggered one
+  race before the end skips the board exactly like a regular race would.
+
+`18d8` itself then applies its OWN two gates (both already documented in §7): `[28C1]==0` (the
+qualifier, entry 0, never gets a board -- `18D8`'s own very first instruction, `CMP [28C1],0/JNZ`)
+and `[43A]==0` (`BOARD_SCREEN_ENABLE`, always 1 in the shipped table). `tournament.js`'s new
+`shouldShowBoard(state)` is `115c`'s OWN three-way gate transcribed directly (format, not-qualifier,
+not-last-race) -- not `18d8`'s internal one alone, since the format check never reaches `18d8` at
+all in the real bytes. `flow.js`'s `nextAfterOutcome` calls it right before `startNextRace()`, i.e.
+between a race's own OUTCOME/RESULTS screen and the NEXT race's own intro -- matching `115c`'s own
+call order (`CALL 18D8` then `CALL 11F8`) exactly.
+
+**What it shows -- `FUN_1000_198e`, confirming and completing §9t's own formula.** `SI` walks
+`ORDER_TABLE` (`DS:043C`) with a pre-increment (board position 0 uses `ORDER_TABLE[1]`, never `[0]`
+-- the qualifier never gets its own icon, as §9t already established), drawing one `MINATURE.CHR`
+icon per race completed so far (`i < [28C1]`, i.e. `ORDER_TABLE[1..raceIndex]`). Each icon's position
+comes from a 26-word table at `DS:0312` (52 bytes, re-read live this session, `frontend-tables.js`'s
+new `BOARD_ICON_POSITIONS`, checked byte-for-byte in `check-tables.mjs`): low byte an X unit, high
+byte a Y unit, `X = xUnit*8+0xC`, `Y = yUnit*8+0x4E` -- exactly §9t's own formula, now byte-checked
+against the live table rather than taken on faith. The icon's own frame, `((word>>2)-1) +
+(word&3)*8` (round-1, plus 8 per race-within-round) -- a `MINATURE.CHR` class icon: class by round,
+colour variant by race -- matches §9t's formula too, confirmed by re-tracing `19AB-19E1`'s own
+`SHR AL,2/DEC AL` (round-1) `+ (AND AL,3/SHL 3)` (race-1, times 8) arithmetic directly rather than
+re-citing it.
+
+**The newest icon blinks -- `18D8`'s own erase/redraw loop, `FUN_1000_17FF` as the shared exit test.**
+Once the background (`CALL 0710`, `BlitTileMap8x8` -- the SAME `CASE.CHR`/`CASE.MAP` "vehicle display
+case" `chr.js`'s `caseImage()` already decodes, confirmed re-used here, not a second format) and all
+icons so far are drawn, the newest one blinks: `RestoreSpriteBackground` (erase) -> flip -> wait up
+to `0x23` ticks (~0.5s, `FUN_1000_17FF`) -> `ClipAndBlitSpriteTransparent` (redraw) -> flip -> wait
+again -- repeating for up to `0x2BC` ticks (~10s, `[261F]`) total or until any input. `17FF` itself
+(fully disassembled): resets `[0x1080]=0` (combines P1|P2's own reader bytes, `[0x108B]`, the same
+convention `RunTwoItemMenu` uses) and `[0x107E]/[0x107F]=0` (the global release latch) at every
+call, then polls per-tick: any key release (`[0x107E]!=0`) exits `CLC` immediately, and the combined
+fire bit (`[0x108B]&8`) is tracked through a release-then-press debounce sharing the SAME `CX`-tick
+budget across both phases -- there is **no ESC-specific branch**: fire and any key release are
+treated identically, both just mean "move on". `board.js`'s `boardStep` ports the blink/timeout
+constants exactly (`BOARD_BLINK_HALF_PERIOD_TICKS=0x23`, `BOARD_TIMEOUT_TICKS=0x2BC`) and the
+"any release or fire exits, no ESC distinction" rule exactly, but simplifies `17FF`'s own
+dual-phase-shared-budget debounce to the SAME `AWAIT_RELEASE`/`POLL` idiom `frontMenu.js`/
+`charSelect.js` already use for the identical "ignore an already-held button" concern -- behaviourally
+equivalent except for one rare edge (fire held continuously from confirming the PREVIOUS screen,
+released and re-pressed within the SAME ~0.5s window, could skip the board on its very first real
+tick in the original; the port instead always waits for a release first). Documented, not silently
+glossed -- a screen with no `[PROVEN]` live capture and no gameplay rule riding on it did not
+justify re-deriving `17FF`'s own byte-for-byte timing a second time when an already-proven idiom
+covers every case that matters.
+
+**Not ported: the round-9 "reveal" branch (`18D8`'s own `1000:192B-198D`).** When the round about to
+run is 9 (a bonus race about to start), `18D8` skips the blink-wait loop entirely and instead draws
+8 more `MINATURE.CHR` icons (reusing the SAME sprite descriptor slot the icon loop just used) at two
+fixed columns (`x=0x95`/`0xB5`) across four rows (`y=0x8E,0x9E,0xAE,0xBE`), with frame indices
+`0x20` through `0x27` (32-39) advancing by one for EVERY draw with no reset. `MINATURE.CHR` has only
+38 frames (0-37, `chr.js`'s own `CHR_TABLE`) -- the last two of these eight draws (frames 38, 39)
+read past the real, declared frame table, a genuine benign out-of-bounds read in the shipped game
+(DOS just has whatever bytes sit next in the arena there; nothing crashes, but the icons shown are
+not real, designed content). Left unported: a rare, purely cosmetic flourish reached only in the
+instant before a bonus race's own intro, reading past its own asset's real bounds in the original --
+not a rule, not requested by the goal item's own text ("find exactly when it is shown"), and not
+worth pixel-replicating garbage. The port's board screen shows the same blink-newest-icon behaviour
+for this case too, a documented, honest simplification.
+
+**Header/layout, hand-placed like every other screen in `screens.js` (not pixel-verified).** `18D8`
+also calls `FUN_1000_0400` first, which draws `WORDS.CHR` frame 0 ("MicroMachines") and a 3-line
+shaded divider bar (`FillRowsFrontView`/`1000:0862`) beneath it -- and, ONLY if `[0x156]!=0`, a
+SECOND `WORDS.CHR` frame. Traced `[0x156]`'s own writers (a `search_byte_patterns` sweep, not just
+`get_xrefs_to`, per CLAUDE.md rule 2): the ONLY site that ever sets it nonzero is `FUN_1000_1E20`
+(`1000:1E4A`, two-human Head to Head's own entry point) -- and `115c`'s own `[3F8]!=1` gate excludes
+the two-car/H2H format from ever reaching `18D8` in the first place, so for the tournament board
+specifically `[0x156]` is PROVABLY always 0 and the second draw is dead code here, closed with real
+evidence rather than assumed. `screens.js`'s new `drawTournamentBoard` draws the "MicroMachines"
+header and the case background (`BOARD_CASE_Y=24`, chosen so the real icon Y range, 78-174, sits
+comfortably inside it) by hand, matching this file's own established convention (its header comment:
+"None of these attempt the original's exact sprite placement pixel-for-pixel... laid out by hand to
+be legible and centred") -- not measured against a DOSBox frame; the icon POSITIONS themselves use
+the real `DS:0312` table, which is the item's own actual ask.
+
+**Port.** `src/frontend/board.js` (new, `boardInitialState`/`boardStep`, the pure step-function
+architecture every P1/P2 phase already uses), `src/data/frontend-tables.js` (`BOARD_ICON_POSITIONS`/
+`BOARD_ICON_UNITS_RAW`), `src/frontend/tournament.js` (`shouldShowBoard`), `src/frontend/screens.js`
+(`drawTournamentBoard`), `src/frontend/flow.js` (`enterBoard`/`boardTick`/`leaveBoard`/`paintBoard`,
+wired into `nextAfterOutcome`, following the SAME `enterTwoItemMenu`-style real-time RAF driver
+every other P2 menu phase uses -- combined P1|P2 reader, shared `menuReleaseTracker`,
+`forceBoardSteps` debug hook). `tools/check-board.mjs` (`npm run board`): `shouldShowBoard`'s real
+three-way gate (qualifier, last race, two-car format), the `AWAIT_RELEASE` debounce, the blink
+toggling at exactly `0x23` ticks (not one early/late), a fresh fire press or any release exiting
+immediately mid-blink, and the idle timeout firing at exactly `0x2BC` ticks. `tools/check-screens.mjs`
+gained two `drawTournamentBoard` smoke cases. `tools/check-tables.mjs` gained a `BOARD_ICON_POSITIONS`
+byte check (39/39 tables now match).
+
+**Live check.** Driven through the real boot chain in a foreground Chrome tab (title -> SELECT GAME
+-> ONE PLAYER GAME (Challenge) -> character select -> PRESS ANY KEY -> the qualifier's own RACE_INTRO
+-> RACING) using the same `forceIntroSteps`/`forceTitleSteps`/`forceMenuSteps`/`forceCharSelectSteps`
+debug hooks P1/P2's own live checks used, confirming the new imports (`board.js`, the extended
+`tournament.js`/`screens.js`/`frontend-tables.js`) load and run cleanly with no console errors all
+the way through every phase up to a live race. **Not obtained**: driving an actual race to
+completion to reach the BOARD phase itself live -- the tab's own `requestAnimationFrame` is fully
+paused while backgrounded under Chrome automation (the same limitation `docs/engine.md` has noted
+before), and a `requestAnimationFrame` monkeypatch attempted to work around it did not take effect
+in time (the race's own first `requestAnimationFrame` call had already been scheduled, through the
+native implementation, before the patch could run) -- a tooling limitation, not evidence of a bug.
+The BOARD phase's own logic is instead fully proven by `check-board.mjs` (the exact tick constants
+against the disassembly) and `check-screens.mjs` (the render, against synthetic `raceIndex`/`blinkOn`
+values); its wiring (`enterBoard`/`boardTick`/`leaveBoard`) is structurally identical to
+`enterTwoItemMenu`/`enterCharSelect`, both already live-proven this project (§9av/§9aw/§9ax) under
+the exact same backgrounded-tab constraint.

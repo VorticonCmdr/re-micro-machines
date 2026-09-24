@@ -37,14 +37,15 @@ import { raceStart, updateEngines, createRaceJitter, raceOverSequence, raceOverS
 import { lapLineSegments, nearestPaletteIndex } from '../engine/lapLine.js'
 import { Si2Player } from '../audio/si2Player.js'
 import { RUFF_TRUCK_TIMES } from '../data/engine-tables.js'
-import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, currentRace, reportRaceResult, OUTCOME } from './tournament.js'
+import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, currentRace, reportRaceResult, shouldShowBoard, OUTCOME } from './tournament.js'
 import { CHARACTER_NAMES, OUTCOME_MESSAGES, resolveSmoothnessForPlay } from '../data/frontend-tables.js'
-import { drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawOptionsScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
+import { drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
 import { createSmoothnessGate } from '../engine/smoothness.js'
 import { introInitialState, introStep, smPalette, SCREEN_W as LOGO_W, SCREEN_H as LOGO_H } from '../formats/gfx1.js'
 import { attractInitialState, attractStep } from './attract.js'
 import { twoItemMenuInitialState, twoItemMenuStep } from './frontMenu.js'
 import { charSelectInitialState, charSelectStep } from './charSelect.js'
+import { boardInitialState, boardStep } from './board.js'
 import { composeCodeCardScreen, fontbinPalette, targetFromTickByte, moveCursor, CURSOR_X0, CURSOR_Y0, CODECARD_W, CODECARD_H } from '../formats/fontbin.js'
 import { cycleControl, cycleSound, cycleSmoothness, advanceCheatCursor, redefineKeyAccepted, redefineGroupOf, redefineSlotInGroup, REDEFINE_TOTAL_SLOTS, REDEFINE_SLOTS_PER_GROUP } from './options.js'
 
@@ -533,6 +534,54 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     paintMenu()
   }
 
+  // P3's first item (GOAL-DOS-PARITY.md, src/frontend/board.js): DrawTournamentBoard 1000:18d8,
+  // shown between races in the Challenge format only (`tournament.js`'s own `shouldShowBoard`,
+  // called from `nextAfterOutcome` below). Same combined-P1|P2 fire-bit + shared
+  // menuReleaseTracker input model as SELECT_GAME/ONE_PLAYER_GAME.
+  let boardState = null
+  let boardReaders = null
+  let boardRafId = null
+  let boardLast = 0
+  let boardAcc = 0
+  function paintBoard() {
+    menuBuf.fill(0)
+    drawTournamentBoard(menuBuf, arena, { raceIndex: tournament.raceIndex, blinkOn: boardState.blinkOn })
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
+    statusEl.textContent = 'BOARD'
+  }
+  function enterBoard() {
+    canvas.width = MENU_VIEW.w
+    canvas.height = MENU_VIEW.h
+    phase = 'BOARD'
+    boardState = boardInitialState()
+    boardReaders = { p1: createKeyboardReader(p1Keys(), window), p2: createKeyboardReader(p2Keys(), window) }
+    menuReleaseTracker.reset()
+    paintBoard()
+    boardLast = performance.now()
+    boardAcc = 0
+    boardRafId = requestAnimationFrame(boardTick)
+  }
+  function boardTick(now) {
+    if (phase !== 'BOARD') return
+    boardAcc += Math.min(now - boardLast, 250)
+    boardLast = now
+    while (boardAcc >= INTRO_TICK_MS) {
+      boardAcc -= INTRO_TICK_MS
+      const bits = boardReaders.p1.read() | boardReaders.p2.read()
+      const { escReleased, otherReleased } = menuReleaseTracker.read()
+      const r = boardStep(boardState, { bits, escReleased, otherReleased })
+      if (r.exit) { leaveBoard(); return }
+    }
+    paintBoard()
+    boardRafId = requestAnimationFrame(boardTick)
+  }
+  function leaveBoard() {
+    if (boardRafId != null) { cancelAnimationFrame(boardRafId); boardRafId = null }
+    boardReaders.p1.dispose(); boardReaders.p2.dispose(); boardReaders = null
+    startNextRace()
+    paintMenu()
+  }
+
   let phase = introState ? 'LOGO' : fontbinBytes ? 'CODECARD' : 'OPTIONS'
   let charWho = 'player' // 'player' ("WHO DO YOU WANT TO BE ?") or 'opponent' (H2H: "WHO DO YOU WANT TO RACE ?")
   // The select screens start on the session's last picks: statics [3F4]=10 / [3F6]=9 (SPIDER/BONNIE),
@@ -780,6 +829,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       enterSelectGame()
       return
     }
+    if (shouldShowBoard(tournament)) { enterBoard(); return } // 115c's own CALL 18d8, before the next race's own intro
     startNextRace()
     paintMenu()
   }
@@ -838,7 +888,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     if (phase === 'OPTIONS') { optionsKey(e); return }
     if (phase === 'QUIT') return // real DOS is gone at this point; nothing left to read
     if (phase === 'LOADING') return
-    if (phase === 'SELECT_GAME' || phase === 'ONE_PLAYER_GAME' || phase === 'CHAR_SELECT') return // each phase's own dedicated reader(s) + menuReleaseTracker own its input entirely
+    if (phase === 'SELECT_GAME' || phase === 'ONE_PLAYER_GAME' || phase === 'CHAR_SELECT' || phase === 'BOARD') return // each phase's own dedicated reader(s) + menuReleaseTracker own its input entirely
     if (phase === 'PRESS_ANY_KEY') { confirm(); return } // 0C15: any key click
     if (e.code === 'Space' || e.code === 'Enter') confirm()
   }
@@ -873,9 +923,11 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       if (titleRafId != null) cancelAnimationFrame(titleRafId)
       if (twoItemRafId != null) cancelAnimationFrame(twoItemRafId)
       if (charSelectRafId != null) cancelAnimationFrame(charSelectRafId)
+      if (boardRafId != null) cancelAnimationFrame(boardRafId)
       titleReader?.dispose()
       twoItemReaders?.p1.dispose(); twoItemReaders?.p2.dispose()
       charSelectReader?.dispose()
+      boardReaders?.p1.dispose(); boardReaders?.p2.dispose()
       menuReleaseTracker.dispose()
     },
     // debugging/testing hooks: drive the flow without a real keyboard
@@ -926,6 +978,16 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
         if (r.exit) { leaveCharSelect(r.exit, r.character); return }
       }
       paintCharSelect()
+    },
+    // Same fast-forward precedent, for BOARD (P3's first item): `input` is
+    // `{ bits, escReleased, otherReleased }`. A no-op outside that phase.
+    forceBoardSteps: (n, input) => {
+      if (phase !== 'BOARD') return
+      for (let i = 0; i < n; i++) {
+        const r = boardStep(boardState, input)
+        if (r.exit) { leaveBoard(); return }
+      }
+      paintBoard()
     },
   }
 }

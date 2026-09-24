@@ -8,9 +8,10 @@
 // legible and centred, not measured against a DOSBox frame. The title screen (the one screen most
 // likely to get a future live pixel-diff, per PLAN-ENGINE.md's own note) keeps LOGO and the
 // INTRO.CHR showcase frame at plausible, centred positions for exactly that reason.
-import { CHR_TABLE } from '../formats/chr.js'
+import { CHR_TABLE, caseImage } from '../formats/chr.js'
 import { drawString, drawStringCentred, blitChr, MENU_VIEW } from '../render/menuView.js'
-import { CHARACTER_NAMES, CHARACTER_SKILLS, trackName, OPTIONS_MENU_LINES, OPTIONS_FOOTER, OPTIONS_TITLE, SMOOTHNESS_LABELS, SOUND_LABELS, CREDITS_LINES, REDEFINE_GROUP_LABELS, REDEFINE_SLOT_LABELS, REDEFINE_DISPLAY_CHAR, REDEFINE_DISPLAY_CHAR_DEFAULT, TITLE_COPYRIGHT, TITLE_CLASS_NAMES, SELECT_GAME_TITLE, ONE_PLAYER_LABEL, TWO_PLAYER_LABEL, GAME_LABEL, ONE_PLAYER_ITEM_LABELS } from '../data/frontend-tables.js'
+import { blitTransparent } from '../render/blit.js'
+import { CHARACTER_NAMES, CHARACTER_SKILLS, trackName, OPTIONS_MENU_LINES, OPTIONS_FOOTER, OPTIONS_TITLE, SMOOTHNESS_LABELS, SOUND_LABELS, CREDITS_LINES, REDEFINE_GROUP_LABELS, REDEFINE_SLOT_LABELS, REDEFINE_DISPLAY_CHAR, REDEFINE_DISPLAY_CHAR_DEFAULT, TITLE_COPYRIGHT, TITLE_CLASS_NAMES, SELECT_GAME_TITLE, ONE_PLAYER_LABEL, TWO_PLAYER_LABEL, GAME_LABEL, ONE_PLAYER_ITEM_LABELS, ORDER_TABLE, BOARD_ICON_POSITIONS } from '../data/frontend-tables.js'
 import { CONTROL_NAME } from '../formats/globaldata.js'
 
 function rec(name) {
@@ -130,6 +131,27 @@ export function drawChampion(buf, arena, { playerName }) {
   blitChr(buf, arena, cup, 0, (MENU_VIEW.w - cup.width) >> 1, 40)
   drawStringCentred(buf, arena, rec('FONT2.CHR'), 'CHAMPIONSHIP WINNER!!', 90)
   drawStringCentred(buf, arena, rec('FONT1.CHR'), playerName, 120)
+}
+
+/** P3's first item: DrawTournamentBoard 1000:18d8 (docs/engine.md §9ay, src/frontend/board.js).
+ * `raceIndex`: tournament.js's own `state.raceIndex`, the race about to run -- one MINATURE.CHR
+ * icon is drawn per race completed so far, `ORDER_TABLE[1..raceIndex]` (the qualifier, entry 0,
+ * never gets one -- `FUN_1000_198e`'s own pre-increment). `blinkOn`: whether the NEWEST icon (the
+ * one just unlocked, index `raceIndex`) is currently visible -- `board.js`'s own blink state; the
+ * case background position (`BOARD_CASE_Y`) is hand-placed like every other screen in this file,
+ * not measured against a DOSBox frame -- the icons themselves use the real `DS:0312` positions. */
+const BOARD_CASE_Y = 24
+export function drawTournamentBoard(buf, arena, { raceIndex, blinkOn = true } = {}) {
+  const words = rec('WORDS.CHR')
+  blitChr(buf, arena, words, 0, (MENU_VIEW.w - words.width) >> 1, 8)
+  blitTransparent(buf, MENU_VIEW.w, MENU_VIEW.h, 0, BOARD_CASE_Y, caseImage(arena), { colorKey: -1 })
+  const miniature = rec('MINATURE.CHR')
+  for (let i = 1; i <= raceIndex; i++) {
+    if (i === raceIndex && !blinkOn) continue // the newest icon blinks
+    const { round, race } = ORDER_TABLE[i]
+    const { x, y } = BOARD_ICON_POSITIONS[i - 1]
+    blitChr(buf, arena, miniature, (round - 1) + (race - 1) * 8, x, y)
+  }
 }
 
 /** P1's third boot item: RunOptionsScreenWithSettingsDat 1000:2770 (GOAL-DOS-PARITY.md,

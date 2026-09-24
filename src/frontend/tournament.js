@@ -119,6 +119,19 @@ export function currentRace(state) {
   return { ...r, name: trackName(r.round, r.race) || null }
 }
 
+/**
+ * Whether the tournament board screen shows before the NEXT race (`SetupTournamentRace 1000:115c`,
+ * docs/engine.md §9ay): Challenge format only (`[3f8]==1`, two-car/H2H, skips the `CALL 18d8`
+ * entirely), never before the qualifier (`state.raceIndex===0`, `18d8`'s own internal early RET),
+ * never before the very last race (`state.raceIndex===ORDER_TABLE_LAST_INDEX`, the champion
+ * decider). Applies equally to a pending bonus race: `115c` computes round/race from `[343]`
+ * first but still gates the `CALL 18d8` on the SAME (already-advanced) `[28c1]`, so a bonus race
+ * triggered one race before the end skips the board too, exactly like a regular one would.
+ */
+export function shouldShowBoard(state) {
+  return state.format !== 'twocar' && state.raceIndex !== 0 && state.raceIndex !== ORDER_TABLE_LAST_INDEX
+}
+
 function firstUntaken(state, n) {
   const picks = []
   for (const slot of state.roster) {

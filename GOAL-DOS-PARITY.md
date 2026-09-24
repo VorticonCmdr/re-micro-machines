@@ -120,7 +120,7 @@ Don't read `docs/engine.md` from start to finish. It is 6,000 lines. Jump to sec
 ## Regression suite (run before every commit; all must pass)
 
 ```bash
-for s in catalog lz chrtable tables car intro codecard options title mainmenu charselect step trace ai play sound rounds finish twocar tournament \
+for s in catalog lz chrtable tables car intro codecard options title mainmenu charselect board step trace ai play sound rounds finish twocar tournament \
          menu screens opl-toggle smoothness si2 live smoke; do npm run -s $s || echo "FAIL $s"; done
 npm run build
 ```
@@ -223,9 +223,16 @@ docs, (6) commit.
   into any reachable screen, since two-human H2H itself is P4.
 
 ### P3: tournament screens and rules
-- [ ] **Tournament board** (`1000:18d8`): the `CASE.CHR` map with `MINATURE` icons at the
+- [x] **Tournament board** (`1000:18d8`): the `CASE.CHR` map with `MINATURE` icons at the
   positions in `DS:0312` (26 words, §9t). It is gated on `[43A]=1`. Find exactly when it is shown
   in `RunTournamentLoop 1000:10a0`.
+  **Done, §9ay: shown from `SetupTournamentRace 1000:115c`, not `10a0` directly -- gated on
+  Challenge format only (`[3F8]!=1`, `115c`'s own call-site check, before `18d8`'s own internal
+  `[28C1]==0`/`[43A]` gates), never before the very last race. Icon positions/frames confirm §9t's
+  own formula byte-checked against the live table; the newest icon blinks (`FUN_1000_17ff`,
+  simplified to the existing `AWAIT_RELEASE` idiom). `src/frontend/board.js`,
+  `tools/check-board.mjs`. Not ported: the round-9 "reveal" branch, which reads past
+  `MINATURE.CHR`'s own real frame table in the original (a benign OOB read, not pixel-replicated).**
 - [ ] **Interactive opponent picker** (`FUN_1000_1a4a`, pick 3 after passing the Challenge
   qualifier). This replaces the auto-pick in `tournament.js:131`. Note the known trap in §9k: the
   qualifier itself is a 4-car race and needs 3 opponents *before* the picker exists. Find out
