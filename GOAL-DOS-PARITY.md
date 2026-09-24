@@ -336,7 +336,7 @@ commits.
   `src/render/raceView.js.bak2`, and anything else `git ls-files '*.bak*'` lists). The baseline
   commit keeps them in history. First check that nothing imports them. Do this item first; it is
   a one-commit cleanup.
-- [ ] D5. Add a line to `CLAUDE.md`'s "Working rules": the project is a git repository, with one
+- [x] D5. Add a line to `CLAUDE.md`'s "Working rules": the project is a git repository, with one
   commit per finished item and no `.bak` copies.
 
 ## Part F: the final acceptance test (pixel diff of the front end)

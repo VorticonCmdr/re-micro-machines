@@ -117,3 +117,4 @@ The developers left labelled data and menu text in the clear; these are the fast
 - Everything in `game/` is the read-only source of truth. `SETTINGS.DAT` is runtime state; `MICROU.EXE` is derived and regenerable from `MICRO.EXE` + `UNP.EXE`.
 - Test a format hypothesis against the bytes before writing it down (the `.MAP` refutation above took one script), and record refutations too so they are not re-derived.
 - When findings grow beyond this file, split them into `docs/` by subsystem as the sibling projects do (`../Gods/CLAUDE.md` is the mature example), keep the evidence tags, and cite `CS:`/`DS:` offsets from `MICROU.EXE`.
+- This is a git repository (`main`, no remote). One commit per finished checklist item (`GOAL-DOS-PARITY.md`); git is the backup, so don't make `.bak`/`.bak2` copies of files being edited.
