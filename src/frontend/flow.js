@@ -44,6 +44,7 @@ import { createSmoothnessGate } from '../engine/smoothness.js'
 import { introInitialState, introStep, smPalette, SCREEN_W as LOGO_W, SCREEN_H as LOGO_H } from '../formats/gfx1.js'
 import { attractInitialState, attractStep } from './attract.js'
 import { twoItemMenuInitialState, twoItemMenuStep } from './frontMenu.js'
+import { charSelectInitialState, charSelectStep } from './charSelect.js'
 import { composeCodeCardScreen, fontbinPalette, targetFromTickByte, moveCursor, CURSOR_X0, CURSOR_Y0, CODECARD_W, CODECARD_H } from '../formats/fontbin.js'
 import { cycleControl, cycleSound, cycleSmoothness, advanceCheatCursor, redefineKeyAccepted, redefineGroupOf, redefineSlotInGroup, REDEFINE_TOTAL_SLOTS, REDEFINE_SLOTS_PER_GROUP } from './options.js'
 
@@ -452,14 +453,87 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       if (exit === 'cancel') { enterSelectGame(); return } // 0220's own CLC;RET after CALL 02e0 -- straight back to SELECT GAME, no tune restart, no title
       // selection 1 = LEFT = Head to Head vs CPU (0fbf); 2 = RIGHT = Challenge (102b)
       tournament = initTournament({ format: selection === 1 ? 'twocar' : 'challenge' })
-      phase = 'CHAR_SELECT'; charWho = 'player'; charCursor = lastPick.player
       subMenuMusic(sound) // docs/sound.md tune table: "2 all sub-menus" -- confirmed live on this screen
-      paintMenu()
+      enterCharSelect(lastPick.player, 'player')
     })
   }
 
+  // P2's third item (GOAL-DOS-PARITY.md, src/frontend/charSelect.js): RunCharacterSelectMenuTune2
+  // 1000:09e0, the real scrolling carousel. `[0x1080]=0x137b` (set by the CALLER, 0fbf/102b) means
+  // this screen reads ONLY P1's own reader slot -- unlike SELECT_GAME/ONE_PLAYER_GAME's combined
+  // both-players byte.
+  let charSelectState = null
+  let charSelectReader = null
+  let charSelectRafId = null
+  let charSelectLast = 0
+  let charSelectAcc = 0
+  function rosterBytes() {
+    return tournament.roster.map((s) => s.index | (s.taken ? 0x40 : 0) | (s.eliminated ? 0x20 : 0))
+  }
+  function paintCharSelect() {
+    menuBuf.fill(0)
+    drawCharacterSelect(menuBuf, arena, { scroll: charSelectState.scroll, cursor: charSelectState.cursor, roster: rosterBytes(), blinkOn: charSelectState.blinkOn, prompt: charWho === 'opponent' ? 'WHO DO YOU WANT TO RACE ?' : 'WHO DO YOU WANT TO BE ?' })
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
+    statusEl.textContent = 'CHAR_SELECT'
+  }
+  function enterCharSelect(startIndex, who) {
+    canvas.width = MENU_VIEW.w
+    canvas.height = MENU_VIEW.h
+    phase = 'CHAR_SELECT'
+    charWho = who
+    charSelectState = charSelectInitialState(startIndex, rosterBytes())
+    charSelectReader = createKeyboardReader(p1Keys(), window)
+    menuReleaseTracker.reset()
+    paintCharSelect()
+    charSelectLast = performance.now()
+    charSelectAcc = 0
+    charSelectRafId = requestAnimationFrame(charSelectTick)
+  }
+  function charSelectTick(now) {
+    if (phase !== 'CHAR_SELECT') return
+    charSelectAcc += Math.min(now - charSelectLast, 250)
+    charSelectLast = now
+    while (charSelectAcc >= INTRO_TICK_MS) {
+      charSelectAcc -= INTRO_TICK_MS
+      const bits = charSelectReader.read()
+      const { escReleased } = menuReleaseTracker.read()
+      const r = charSelectStep(charSelectState, { bits, escReleased }, rosterBytes())
+      if (r.exit) { leaveCharSelect(r.exit, r.character); return }
+    }
+    paintCharSelect()
+    charSelectRafId = requestAnimationFrame(charSelectTick)
+  }
+  /** 09e0's own STC (ESC) returns straight to its caller (0fbf/102b), which -- per their own
+   * `if (!CF) {...}` guard -- falls straight through to RET without drawing anything else,
+   * landing back at 0220's own CLC;RET chain: SELECT GAME, same as every other cancel this
+   * session traced (§9aw). A confirm reuses tournament.js's own existing pick functions. */
+  function leaveCharSelect(exit, character) {
+    if (charSelectRafId != null) { cancelAnimationFrame(charSelectRafId); charSelectRafId = null }
+    charSelectReader?.dispose(); charSelectReader = null
+    if (exit === 'cancel') { enterSelectGame(); return }
+    if (charWho === 'player') {
+      pickPlayerCharacter(tournament, character)
+      lastPick.player = character
+      if (tournament.format === 'twocar') {
+        // 0FBF's second 09E0: "WHO DO YOU WANT TO RACE ?", starting on the last opponent pick and
+        // stepping on (the carousel's remembered direction, LEFT by default) past a taken entry.
+        let opp = lastPick.opponent
+        while (tournament.roster[opp].taken) opp = (opp + 1) % 11
+        enterCharSelect(opp, 'opponent')
+        return
+      }
+    } else {
+      if (!pickOpponentCharacter(tournament, character)) { enterCharSelect(character, 'opponent'); return } // defensive -- charSelectStep's own taken-guard should make this unreachable
+      lastPick.opponent = character
+    }
+    // 0C15: "PRESS ANY KEY TO START" -- any key, or ~10 s (0x2BC ticks) with no input.
+    phase = 'PRESS_ANY_KEY'
+    clearTimeout(pressAnyKeyTimer)
+    pressAnyKeyTimer = setTimeout(() => { if (phase === 'PRESS_ANY_KEY') confirm() }, (0x2bc * 1000) / 70)
+    paintMenu()
+  }
+
   let phase = introState ? 'LOGO' : fontbinBytes ? 'CODECARD' : 'OPTIONS'
-  let charCursor = 0
   let charWho = 'player' // 'player' ("WHO DO YOU WANT TO BE ?") or 'opponent' (H2H: "WHO DO YOU WANT TO RACE ?")
   // The select screens start on the session's last picks: statics [3F4]=10 / [3F6]=9 (SPIDER/BONNIE),
   // rewritten by each pick (1001/1018/1087) -- docs/engine.md §9an.
@@ -474,8 +548,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
 
   function paintMenu() {
     menuBuf.fill(0)
-    if (phase === 'CHAR_SELECT') drawCharacterSelect(menuBuf, arena, { cursor: charCursor, taken: tournament.roster.filter((r) => r.taken).map((r) => r.index), prompt: charWho === 'opponent' ? 'WHO DO YOU WANT TO RACE ?' : 'WHO DO YOU WANT TO BE ?' })
-    else if (phase === 'PRESS_ANY_KEY') drawPressAnyKey(menuBuf, arena)
+    if (phase === 'PRESS_ANY_KEY') drawPressAnyKey(menuBuf, arena)
     else if (phase === 'RACE_INTRO') drawRaceIntro(menuBuf, arena, currentRace(tournament))
     else if (phase === 'RESULTS') drawResults(menuBuf, arena, { standings: lastStandings, passed: lastPassed })
     else if (phase === 'OUTCOME') drawOutcome(menuBuf, arena, { message: OUTCOME_MESSAGES[tournament.lastOutcome] })
@@ -721,32 +794,10 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
 
   function confirm() {
     if (phase === 'LOGO') return // a key never skips the intro -- see the P1 header comment above
-    // TITLE/SELECT_GAME/ONE_PLAYER_GAME's own input is driven entirely by their own dedicated
-    // reader(s) + the shared menuReleaseTracker (enterTitle/enterTwoItemMenu, above), not by this
-    // function -- entering ONE_PLAYER_GAME's own confirm already sets phase='CHAR_SELECT' itself.
-    if (phase === 'CHAR_SELECT') {
-      if (tournament.roster[charCursor].taken) return // fire on a taken character is ignored (0AB5-0ABB)
-      if (charWho === 'player') {
-        pickPlayerCharacter(tournament, charCursor)
-        lastPick.player = charCursor
-        if (tournament.format === 'twocar') {
-          // 0FBF's second 09E0: "WHO DO YOU WANT TO RACE ?", starting on the last opponent pick and
-          // stepping on (the carousel's remembered direction, RIGHT by default) past a taken entry.
-          charWho = 'opponent'
-          charCursor = lastPick.opponent
-          while (tournament.roster[charCursor].taken) charCursor = (charCursor + 1) % 11
-          paintMenu()
-          return
-        }
-      } else {
-        if (!pickOpponentCharacter(tournament, charCursor)) return
-        lastPick.opponent = charCursor
-      }
-      // 0C15: "PRESS ANY KEY TO START" -- any key, or ~10 s (0x2BC ticks) with no input.
-      phase = 'PRESS_ANY_KEY'
-      clearTimeout(pressAnyKeyTimer)
-      pressAnyKeyTimer = setTimeout(() => { if (phase === 'PRESS_ANY_KEY') confirm() }, (0x2bc * 1000) / 70)
-    } else if (phase === 'PRESS_ANY_KEY') {
+    // TITLE/SELECT_GAME/ONE_PLAYER_GAME/CHAR_SELECT's own input is driven entirely by their own
+    // dedicated reader(s) + the shared menuReleaseTracker (enterTitle/enterTwoItemMenu/
+    // enterCharSelect, above), not by this function.
+    if (phase === 'PRESS_ANY_KEY') {
       clearTimeout(pressAnyKeyTimer)
       startNextRace()
       if (phase !== 'RACE_INTRO') return // the H2H qualifier went straight into the race
@@ -787,13 +838,9 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     if (phase === 'OPTIONS') { optionsKey(e); return }
     if (phase === 'QUIT') return // real DOS is gone at this point; nothing left to read
     if (phase === 'LOADING') return
-    if (phase === 'SELECT_GAME' || phase === 'ONE_PLAYER_GAME') return // twoItemTick's own readers + menuReleaseTracker own this phase's input entirely
+    if (phase === 'SELECT_GAME' || phase === 'ONE_PLAYER_GAME' || phase === 'CHAR_SELECT') return // each phase's own dedicated reader(s) + menuReleaseTracker own its input entirely
     if (phase === 'PRESS_ANY_KEY') { confirm(); return } // 0C15: any key click
-    if (phase === 'CHAR_SELECT' && e.code === 'Escape') { enterSelectGame(); return } // ESC at a select -> SELECT GAME (0220's own CLC;RET chain, no tune restart)
-    if (phase === 'CHAR_SELECT' && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) { charCursor = (charCursor + (e.code === 'ArrowLeft' ? 10 : 1)) % 11; paintMenu(); return } // the carousel's own LEFT/RIGHT
-    if (e.code === 'ArrowUp') { if (phase === 'CHAR_SELECT') charCursor = (charCursor + 10) % 11; paintMenu() }
-    else if (e.code === 'ArrowDown') { if (phase === 'CHAR_SELECT') charCursor = (charCursor + 1) % 11; paintMenu() }
-    else if (e.code === 'Space' || e.code === 'Enter') confirm()
+    if (e.code === 'Space' || e.code === 'Enter') confirm()
   }
   window.addEventListener('keydown', onKeydown)
   function onKeyup(e) { introHeldKeys.delete(e.code) }
@@ -825,8 +872,10 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       if (introRafId != null) cancelAnimationFrame(introRafId)
       if (titleRafId != null) cancelAnimationFrame(titleRafId)
       if (twoItemRafId != null) cancelAnimationFrame(twoItemRafId)
+      if (charSelectRafId != null) cancelAnimationFrame(charSelectRafId)
       titleReader?.dispose()
       twoItemReaders?.p1.dispose(); twoItemReaders?.p2.dispose()
+      charSelectReader?.dispose()
       menuReleaseTracker.dispose()
     },
     // debugging/testing hooks: drive the flow without a real keyboard
@@ -835,7 +884,6 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     getCars: () => currentCars,
     getRaceState: () => currentRaceState,
     confirm,
-    moveCursor: (dir) => onKeydown({ code: dir > 0 ? 'ArrowDown' : 'ArrowUp' }),
     // the synchronous fast-forward automated/backgrounded-tab tests rely on (play.js's own
     // `forceSteps` precedent, CLAUDE.md rule 7): drives the LOGO phase's real introStep directly,
     // bypassing requestAnimationFrame's own real-time pacing (and its throttling in a backgrounded
@@ -868,6 +916,16 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
         if (r.exit) { leaveTwoItemMenu(r.exit, r.selection); return }
       }
       twoItemPaint()
+    },
+    // Same fast-forward precedent, for CHAR_SELECT: `input` is `{ bits, escReleased }`. A no-op
+    // outside that phase.
+    forceCharSelectSteps: (n, input) => {
+      if (phase !== 'CHAR_SELECT') return
+      for (let i = 0; i < n; i++) {
+        const r = charSelectStep(charSelectState, input, rosterBytes())
+        if (r.exit) { leaveCharSelect(r.exit, r.character); return }
+      }
+      paintCharSelect()
     },
   }
 }

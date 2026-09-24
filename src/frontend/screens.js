@@ -66,21 +66,39 @@ export function drawOnePlayerGameMenu(buf, arena, { selection = 0 } = {}) {
   drawStringCentred(buf, arena, rec('FONT2.CHR'), SELECT_GAME_TITLE, 0xb6)
 }
 
-/** 09E0's select screen, laid out as a list (the real one is a scrolling portrait carousel, not
- * ported). `prompt`: 'WHO DO YOU WANT TO BE ?' (DS:020F) for the player's own pick, 'WHO DO YOU
- * WANT TO RACE ?' (DS:0227) for the Head-to-Head CPU opponent. Taken characters are marked and
- * can't be picked. */
-export function drawCharacterSelect(buf, arena, { cursor = 0, taken = [], prompt = 'WHO DO YOU WANT TO BE ?' } = {}) {
+// P2's third item: RunCharacterSelectMenuTune2 1000:09e0, the real scrolling FCNORMAL.CHR
+// carousel (src/frontend/charSelect.js). `scroll`: the carousel's own raw position (0..0x2C0),
+// `roster`: tournament.js's roster array (raw byte values -- 0-10 free, |0x40 taken). Each of the
+// 11 faces' own screen X is `pos - 0xD8` (1000:0d1f), cyclic from `scroll`; `blitChr` clips
+// off-screen ones automatically, so all 11 are drawn unconditionally, matching the original's own
+// clip-in-the-blitter approach rather than pre-filtering. FCNORMAL's own frame semantics
+// (`FUN_1000_0db0`, re-disassembled for this item): frame = the roster byte itself (0-10, the
+// character's own portrait) once its `0x40` (taken) bit is stripped to frame 13, matching the
+// real function's own `uVar3=0xd` branch -- there is no separate `taken` list parameter needed,
+// the roster array already encodes it. `blinkOn`: the picked face flashes between its own
+// portrait and the "taken" pose (frame 13) during the 5-blink commit sequence -- a simplified
+// stand-in for `0db0`'s own more intricate bit-toggled blink frame math, not pixel-ported (this
+// file's own usual caveat). `prompt`: 'WHO DO YOU WANT TO BE ?' (DS:020F) for the player's own
+// pick, 'WHO DO YOU WANT TO RACE ?' (DS:0227) for the Head-to-Head CPU opponent.
+const CAROUSEL_FACE_Y = 90
+function faceFrame(rosterByte) {
+  if (rosterByte & 0x40) return 13 // taken
+  return rosterByte & 0x1f // the plain 0-10 portrait once the flag bits are stripped
+}
+export function drawCharacterSelect(buf, arena, { scroll = 0, cursor = 0, roster = CHARACTER_NAMES.map((_, i) => i), blinkOn = false, prompt = 'WHO DO YOU WANT TO BE ?' } = {}) {
   drawStringCentred(buf, arena, rec('FONT2.CHR'), prompt, 8)
-  CHARACTER_NAMES.forEach((name, i) => {
-    const y = 30 + i * 14
-    // The real font (BlitGlyph8xH, 1000:0999) only has glyphs for 0-9/A-Z/!/? -- no arrow or
-    // bullet character exists to render a cursor with, so this substitutes a plain letter marker
-    // rather than silently drawing nothing (glyphFrame's own null-glyph behaviour, confirmed by
-    // this milestone's own check-menu.mjs test, otherwise makes an unsupported marker invisible).
-    const marker = i === cursor ? 'X' : taken.includes(i) ? 'O' : ' '
-    drawString(buf, arena, rec('FONT1.CHR'), `${marker} ${name.padEnd(8)}${CHARACTER_SKILLS[i]}`, 24, y)
-  })
+  const face = rec('FCNORMAL.CHR')
+  let pos = scroll
+  for (let i = 0; i < roster.length; i++) {
+    const centred = pos === 0x140
+    const frame = centred && blinkOn ? 13 : faceFrame(roster[i])
+    blitChr(buf, arena, face, frame, pos - 0xd8, CAROUSEL_FACE_Y)
+    pos += 64
+    if (pos > 0x2bf) pos -= 0x2c0
+  }
+  if (cursor <= 10) {
+    drawStringCentred(buf, arena, rec('FONT1.CHR'), `${CHARACTER_NAMES[cursor]} ${CHARACTER_SKILLS[cursor]}`, CAROUSEL_FACE_Y + face.height + 8)
+  }
 }
 
 /** 0C15's "PRESS ANY KEY TO START" (DS:0241), between the select screens and the first race. */

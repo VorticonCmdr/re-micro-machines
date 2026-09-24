@@ -120,7 +120,7 @@ Don't read `docs/engine.md` from start to finish. It is 6,000 lines. Jump to sec
 ## Regression suite (run before every commit; all must pass)
 
 ```bash
-for s in catalog lz chrtable tables car intro codecard options title mainmenu step trace ai play sound rounds finish twocar tournament \
+for s in catalog lz chrtable tables car intro codecard options title mainmenu charselect step trace ai play sound rounds finish twocar tournament \
          menu screens opl-toggle smoothness si2 live smoke; do npm run -s $s || echo "FAIL $s"; done
 npm run build
 ```
@@ -215,10 +215,12 @@ docs, (6) commit.
   for fire to be released after each pick, and **cancel after ≥ `0x7D0` idle ticks (about 28.6 s) at
   `1000:03CE`**. Music: the main menu keeps tune 1 (`0220-0237`); tune 2 starts at the select
   (`0A06-0A1D`), §9an 8. Done, §9aw: `src/frontend/frontMenu.js`, `tools/check-mainmenu.mjs`.
-- [ ] **Character select as a carousel** (`1000:09e0`). It shows 11 `FCNORMAL` faces, names at
+- [x] **Character select as a carousel** (`1000:09e0`). It shows 11 `FCNORMAL` faces, names at
   `DS:0258`, skills at `DS:02B1`, and a 13-step eased scroll using `DS:0185`. It replaces the
-  list layout at `screens.js:43`. The handicap question (`1000:0b51`, characters 0–2) appears
-  only in two-human H2H.
+  list layout at `screens.js:43`. Done, §9ax: `src/frontend/charSelect.js`,
+  `tools/check-charselect.mjs`. The handicap question (`1000:0b51`, characters 0–2) appears
+  only in two-human H2H -- its own gating logic is closed as `[STATIC]` (§9ax) but not wired
+  into any reachable screen, since two-human H2H itself is P4.
 
 ### P3: tournament screens and rules
 - [ ] **Tournament board** (`1000:18d8`): the `CASE.CHR` map with `MINATURE` icons at the

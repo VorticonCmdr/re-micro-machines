@@ -38,12 +38,13 @@ page then offers "Open game folder…" (or a drag-and-drop zone) to read your ow
 disk via the File System Access API, without ever uploading it anywhere.
 
 Controls: arrow keys to steer/throttle, Space (or S) to fire — remappable in `game.html`'s own
-GAME OPTIONS screen (F5), matching the original's real redefine-keys screen. The title screen and
-`game.html`'s own SELECT GAME / ONE PLAYER GAME menus read the same LEFT/RIGHT/FIRE keys your
-copy's `SETTINGS.DAT` configures (both players' own bindings work at every menu level, exactly as
-the original does — see `docs/engine.md` §9av/§9aw); the character-select screen and everything
-after it still use plain arrow keys and Space/Enter, until `GOAL-DOS-PARITY.md`'s remaining P2/P3
-items land.
+GAME OPTIONS screen (F5), matching the original's real redefine-keys screen. `game.html`'s entire
+boot chain through character select — the title screen, SELECT GAME / ONE PLAYER GAME, and the
+character-select carousel — reads the same LEFT/RIGHT/FIRE keys your copy's `SETTINGS.DAT`
+configures (both players' own bindings work at every menu level except character select, which is
+P1 only, exactly as the original does — see `docs/engine.md` §9av-§9ax); everything after the
+character picks still uses plain arrow keys and Space/Enter, until `GOAL-DOS-PARITY.md`'s
+remaining P3 items land.
 
 ## Setting up the game files for development
 
@@ -61,7 +62,13 @@ and stays local to your machine.
   diagonal shine, timed and skippable exactly as the original: a mouse click, not a key), and the
   code-card copy-protection screen (also wired into `game.html`'s own boot sequence now -- the
   live target column/row, the symbol grid, cursor movement, and the two-round accept flow; both
-  real compares are patched in this copy, so ENTER always advances, exactly as it does in DOS).
+  real compares are patched in this copy, so ENTER always advances, exactly as it does in DOS),
+  the real title attract loop (a 9-class `INTRO.CHR` showcase, no idle timeout), the real
+  two-level SELECT GAME / ONE PLAYER GAME menu, and the real character-select carousel (11
+  `FCNORMAL.CHR` faces on a real eased scroll, a taken character skipped/rejected purely through
+  the roster's own shared byte encoding, a real 5-blink commit animation) -- closing out the
+  entire boot chain from `game.html`'s own launch to the character picks, all cross-checked live
+  against real DOSBox captures (`GOAL-DOS-PARITY.md` P1/P2, `docs/engine.md` §9as-§9ax).
 - **The race engine**: 35 Hz fixed-timestep physics (steering, velocity, collisions, terrain
   hazards per round, checkpoints/laps, airborne/ramps, the full car state machine), the drone AI,
   and per-round camera — all reproduced from the disassembly, not approximated.

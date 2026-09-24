@@ -6484,3 +6484,85 @@ New open items, not blocking: `UNKNOWN_0eba_0400_menu_calls` (`RunOnePlayerGameM
 likely roster/tournament-state boilerplate `tournament.js`'s own `initTournament()` already covers
 functionally, but not confirmed byte-for-byte); `UNKNOWN_menu_pixel_diff` (same shape as every
 other screen's own pixel-diff item, left for Part F).
+
+## 9ax. P2's third and last item: the real character select carousel (2026-09-24)
+
+Full re-disassembly of `RunCharacterSelectMenuTune2 1000:09e0` (131 instructions), its own scroll-
+step helper `FUN_1000_0cd3` (the eased-scroll stepper), `DrawCharacterSelectGrid 1000:0d1f` (which
+derives the "centred" character from the raw scroll position, not the reverse), `FUN_1000_0db0`
+(the face-frame math), and `FUN_1000_0b51` (the handicap question's own gate). This closes out
+**all of P2** -- the boot chain now ends with the real title screen, real two-level menu, and real
+carousel before the tournament itself begins. Ported into `src/frontend/flow.js`'s existing
+`CHAR_SELECT` phase (now a real-time carousel, matching the same driver pattern as every other P2
+phase), pure in the new `src/frontend/charSelect.js`; proven in `tools/check-charselect.mjs`
+(`npm run charselect`).
+
+**The roster-byte encoding IS the taken/skip mechanism -- there is no separate "if taken" check
+anywhere in this function.** `tournament.js`'s own roster array already stores each slot's OWN
+identity byte (`index`, `|0x40` once taken, `|0x20` once eliminated -- CLAUDE.md's own long-
+established convention, re-confirmed live in the disassembly this session). `DrawCharacterSelect
+Grid` writes this SAME byte into `[0x160]` (the "centred" value) whenever a roster entry's own
+cyclic position lands on `0x140` -- so a taken/eliminated slot's own value is simply > 10, and
+every consumer that gates on `<=0xA` (the entry-time auto-skip loop `1000:0a65-73`, and the fire-
+confirm test `1000:0ab8`) treats it as invalid for free, with no dedicated branch. This was the
+key insight that resolved an apparent discrepancy: the flattened M3.9 port's own comment cited
+`0AB5-0ABB` as "fire on a taken character is ignored", but that address range is actually the
+BOUNDS check (`CMP AX,0xA / JA`), not a taken-specific test -- the M3.9 session's own citation was
+imprecise, now corrected. `flow.js`'s `rosterBytes()` derives this exact byte view live from
+`tournament.js`'s own roster array every tick, so a `pickPlayerCharacter`/`pickOpponentCharacter`
+call (unchanged, reused as-is) immediately makes that slot invisible to the carousel's own logic
+the very next frame, with no separate synchronisation step.
+
+**The 13-step ease table (DS:0185, re-read live) sums to exactly 64:** `[2,2,2,2,4,4,4,4,8,8,8,8,8]`
+-- 4 steps of 2px, 4 of 4px, 5 of 8px, an accelerating ease-in that speeds up as it approaches the
+next slot. `0cd3`'s own exit test is `while (cumulative < 0x40)`, so the 13th step lands exactly on
+the boundary with nothing left over. LEFT (`0x80`) takes the "add" branch (scroll increases,
+wrapping at `0x2C0`=704=11×64), RIGHT (`0x40`) the "subtract" branch -- confirmed live in the
+browser that this makes the INDEX move the opposite way a first guess might expect (RIGHT from
+SPIDER(10) lands on WALTER(0), i.e. index+1 mod 11, not index-1) -- exactly what the disassembly's
+own `BX=1`-for-LEFT/"add" mapping predicts, once traced through rather than assumed.
+
+**Two distinct "wait" mechanisms, not one, confirmed by their own exact positions in the
+disassembly.** Unlike `RunTwoItemMenu` (P2's second item, which re-enters its own release-wait
+after EVERY selection change), this carousel waits for a held fire to release only ONCE, at entry
+(`1000:0a4c-0a5d`) -- a LEFT/RIGHT press during the main loop never re-triggers it. And unlike the
+menu's own re-drawn-and-re-waited direction changes, a real user LEFT/RIGHT press here always
+settles after exactly one slot (13 ticks) regardless of whether the landed character is valid;
+only the ENTRY-time skip loop (`1000:0a65-73`) keeps auto-scrolling past an invalid one.
+`charSelect.js`'s own `ENTRY_SKIP` vs `SCROLLING` phases, sharing the identical substep code, port
+this distinction exactly -- proven by a dedicated test that a taken STARTING character auto-skips
+while a taken character reached by a real LEFT/RIGHT press just sits there, unconfirmable by fire.
+
+**The 5-blink commit sequence, its own exact tick timing re-derived.** `1000:0ad7-0af9`: the pose
+bit is toggled, then redrawn, THEN a 16-tick wait (`[0x2]>0xF`) -- toggle-then-wait, repeated 5
+times (`CX=5`), so the 5 toggles land at ticks 0/16/32/48/64 relative to the fire press, with the
+final (5th) wait completing at tick 80 with no further toggle -- the commit code runs immediately
+after. `charSelect.js`'s own `BLINKING` phase applies the first toggle synchronously with entry
+(matching the real code's own toggle-before-first-wait order) rather than after the first 16-tick
+wait, a distinction a first draft of this port got backwards and a dedicated test (checking
+`blinkCount===1` immediately after the fire press) catches. The actual bit-toggle math `0db0`
+itself performs (a second, more intricate frame-index encoding for the "flicker between two
+poses" effect) is NOT pixel-ported -- `screens.js`'s own `drawCharacterSelect` flashes the picked
+face between its own portrait and FCNORMAL's "taken" pose (frame 13) instead, a documented, cheap
+stand-in with the same 5-flash cadence.
+
+**`FUN_1000_0b51` (the handicap question), its own gate ported as evidence, not wired to any
+reachable screen.** Characters 0-2 only (WALTER/MIKE/ANNE, `KidModifier`'s first 3 entries), and
+only in a REAL two-human Head to Head (`[0x2656]!=1` four-car AND `[0x265a]!=6` CPU) -- neither
+condition is ever satisfiable by this port's own currently-reachable flows (one-player Challenge is
+always four-car; one-player H2H vs CPU always has `[0x265a]==6`), so `handicapQuestionApplies`
+(`charSelect.js`) is real, cited, teeth-proven `[STATIC]` logic ahead of its own call site, not a
+port gap -- the question SCREEN itself, and its own downstream `KidModifier` handicap effect, are
+two-human H2H's own concern (P4).
+
+**`FCNORMAL.CHR`'s own frame layout, confirmed via `0db0`'s decompile:** frames 0-10 are the 11
+characters' own portraits (the roster's own index value, once its flag bits are stripped), frame
+12 is the eliminated pose (`0x20` bit), frame 13 is the taken pose (`0x40` bit) -- `screens.js`'s
+new `faceFrame()` reproduces this exact 3-way branch.
+
+New open items, not blocking: `UNKNOWN_162_stale_direction` (the entry-skip loop's own scroll
+direction, `[0x162]`, is whatever a PRIOR screen last left it -- a genuinely stale global this port
+does not replicate exactly, defaulting to LEFT/+1 instead, documented in `charSelect.js`'s own
+header); `UNKNOWN_26cf_prompt_blink` (`FUN_1000_0c96`'s own `[0x26CF]`-gated prompt-text flicker
+during IDLE, not ported -- a cosmetic nicety); `UNKNOWN_carousel_pixel_diff` (same shape as every
+other screen's own pixel-diff item, left for Part F).
