@@ -33,19 +33,20 @@ import { createKeyboardReader, createPauseKeyReader, createMenuReleaseTracker, r
 import { createPauseState, updatePause } from '../engine/pause.js'
 import { createRaceEndState, updateRaceEnd } from '../engine/raceEnd.js'
 import { createFadeState, updateFade, applyFade } from '../engine/fade.js'
-import { raceStart, updateEngines, createRaceJitter, raceOverSequence, raceOverStart, raceOverGateCar, titleMusic, subMenuMusic, raceIntroMusic, raceResultMusic, raceOutcomeMusic, championMusic } from '../engine/sound.js'
+import { raceStart, updateEngines, createRaceJitter, raceOverSequence, raceOverStart, raceOverGateCar, titleMusic, subMenuMusic, raceIntroMusic, raceResultMusic, raceOutcomeMusic, championMusic, eliminatedMusic } from '../engine/sound.js'
 import { lapLineSegments, nearestPaletteIndex } from '../engine/lapLine.js'
 import { Si2Player } from '../audio/si2Player.js'
 import { RUFF_TRUCK_TIMES } from '../data/engine-tables.js'
-import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, currentRace, reportRaceResult, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, QUALIFIER_OPPONENTS, OUTCOME } from './tournament.js'
+import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, OUTCOME } from './tournament.js'
 import { CHARACTER_NAMES, OUTCOME_MESSAGES, resolveSmoothnessForPlay } from '../data/frontend-tables.js'
-import { drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
+import { drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawOpponentPanel, drawEliminatedScreen, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
 import { createSmoothnessGate } from '../engine/smoothness.js'
 import { introInitialState, introStep, smPalette, SCREEN_W as LOGO_W, SCREEN_H as LOGO_H } from '../formats/gfx1.js'
 import { attractInitialState, attractStep } from './attract.js'
 import { twoItemMenuInitialState, twoItemMenuStep } from './frontMenu.js'
 import { charSelectInitialState, charSelectStep } from './charSelect.js'
 import { boardInitialState, boardStep } from './board.js'
+import { eliminationInitialState, eliminationStep } from './elimination.js'
 import { composeCodeCardScreen, fontbinPalette, targetFromTickByte, moveCursor, CURSOR_X0, CURSOR_Y0, CODECARD_W, CODECARD_H } from '../formats/fontbin.js'
 import { cycleControl, cycleSound, cycleSmoothness, advanceCheatCursor, redefineKeyAccepted, redefineGroupOf, redefineSlotInGroup, REDEFINE_TOTAL_SLOTS, REDEFINE_SLOTS_PER_GROUP } from './options.js'
 
@@ -473,6 +474,13 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
   function paintCharSelect() {
     menuBuf.fill(0)
+    // The Challenge opponent picker (initial 3-pick OR a single elimination replacement) shows the
+    // 4-face status panel behind the carousel -- 1A4A's own CALL 19F2, drawn once at its own entry
+    // and left on screen (09E0 never clears it) for the WHOLE picking session in the real game; this
+    // port instead redraws it fresh from the CURRENT tournament.opponents on every repaint, which
+    // shows the identical end state (each pick reflected as soon as it's confirmed) without needing
+    // a separate "drawn once, persists" buffer-layering mechanism (docs/engine.md §9az/§9ba).
+    if (charWho === 'challenge-opponent') drawOpponentPanel(menuBuf, arena, { slots: [tournament.playerCharacter, ...tournament.opponents], header: false })
     drawCharacterSelect(menuBuf, arena, { scroll: charSelectState.scroll, cursor: charSelectState.cursor, roster: rosterBytes(), blinkOn: charSelectState.blinkOn, prompt: charWho !== 'player' ? 'WHO DO YOU WANT TO RACE ?' : 'WHO DO YOU WANT TO BE ?' })
     paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
     statusEl.textContent = 'CHAR_SELECT'
@@ -535,8 +543,8 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     } else if (charWho === 'challenge-opponent') {
       pickOpponentCharacter(tournament, character) // defensive check inside -- charSelectStep's own taken-guard already makes a taken confirm unreachable
       lastPick.challengeOpponent = character
-      if (tournament.opponents.length < 3) { enterOpponentPick(); return } // 1A4A's own re-scan loop: the next of the 3 empty slots
-      // all 3 picked: 1A4A's own trailing CALL 0C15 -- the SAME "PRESS ANY KEY TO START" the
+      if (hasEmptyOpponentSlot(tournament)) { enterOpponentPick(); return } // 1A4A's own re-scan loop: the next empty slot (0, 1, 2 or 3 of them -- the initial pick or a single replacement)
+      // every slot filled: 1A4A's own trailing CALL 0C15 -- the SAME "PRESS ANY KEY TO START" the
       // qualifier's own character select already led to once; falls through to the shared tail below.
     } else {
       if (!pickOpponentCharacter(tournament, character)) { enterCharSelect(character, 'opponent'); return } // defensive -- charSelectStep's own taken-guard should make this unreachable
@@ -567,6 +575,58 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   function enterOpponentPick() {
     subMenuMusic(sound)
     enterCharSelect(lastPick.challengeOpponent ?? lastPick.player, 'challenge-opponent')
+  }
+
+  /** P3's third item (GOAL-DOS-PARITY.md, docs/engine.md §9ba): ShowCharacterEliminatedTune6
+   * 1000:16de, the "IS OUT!!" bounce screen shown before the elimination replacement picker
+   * (`tournament.js`'s own `checkElimination`/`pendingElimination`, wired into `nextAfterOutcome`
+   * below, ahead of `needsOpponentPick`/`shouldShowBoard` -- `13E4`'s own call order). The bounce
+   * itself (`elimination.js`) takes no input and always runs to completion (the real loop never
+   * polls input); once done, this phase waits for a plain confirm (matching `1000:179B`'s own
+   * indefinite second-stage wait -- no auto-timeout, unlike `PRESS_ANY_KEY`'s own `pressAnyKeyTimer`,
+   * see `elimination.js`'s own header) before clearing `pendingElimination` and entering the
+   * replacement picker. */
+  let eliminationState = null
+  let eliminationRafId = null
+  let eliminationLast = 0
+  let eliminationAcc = 0
+  let eliminationBounceDone = false
+  function paintEliminated() {
+    menuBuf.fill(0)
+    const { victim, slot } = tournament.pendingElimination
+    drawEliminatedScreen(menuBuf, arena, { victim, playerCharacter: tournament.playerCharacter, opponents: tournament.opponents, slot, step: eliminationState.step, frameOn: eliminationState.frameOn, done: eliminationState.done })
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
+    statusEl.textContent = 'ELIMINATED'
+  }
+  function enterEliminatedScreen() {
+    canvas.width = MENU_VIEW.w
+    canvas.height = MENU_VIEW.h
+    phase = 'ELIMINATED'
+    eliminationState = eliminationInitialState()
+    eliminationBounceDone = false
+    eliminatedMusic(sound)
+    paintEliminated()
+    eliminationLast = performance.now()
+    eliminationAcc = 0
+    eliminationRafId = requestAnimationFrame(eliminationTick)
+  }
+  function eliminationTick(now) {
+    if (phase !== 'ELIMINATED') return
+    eliminationAcc += Math.min(now - eliminationLast, 250)
+    eliminationLast = now
+    while (eliminationAcc >= INTRO_TICK_MS) {
+      eliminationAcc -= INTRO_TICK_MS
+      const r = eliminationStep(eliminationState)
+      if (r.done) { eliminationBounceDone = true; break }
+    }
+    paintEliminated()
+    if (!eliminationBounceDone) eliminationRafId = requestAnimationFrame(eliminationTick)
+    // once done, the RAF loop simply stops -- the screen now just waits for onKeydown/confirm()
+  }
+  function leaveEliminatedScreen() {
+    if (eliminationRafId != null) { cancelAnimationFrame(eliminationRafId); eliminationRafId = null }
+    tournament.pendingElimination = null
+    enterOpponentPick()
   }
 
   // P3's first item (GOAL-DOS-PARITY.md, src/frontend/board.js): DrawTournamentBoard 1000:18d8,
@@ -840,15 +900,19 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       lastStandings = null
       lastPassed = result.won
     } else {
-      reportRaceResult(tournament, { finishPosition: result.finishPosition })
+      // `reportRaceResultWithOpponentSnapshot` (tournament.js), not a manual snapshot-then-call: its
+      // own COPY is taken atomically BEFORE `reportRaceResult` runs (an advisor review caught both
+      // hazards this avoids), since that call's own advance() moves raceIndex past 0 (so reading
+      // opponentCharactersFor AFTER it would wrongly see the QUALIFIER_OPPONENTS branch turn off and
+      // read state.opponents instead -- the ORIGINAL bug this snapshot fixed), and on a race 1+
+      // result its own checkElimination can NULL a slot of the SAME array IN PLACE -- a live
+      // reference, or a snapshot taken too late, would show the just-evicted opponent as missing
+      // from the RESULTS table for the very race they raced in.
+      const raceOpponents = reportRaceResultWithOpponentSnapshot(tournament, { finishPosition: result.finishPosition })
       // The 25011968 cheat (DS:0F69, set on the OPTIONS screen): lives forced to 10 after every
       // race, docs/engine.md §7's own "cheat [F69] -> 10 after every race" (re-confirmed this
       // session against the fresh OPTIONS disassembly).
       if (cheatActive) tournament.lives = 10
-      // `wasQualifier`, not `opponentCharactersFor(tournament)` here -- `reportRaceResult` above
-      // already advanced `raceIndex` past 0, so evaluating it NOW would wrongly see `state.opponents`
-      // (still empty pre-picker) instead of the JETHRO trio the qualifier that just ran actually used.
-      const raceOpponents = wasQualifier ? QUALIFIER_OPPONENTS : tournament.opponents
       const names = [CHARACTER_NAMES[tournament.playerCharacter], ...raceOpponents.map((i) => CHARACTER_NAMES[i])]
       // Two-car: racePosition can be stale for car 1 (car 2 can hold a slot, docs/engine.md §9am), so
       // the two places come from the result itself.
@@ -880,6 +944,10 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       enterSelectGame()
       return
     }
+    // 13E4's own elimination check runs INSIDE the results screen, before RunTournamentLoop's own
+    // bonus-trigger check or its [28C1] INC -- so a just-evicted opponent's own "IS OUT!!" bounce
+    // (P3's third item) comes before EITHER the initial-pick trigger below or the board (docs/engine.md §9ba).
+    if (tournament.pendingElimination) { enterEliminatedScreen(); return }
     if (needsOpponentPick(tournament)) { enterOpponentPick(); return } // 10a0's own CALL 1A4A, right after a Challenge qualifier PASS, before the [28C1] INC (P3's second item)
     if (shouldShowBoard(tournament)) { enterBoard(); return } // 115c's own CALL 18d8, before the next race's own intro
     startNextRace()
@@ -911,6 +979,10 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       // runOneRace's own "Loading…" status text with a blank LOADING-phase frame before the race's
       // own render loop takes over -- harmless, self-correcting, not worth a special case for.
       nextAfterOutcome()
+      return
+    } else if (phase === 'ELIMINATED') {
+      if (!eliminationBounceDone) return // 1000:174D-1789's own loop never polls input -- a press mid-bounce is simply lost, same as on real hardware
+      leaveEliminatedScreen()
       return
     } else if (phase === 'RACE_INTRO') {
       advanceRace()
@@ -951,6 +1023,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     if (phase === 'LOADING') return
     if (phase === 'SELECT_GAME' || phase === 'ONE_PLAYER_GAME' || phase === 'CHAR_SELECT' || phase === 'BOARD') return // each phase's own dedicated reader(s) + menuReleaseTracker own its input entirely
     if (phase === 'PRESS_ANY_KEY') { confirm(); return } // 0C15: any key click
+    if (phase === 'ELIMINATED') { confirm(); return } // 179B's own indefinite "any key" wait, once the bounce is done -- confirm() itself no-ops while it's still running
     if (e.code === 'Space' || e.code === 'Enter') confirm()
   }
   window.addEventListener('keydown', onKeydown)
@@ -985,6 +1058,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       if (twoItemRafId != null) cancelAnimationFrame(twoItemRafId)
       if (charSelectRafId != null) cancelAnimationFrame(charSelectRafId)
       if (boardRafId != null) cancelAnimationFrame(boardRafId)
+      if (eliminationRafId != null) cancelAnimationFrame(eliminationRafId)
       titleReader?.dispose()
       twoItemReaders?.p1.dispose(); twoItemReaders?.p2.dispose()
       charSelectReader?.dispose()
@@ -1049,6 +1123,17 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
         if (r.exit) { leaveBoard(); return }
       }
       paintBoard()
+    },
+    // Same fast-forward precedent, for ELIMINATED (P3's third item): no input parameter, matching
+    // eliminationStep's own signature -- the real animation never polls input either. A no-op
+    // outside that phase.
+    forceEliminationSteps: (n) => {
+      if (phase !== 'ELIMINATED') return
+      for (let i = 0; i < n; i++) {
+        const r = eliminationStep(eliminationState)
+        if (r.done) { eliminationBounceDone = true; break }
+      }
+      paintEliminated()
     },
   }
 }

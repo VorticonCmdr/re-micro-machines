@@ -26,11 +26,15 @@
 //
 // Deliberately not modelled: two-HUMAN head-to-head (`RunHeadToHeadTournament 1faf`) -- its track
 // selection is `DS:0002 & 7`, the vsync tick counter, so it is not input-deterministic and this
-// port's tape/replay model has nothing to drive it with; the "pick your replacement" screen after
-// an elimination (GOAL-DOS-PARITY.md P3's third item, not yet done -- still auto-picks the first
-// untaken roster slot, flagged at `checkElimination` below). The interactive "pick your 3
-// opponents" screen (`FUN_1a4a`, GOAL-DOS-PARITY.md P3's second item) IS modelled now -- see
-// `needsOpponentPick`/`QUALIFIER_OPPONENTS` below, docs/engine.md §9az.
+// port's tape/replay model has nothing to drive it with. The interactive "pick your 3 opponents"
+// screen (`FUN_1a4a`, GOAL-DOS-PARITY.md P3's second item) and the elimination/replacement-pick
+// screen (P3's third item) are BOTH modelled now -- see `needsOpponentPick`/`QUALIFIER_OPPONENTS`/
+// `checkElimination` below, docs/engine.md §9az/§9ba. The replacement is chosen by the player
+// through the SAME interactive picker, not auto-picked -- an earlier draft of this file (and of
+// docs/engine.md §9k) said the original auto-picks the first untaken roster slot; that was wrong
+// about the ORIGINAL game (right only as a description of THIS file's own now-superseded
+// simplification) -- `1000:16de`'s own disassembly calls `FUN_1000_1a4a` directly, the identical
+// function the initial 3-opponent pick uses.
 
 import { ORDER_TABLE, ORDER_TABLE_LAST_INDEX, MAX_BONUS_RACES, CHARACTER_NAMES, trackName } from '../data/frontend-tables.js'
 
@@ -55,12 +59,20 @@ export function initTournament({ format = 'challenge' } = {}) {
     pendingBonusRace: null, // {round: 9, race} once a streak-out triggers one, cleared on report
     roster: CHARACTER_NAMES.map((name, i) => ({ index: i, name, taken: false, eliminated: false })),
     playerCharacter: null,
-    opponents: [], // 3 character indices, picked once the qualifier passes
+    // Challenge: 3 FIXED slots (the real game's own 0xC1E/0xC39/0xC54 face descriptors), `null` =
+    // that slot's own "unpicked" sentinel (the real 0xB frame value) -- filled in order by
+    // `pickOpponentCharacter`, vacated (set back to `null`) by `checkElimination`. H2H: a plain
+    // single-entry array, unchanged (see `pickOpponentCharacter`'s own header).
+    opponents: format === 'challenge' ? [null, null, null] : [],
     over: false,
     champion: false,
     lastOutcome: null,
     eliminationEvents: [],
-    _evictionRoundRobinNext: 0, // next roster slot to consider once the counter's first (==3) eviction has run
+    // {victim, slot} once `checkElimination` evicts someone -- `flow.js` shows the "IS OUT!!" bounce
+    // screen for `victim`, then re-runs the interactive picker to fill `state.opponents[slot]`, then
+    // clears this. Never set for a no-op eviction check (docs/engine.md §9ba).
+    pendingElimination: null,
+    _evictionSlotCursor: null, // 1000:0346: which of the 3 opponent slots (0-2) is next up for eviction
   }
 }
 
@@ -78,20 +90,33 @@ export function pickPlayerCharacter(state, charIndex) {
 /**
  * "WHO DO YOU WANT TO RACE ?" -- Head-to-Head vs CPU's second select screen (0FBF -> 09E0 with slot
  * 0C1E; the pick lands in [266A], which InitRaceCarsFromTables reads for car 1's KidModifier
- * handicap) AND the Challenge format's real interactive opponent picker (`FUN_1A4A`, the SAME
- * prompt string, `DS:0227`, and the SAME underlying carousel, `09E0`, just called once per each of
- * 3 empty slots -- `1000:0afa-0b50`'s own commit block services all 4 car slots identically). Fire
- * on an already-taken character is ignored (0AB5-0ABB, `charSelectStep`'s own IDLE case already
- * enforces this before this is ever called) -- returns false then. APPENDS to `state.opponents`
- * (not replace): H2H only ever calls this once, so the two are equivalent there, but Challenge
- * calls it 3 times, once per opponent slot.
+ * handicap), the Challenge format's real interactive INITIAL opponent picker (`FUN_1A4A`, called
+ * once per empty slot right after a qualifier PASS), AND the elimination REPLACEMENT picker (the
+ * SAME `FUN_1A4A`, called again with exactly one slot empty -- `1000:16de`'s own trailing
+ * `CALL 1A4A`, docs/engine.md §9ba). All three reach the SAME `09E0` commit block
+ * (`1000:0afa-0b50`), which services all 4 car slots identically. Fire on an already-taken
+ * character is ignored (0AB5-0ABB, `charSelectStep`'s own IDLE case already enforces this before
+ * this is ever called) -- returns false then. Fills the FIRST empty (`null`) slot in
+ * `state.opponents`, in order -- matching `1A4A`'s own fixed scan order (`0xC1E,0xC39,0xC54`) --
+ * for Challenge; APPENDS for H2H, whose own `opponents` starts `[]` and is filled exactly once, so
+ * append and "fill first empty slot" are equivalent there too.
  */
 export function pickOpponentCharacter(state, charIndex) {
   const slot = state.roster[charIndex]
   if (!slot || slot.taken) return false
   slot.taken = true
-  state.opponents = [...state.opponents, charIndex]
+  const emptyIndex = state.opponents.indexOf(null)
+  if (emptyIndex === -1) state.opponents = [...state.opponents, charIndex]
+  else state.opponents[emptyIndex] = charIndex
   return true
+}
+
+/** Whether ANY of the Challenge format's 3 opponent slots is still unfilled -- the real game's own
+ * `FUN_1000_1A4A` re-scans for this after every pick (`1000:1A80: JMP 1A53`), and `flow.js` uses
+ * this the same way to decide whether to loop the picker again, for BOTH the initial 3-pick and a
+ * single elimination replacement. */
+export function hasEmptyOpponentSlot(state) {
+  return state.opponents.includes(null)
 }
 
 /** Whether the next race gets its intro screen: every race except the Head-to-Head qualifier, whose
@@ -204,36 +229,60 @@ export function opponentCharactersFor(state) {
  * about to increment".
  */
 export function needsOpponentPick(state) {
-  return state.format === 'challenge' && state.raceIndex === 1 && state.opponents.length === 0
+  return state.format === 'challenge' && state.raceIndex === 1 && state.opponents.every((o) => o === null)
 }
 
 /**
- * `[310] % 3 == 0` after an advancing result (docs/engine.md §7). The counter here is the
- * post-increment `raceIndex` (this port does not distinguish `[310]` from `[28C1]` -- the prose
- * has them incrementing together on every main-loop race with no daylight between them, so one
- * counter serves both roles; see the file header for what that choice means for a future live
- * check). At counter value 3 the victim is the active drone with the lowest character index; every
- * later multiple of 3 round-robins to the next roster slot instead. No-op if no untaken,
- * non-eliminated roster slot remains to replace the victim with.
+ * `1000:1676-16DB`, fully re-disassembled and independently re-verified this session
+ * (docs/engine.md §9ba) -- inside `ShowRaceResultsScreenTune8or6`, NOT `RunTournamentLoop`/`1A82`
+ * as this file previously assumed without having actually traced it. Gate: `[0x310] % 3 == 0`.
+ * `completedRaceIndex` MUST be the race just completed, captured BEFORE `reportRaceResult`'s own
+ * `advance()` call runs -- `13E4`'s own elimination check (called from `RunTournamentLoop` at
+ * `110D`) runs BEFORE that loop's own `[28C1]` INC (`10F9`), the same pre/post-increment class of
+ * bug `effectiveRaceIndex`'s own header already names for the board and `tournamentIndex`.
+ *
+ * Victim selection is a 3-SLOT DESCRIPTOR-ADDRESS CURSOR (`state._evictionSlotCursor`, 0-2, mapping
+ * to `state.opponents[0..2]` -- the real `0xC1E`/`0xC39`/`0xC54`), NOT a roster-index computation
+ * (an earlier draft of this file, and of docs/engine.md §9k, called this "roster position modulo
+ * opponent count" -- an interpretation the goal file itself flagged as unverified, and it was
+ * wrong): on the FIRST eviction (`completedRaceIndex===3`, a literal equality in the real bytes,
+ * not "the first time this runs"), the cursor is set to whichever of the 3 CURRENT opponent slots
+ * holds the lowest character index; on every LATER eviction the cursor just advances by 1, wrapping
+ * 2->0 -- UNCONDITIONALLY, even when the pass below turns out to be a no-op, so a slot's own
+ * replacement CAN be evicted again once the cursor returns to it.
+ *
+ * No-op: scan the 11-entry roster for one with neither `taken` nor `eliminated` set; if none
+ * exists, skip the visible eviction (no roster write, no `pendingElimination`) -- but the cursor
+ * above has ALREADY moved, a state-preserving skip, not a true no-op.
+ *
+ * On a real eviction: the victim's `eliminated` flag is set, but `taken` is NOT cleared (the real
+ * `1000:1707` is an `OR`, adding `0x20` without ever clearing `0x40` -- an eliminated character
+ * stays permanently excluded from the free-roster count; the free-slot scan itself tests
+ * `byte & 0x60`, either bit disqualifying, so this has no OTHER observable effect, but the byte
+ * value itself now matches the real game's, not the port's own earlier guess). The vacated slot is
+ * set to `null` and `state.pendingElimination` records who was evicted, for `flow.js` to show the
+ * "IS OUT!!" bounce screen before re-running the SAME interactive picker (`1A4A`,
+ * `needsOpponentPick`'s own sibling, `hasEmptyOpponentSlot`) to fill the vacancy -- the replacement
+ * is chosen by the PLAYER, not auto-picked.
  */
-function checkElimination(state, activeDroneIndices) {
-  if (state.raceIndex === 0 || state.raceIndex % 3 !== 0) return
-  const free = state.roster.find((s) => !s.taken && !s.eliminated)
-  if (!free) return
-  let victimIndex
-  if (state.raceIndex === 3) {
-    victimIndex = activeDroneIndices.reduce((a, b) => (a < b ? a : b))
+function checkElimination(state, completedRaceIndex) {
+  if (completedRaceIndex % 3 !== 0) return // completedRaceIndex is never 0 here (only reached past the qualifier), so no separate ===0 guard is needed
+  if (completedRaceIndex === 3) {
+    let bestSlot = 0
+    for (let i = 1; i < 3; i++) {
+      if (state.opponents[i] < state.opponents[bestSlot]) bestSlot = i
+    }
+    state._evictionSlotCursor = bestSlot
   } else {
-    const order = state.roster.map((s) => s.index).filter((i) => activeDroneIndices.includes(i))
-    victimIndex = order[state._evictionRoundRobinNext % order.length]
-    state._evictionRoundRobinNext++
+    state._evictionSlotCursor = (state._evictionSlotCursor + 1) % 3
   }
-  const victim = state.roster[victimIndex]
-  victim.eliminated = true
-  victim.taken = false
-  free.taken = true
-  state.opponents = state.opponents.map((i) => (i === victimIndex ? free.index : i))
-  state.eliminationEvents.push({ atRaceIndex: state.raceIndex, victim: victimIndex, replacement: free.index })
+  const free = state.roster.find((s) => !s.taken && !s.eliminated)
+  if (!free) return // the cursor above has already moved -- a state-preserving skip, not a true no-op
+  const victimIndex = state.opponents[state._evictionSlotCursor]
+  state.roster[victimIndex].eliminated = true // taken stays true -- 1000:1707 is an OR, never cleared
+  state.opponents[state._evictionSlotCursor] = null
+  state.pendingElimination = { victim: victimIndex, slot: state._evictionSlotCursor }
+  state.eliminationEvents.push({ atRaceIndex: completedRaceIndex, victim: victimIndex })
 }
 
 function advance(state) {
@@ -295,8 +344,29 @@ export function reportRaceResult(state, { finishPosition, won } = {}) {
   }
 
   state.lastOutcome = OUTCOME.PASSED
+  // Captured BEFORE advance(): 13E4's own elimination check (called from RunTournamentLoop at
+  // 110D) runs BEFORE that loop's own [28C1] INC (10F9) -- see checkElimination's own header.
+  const completedRaceIndex = state.raceIndex
+  // Unconditional, and BEFORE the bonus-trigger check: 13E4 runs before RunTournamentLoop's own
+  // 1123-113A -- a bonus-triggering race still evicts. The old `!bonusTriggered` gate here was
+  // wrong (this file had never actually traced RunTournamentLoop's own call order) and is removed.
+  checkElimination(state, completedRaceIndex)
   let bonusTriggered = false
   if (finishPosition === 1) bonusTriggered = maybeTriggerBonusRace(state)
   advance(state)
-  if (!bonusTriggered && !state.over) checkElimination(state, state.opponents)
+}
+
+/**
+ * `reportRaceResult`, but returns a COPY of `opponentCharactersFor(state)` taken BEFORE the call --
+ * the only correct way to build a results table's own driver names (`flow.js`'s `advanceRace`), since
+ * an evicting race's own `reportRaceResult` can null a slot of the SAME array IN PLACE
+ * (`checkElimination`, above) -- reading it live, or snapshotting it AFTER this call, can show the
+ * very opponent who was just raced against as missing. An advisor review of the committed code
+ * caught that this ordering hazard had no test of its own (`advanceRace` itself has no headless
+ * harness); `tools/check-tournament.mjs`'s test 7c calls this export directly to prove it.
+ */
+export function reportRaceResultWithOpponentSnapshot(state, result) {
+  const opponents = [...opponentCharactersFor(state)]
+  reportRaceResult(state, result)
+  return opponents
 }

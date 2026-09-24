@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createMenuBuffer, MENU_VIEW } from '../src/render/menuView.js'
-import { drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard } from '../src/frontend/screens.js'
+import { drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawOpponentPanel, drawEliminatedScreen, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, faceFrame, eliminatedPanelSlots } from '../src/frontend/screens.js'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const GAME = join(ROOT, 'game')
@@ -30,6 +30,57 @@ function nonEmpty(buf) {
   return buf.some((v) => v !== 0)
 }
 
+// FUN_1000_0db0 (1000:0dbc-0dee), docs/engine.md §9ba: ELIMINATED (0x20) is tested BEFORE taken
+// (0x40) -- an eliminated character keeps 0x40 set too (checkElimination's OR never clears it), so
+// a byte with both bits set must resolve to frame 12 (eliminated), not 13 (taken). This is the exact
+// assertion the P3-item-3 advisor review demanded a direct test for, not just a smoke render.
+check('faceFrame: eliminated-and-taken (0x60) resolves to the eliminated pose, not taken', faceFrame(0x60) === 12)
+check('faceFrame: taken-only (0x43) resolves to the taken pose', faceFrame(0x43) === 13)
+check('faceFrame: plain portrait index survives untouched', faceFrame(5) === 5)
+
+// Regression for a real bug an advisor review caught (docs/engine.md §9ba, 1000:170A/19F2):
+// `drawEliminatedScreen`'s own panel must show the victim's slot as the generic "taken" pose
+// (faceFrame(0x40)===13, matching the real one-time 19F2 draw with the victim's descriptor OR'd
+// 0x40), NOT the real "unpicked" placeholder (frame 11) that forwarding `opponents[slot]` -- already
+// `null`, checkElimination vacates it immediately -- straight through would produce.
+check('eliminatedPanelSlots substitutes the "taken" sentinel (0x40) at the victim\'s own slot', eliminatedPanelSlots([null, 2, 3], 0).join() === '64,2,3')
+check('eliminatedPanelSlots leaves every other slot untouched', eliminatedPanelSlots([1, null, 3], 1).join() === '1,64,3')
+{
+  // End-to-end through drawEliminatedScreen itself, not just eliminatedPanelSlots in isolation (a
+  // caller could still forget to use it). At step=15 (the bounce's own last position, offset 47) the
+  // FCSAD icon lands at Y=PANEL_Y+47, empirically confirmed to fall entirely BELOW every panel row
+  // that a frame-13-vs-frame-11 choice actually differs in (rows 13-47 of the 48-tall sprite; rows
+  // 0-12 are blank/transparent in both frames regardless), so a pixel diff against an icon-less
+  // reference over just that row range isolates the panel's own frame choice from the icon.
+  const PANEL_Y = 0x24, PANEL_X0 = 8, PANEL_STEP_X = 0x40
+  const eliminated = createMenuBuffer()
+  drawEliminatedScreen(eliminated, arena, { victim: 1, playerCharacter: 10, opponents: [null, 2, 3], slot: 0, step: 15, frameOn: true })
+  const buggyPanelOnly = createMenuBuffer() // what a panel built from the raw (already-nulled) opponents array would have drawn, no icon
+  drawOpponentPanel(buggyPanelOnly, arena, { slots: [10, null, 2, 3] })
+  let panelRegionDiffers = false
+  for (let row = 13; row < 48; row++) {
+    for (let x = 0; x < PANEL_STEP_X; x++) {
+      const idx = (PANEL_Y + row) * MENU_VIEW.w + PANEL_X0 + PANEL_STEP_X + x
+      if (eliminated[idx] !== buggyPanelOnly[idx]) panelRegionDiffers = true
+    }
+  }
+  check('drawEliminatedScreen\'s own panel differs from the "unpicked" placeholder an un-fixed forward would draw', panelRegionDiffers)
+}
+
+// Regression for a real bug (docs/engine.md §9ba): the FCSAD icon must NOT be drawn at all once
+// `done` -- it disappears the instant the bounce finishes (`1000:1776: CALL 05B4`, re-disassembled,
+// erases it from the work buffer every iteration including the last; nothing redraws it before the
+// real game's next full-screen present, `1000:1790: CALL 08BC`), not frozen at its own last bounced
+// position as a first fix attempt wrongly assumed.
+{
+  const notDone = createMenuBuffer()
+  drawEliminatedScreen(notDone, arena, { victim: 1, playerCharacter: 10, opponents: [null, 2, 3], slot: 0, step: 15, frameOn: true, done: false })
+  const done = createMenuBuffer()
+  drawEliminatedScreen(done, arena, { victim: 1, playerCharacter: 10, opponents: [null, 2, 3], slot: 0, step: 15, frameOn: true, done: true })
+  check('the icon draws when not done', nonEmpty(notDone))
+  check('drawEliminatedScreen with done=true draws no icon at all (differs from the not-done render)', !notDone.every((v, i) => v === done[i]))
+}
+
 const cases = [
   ['drawTitleScreen', () => drawTitleScreen(createMenuBuffer(), arena, { classIndex: 2 })],
   ['drawSelectGame (nothing selected)', () => drawSelectGame(createMenuBuffer(), arena, { selection: 0 })],
@@ -44,14 +95,20 @@ const cases = [
   ['drawRaceIntro (round 9, the bonus race -- no names in TRACK_NAMES at all)', () => drawRaceIntro(createMenuBuffer(), arena, { round: 9, race: 1 })],
   ['drawResults (passed)', () => drawResults(createMenuBuffer(), arena, { standings: [{ name: 'WALTER', position: 1 }, { name: 'MIKE', position: 2 }, { name: 'ANNE', position: 3 }, { name: 'JOEL', position: 4 }], passed: true })],
   ['drawResults (failed)', () => drawResults(createMenuBuffer(), arena, { standings: [{ name: 'WALTER', position: 4 }], passed: false })],
-  // Regression guard for the advisor-caught bug (tournament.js now always populates `opponents`
-  // before any race runs, so flow.js can no longer produce this shape in practice -- kept anyway
-  // since drawResults itself should degrade gracefully, not throw or silently render "undefined").
+  // Regression guard for an advisor-caught bug from an earlier session (a qualifier failure used
+  // to leave `opponents` empty, showing "UNDEFINED" names) -- kept anyway since `drawResults`
+  // itself should degrade gracefully, not throw or silently render "undefined", regardless of
+  // whether the current tournament.js state shape can still produce it in practice.
   ['drawResults (missing name, defensive)', () => drawResults(createMenuBuffer(), arena, { standings: [{ name: 'WALTER', position: 1 }, { name: undefined, position: 2 }], passed: true })],
   ['drawOutcome', () => drawOutcome(createMenuBuffer(), arena, { message: 'QUALIFIED FOR CHALLENGE!' })],
   ['drawChampion', () => drawChampion(createMenuBuffer(), arena, { playerName: 'WALTER' })],
   ['drawTournamentBoard (raceIndex 1, blinking on)', () => drawTournamentBoard(createMenuBuffer(), arena, { raceIndex: 1, blinkOn: true })],
   ['drawTournamentBoard (raceIndex 24, the last one shown, blinking off)', () => drawTournamentBoard(createMenuBuffer(), arena, { raceIndex: 24, blinkOn: false })],
+  ['drawOpponentPanel (with header, some slots empty)', () => drawOpponentPanel(createMenuBuffer(), arena, { slots: [10, 1, null, null] })],
+  ['drawOpponentPanel (no header, all filled)', () => drawOpponentPanel(createMenuBuffer(), arena, { slots: [10, 1, 2, 3], header: false })],
+  ['drawEliminatedScreen (first wobble step)', () => drawEliminatedScreen(createMenuBuffer(), arena, { victim: 1, playerCharacter: 10, opponents: [null, 2, 3], slot: 0, step: 0, frameOn: true })],
+  ['drawEliminatedScreen (last wobble step)', () => drawEliminatedScreen(createMenuBuffer(), arena, { victim: 6, playerCharacter: 10, opponents: [1, 2, null], slot: 2, step: 15, frameOn: false })],
+  ['drawEliminatedScreen (done -- the post-bounce wait, no icon)', () => drawEliminatedScreen(createMenuBuffer(), arena, { victim: 6, playerCharacter: 10, opponents: [1, 2, null], slot: 2, step: 15, frameOn: false, done: true })],
 ]
 
 for (const [name, fn] of cases) {
@@ -78,6 +135,11 @@ for (const [name, fn] of cases) {
   const buf = createMenuBuffer()
   drawTournamentBoard(buf, arena, { raceIndex: 1, blinkOn: true })
   check('drawTournamentBoard paints something', nonEmpty(buf))
+}
+{
+  const buf = createMenuBuffer()
+  drawEliminatedScreen(buf, arena, { victim: 1, playerCharacter: 10, opponents: [null, 2, 3], slot: 0, step: 0, frameOn: true })
+  check('drawEliminatedScreen paints something', nonEmpty(buf))
 }
 
 console.log(bad ? `${bad} check(s) failed` : `check-screens: all ${cases.length} screen renderers run clean against synthetic data (RESULTS/OUTCOME/CHAMPION included, unreachable live this session)`)

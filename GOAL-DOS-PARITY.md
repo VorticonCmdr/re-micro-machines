@@ -120,7 +120,7 @@ Don't read `docs/engine.md` from start to finish. It is 6,000 lines. Jump to sec
 ## Regression suite (run before every commit; all must pass)
 
 ```bash
-for s in catalog lz chrtable tables car intro codecard options title mainmenu charselect board step trace ai play sound rounds finish twocar tournament \
+for s in catalog lz chrtable tables car intro codecard options title mainmenu charselect board elimination step trace ai play sound rounds finish twocar tournament \
          menu screens opl-toggle smoothness si2 live smoke; do npm run -s $s || echo "FAIL $s"; done
 npm run build
 ```
@@ -255,10 +255,75 @@ docs, (6) commit.
   skipped `nextAfterOutcome()`, so the just-shipped tournament board never actually showed before
   race 1 -- fixed and live-tested end to end (screenshots of both the picker and, for the first
   time, a live board render).**
-- [ ] **Elimination screen plus replacement picker** (`ShowCharacterEliminatedTune6 1000:16de`,
+- [x] **Elimination screen plus replacement picker** (`ShowCharacterEliminatedTune6 1000:16de`,
   "IS OUT!!", the wobble curve at `DS:034B`). The player picks the replacement. Verify the
   round-robin victim rule against the bytes: §9k says "roster position modulo opponent count" is
   an interpretation, not a derivation.
+  **Done, §9ba: the wobble curve (16 real steps, 9 ticks each, no tone per step -- correcting §9t)
+  rebinds the victim's own portrait to `FCSAD.CHR` (confirmed live via `DS:0A3A`'s arena-offset
+  arithmetic). The victim rule is a 3-slot descriptor-address cursor (`DS:0346`), NOT "roster
+  position modulo opponent count" -- first eviction picks the lowest-index current opponent, every
+  later one just advances the cursor unconditionally (even a no-op pass), so a replacement CAN be
+  re-evicted; `taken` is never cleared, only `eliminated` OR'd in. The replacement is chosen by the
+  PLAYER through the same `1a4a` carousel item 2 ported, not auto-picked (correcting this file's own
+  and §9k's prior claim). `1000:179b`'s "press any key" wait has no real timeout past its own
+  debounce (`CS:[0x93C2]` is a dead constant, §9ar e) -- ported as a plain keypress wait, matching
+  the existing `RACE_INTRO` idiom, not `PRESS_ANY_KEY`'s timer. `faceFrame` (P2 item 3, §9ax) had
+  eliminated/taken priority backwards, fixed against `0DB0`. An advisor review of the synthesized
+  plan, before any code was written, caught three real bugs the plan would otherwise have shipped
+  with: the eviction trigger would have fired one race early (capturing `raceIndex` after
+  `advance()` instead of before -- the third instance this session of the same pre/post-increment
+  bug class as §9ay/§9az); a `!bonusTriggered` gate would have wrongly skipped eviction on a race
+  that also triggers a bonus; and the RESULTS table would have snapshotted `opponents` after
+  eviction had already nulled the just-raced victim's own slot. All three written correctly from
+  the start. A second advisor review, of the committed code and tests, found the proof-of-failure
+  work so far didn't hold up: a whole-`src/` `git stash` only proves missing exports exist, not that
+  any assertion catches its own bug; test 7's own round-robin check was actually vacuous (the test
+  harness always replaces in ascending order, so "the cursor advances" and "always evict the lowest
+  index" predicted the same victim every time); and test 7c exercised `tournament.js`'s raw
+  functions directly rather than the code `advanceRace` actually calls. It also raised a concrete
+  double-eviction question -- could `[0x310]` and `[28C1]` disagree across a bonus race -- settled
+  by fresh re-disassembly: they're provably always equal (written together at every site), and
+  `TriggerBonusRace`'s own full body never reaches the elimination gate at all, so not a bug either
+  way. Fixed: new test 7a picks every replacement explicitly and out of ascending order, driving 4
+  checkpoints where "the cursor advances" and "always evict the lowest index" diverge -- including a
+  replacement re-evicted once the cursor cycles back to its own slot, which no roster-index rule can
+  produce; a new `reportRaceResultWithOpponentSnapshot` export (snapshots opponents BEFORE
+  `reportRaceResult`, returns the snapshot) replaces `advanceRace`'s own manual snapshot-then-call,
+  and test 7c now calls that SAME export directly. Every regression test here (6, 7a, 7b, 7c, the
+  `faceFrame` checks) was individually confirmed by reintroducing its own bug alone and re-running
+  the suite: each fails specifically and only its own assertion(s). A third advisor pass also asked
+  whether the live-checked "proceeded to PRESS_ANY_KEY" after a replacement pick is real DOS
+  behaviour or a port-only extra screen -- resolved, not a bug: `1A4A`'s own trailing `CALL 0C15`
+  (fully re-disassembled) IS that wait, the same "PRESS ANY KEY TO START" `RunOnePlayerChallenge`/
+  `RunOnePlayerHeadToHeadVsCpu` already call right after the player's own pick, reached identically
+  whether `1A4A` fills 3 empty slots or just 1. An advisor pass, prompted to actually render the
+  screen (no prior pass had looked at a mid-bounce frame or the exact moment it ends), caught two
+  more real bugs: the panel showed the real "unpicked" placeholder (a red "?", frame 11) at the
+  victim's own slot throughout the bounce, since `tournament.opponents[slot]` is already `null` by
+  the time this screen starts -- fresh disassembly of `19F2` (26 instructions) showed the real panel
+  draw happens ONCE, before the bounce, with the victim's own descriptor OR'd `0x40` first
+  (`1000:170A`), which renders as genuinely BLANK artwork (confirmed by rendering both to PNG and
+  looking), not a visible placeholder or their own portrait -- fixed with a new `eliminatedPanelSlots`
+  export in `screens.js`; and the post-bounce frame was wrong, in two stages: a first fix clamped
+  `state.step` to 15 (rather than letting it reach 16 and silently falling back to Y-offset 0), but a
+  further pass challenged that fix's own unverified assumption that the icon simply stays frozen at
+  its own last position -- re-disassembling `1000:1776: CALL 05B4` (`RestoreSpriteBackground`,
+  erases the sprite from the work buffer every loop iteration, including the last) and `1000:1790:
+  CALL 08BC` (the real game's own next full-screen present, distinct from the loop's own partial-band
+  refresh) settled it: the icon vanishes ENTIRELY the instant the bounce finishes, not a beat later
+  and not frozen at offset 47. Fixed properly: `drawEliminatedScreen` now takes an explicit `done`
+  flag and skips the icon draw entirely. Every fix confirmed by reintroducing its own bug and
+  re-running the suite, and the final behaviour confirmed visually by rendering both the mid-bounce
+  and done states to PNG and looking. Still open, deliberately not modelled
+  (`UNKNOWN_elimination_bounce_clip_band`): whether the bouncing icon's own lower rows are actually
+  clipped from the visible screen mid-bounce too (a narrower, ~60-row VGA-refresh band the loop's own
+  `089C` calls with fixed parameters might imply) -- rests on an unconfirmed stride reading, not
+  applied without a live capture or a cleaner static re-derivation. `src/frontend/elimination.js`
+  (new), `tools/check-elimination.mjs` (new, `npm run elimination`). Also ports item 2's own
+  deliberately-deferred `FUN_1000_19F2` 4-face status panel (`drawOpponentPanel`), needed for this
+  screen's own row layout and shown for both the initial pick and a replacement. Live-tested end to
+  end (bounce screen, vacated-slot replacement picker, screenshots).**
 - [ ] **The Challenge-rule divergences from §9an 8**, one test each:
   - the final race's 2nd place is a fail (`15B7`, `1658`);
   - the bonus trigger has no cap (`1123-113A`; `[342]` counts wins only, `1A92-1AA5`);

@@ -2411,10 +2411,18 @@ and resolved separately, not smoothed into one story:
    *actual* address the open item's own name ("`_0359`") sits inside, one byte short of the block
    above's own end. This is a Y-offset bounce/wobble animation curve, consumed by
    `ShowCharacterEliminatedTune6` (`1000:16de`, use site `1000:1747`): each ramp value is added to the
-   eliminated character's icon's baseline Y, the sprite's frame is XORed by 1 (a flicker), drawn, a
-   short tone plays, and the loop waits ~9 ticks before the next value -- so the icon visibly bounces
-   down/up/down (the curve's own shape: rises 2→47, falls 32→4, rises 4→47 again) before settling at
-   a fixed frame (`0xB`) and handing off to `FUN_1a4a` (the opponent-replacement picker, already
+   eliminated character's icon's baseline Y, the sprite's frame is XORed by 1 (a flicker), drawn, and
+   the loop waits ~9 ticks before the next value -- so the icon visibly bounces down/up/down (the
+   curve's own shape: rises 2→47, falls 32→4, rises 4→47 again) before settling at a fixed frame
+   (`0xB`) and handing off to `FUN_1a4a` (the opponent-replacement picker, already
+   **Corrected 2026-09-24 (P3, §9ba): no tone plays per step.** `1000:16de` was fully
+   re-disassembled and independently re-verified for P3's third item -- the only sound-driver calls
+   in the whole 77-instruction function are the tune-6 query/play at entry (`1000:16E4`/`16F1`);
+   every call inside the per-step loop (`1000:174D-1789`) is a graphics routine
+   (`ClipSpriteDescToFrontView`/`BlitSpriteTransparentFlipSaveUnder`/`CopyFrontViewRowsToVga`/
+   `RestoreSpriteBackground`). The "a short tone plays" clause below is kept verbatim as a record of
+   the mistake; the real per-step wait is silent, tune 6 plays exactly once, at entry. Full account:
+   §9ba.
    named in §9k/tournament.js). This is the "easing-ramp-shaped byte run" the M3.9 open item named but
    never traced to a consumer.
 
@@ -6189,6 +6197,47 @@ taken-bit write site (the real one is `1000:0AC2`, not the commit block first su
 deliberately unported finding: `FUN_1000_19F2` (`1A4A`'s own first call) draws a real 4-face status
 panel this port does not reproduce.
 
+**Added 2026-09-24 (§9ba).** GOAL-DOS-PARITY.md P3's third item resolved and ported: the elimination
+screen (`ShowCharacterEliminatedTune6 1000:16de`, its own 17-byte wobble curve at `DS:034B` -- §9t's
+"a short tone plays" claim corrected in place, no tone plays per step, only a one-time tune-6 at
+entry) and the real eviction/replacement rule, settling the item's own "not a derivation" flag: a
+3-slot descriptor-address cursor (`DS:0346`), not "roster position modulo opponent count" as this
+file's own prior prose guessed -- first eviction picks the lowest-index CURRENT opponent, every
+later one just advances the cursor (even on a no-op pass, so a replacement CAN be re-evicted); the
+victim's `taken` bit is never cleared, only `eliminated` OR'd in; the replacement is chosen by the
+PLAYER through the SAME `1A4A` carousel P3's second item ported, not auto-picked (correcting both
+this file's own and §9k's prior claim about the original game specifically). Also settled: the
+bounce icon is `FCSAD.CHR`, not `FCNORMAL.CHR` (confirmed live via `DS:0A3A`'s own arena-offset
+arithmetic); the shared wait function `1000:179B` has no real timeout past its own initial
+debounce (`CS:[0x93C2]` is the same dead constant §9ar e already found, so the "press any key" step
+waits indefinitely, matching the existing `RACE_INTRO` idiom rather than `PRESS_ANY_KEY`'s own
+timer); and `faceFrame`'s branch priority (P2's own item 3, §9ax) had eliminated/taken backwards --
+`0DB0` tests `0x20` (eliminated) before `0x40` (taken), fixed. An advisor review of the SYNTHESIZED
+PLAN, before any code was written, caught three real bugs the plan would otherwise have shipped
+with, all in the eviction trigger's own timing/ordering (a pre/post-increment miscount that would
+have evicted one race early -- the third instance of that exact bug class this session, after
+§9ay/§9az's own `effectiveRaceIndex`/`tournamentIndex`; an `!bonusTriggered` gate that would have
+wrongly skipped eviction on a race that also triggers a bonus; and a RESULTS-table snapshot that
+would have been taken after the eviction had already nulled the just-raced opponent's own slot) --
+each written correctly from the start and covered by a dedicated regression test, each individually
+confirmed by reintroducing the bug alone and re-running the suite. A second advisor review, of the
+committed code and tests, then tightened the proof-of-failure methodology (a whole-`src/` stash only
+proved missing exports, not that any assertion catches its own bug) and settled -- by fresh
+re-disassembly, not by re-asserting the prior claim -- a concrete question it raised: whether
+`[0x310]` and `[28C1]` (conflated as interchangeable by the first pass) could actually disagree
+across a bonus race and double-fire the eviction gate. They cannot: exhaustively confirmed always
+equal by construction, and `TriggerBonusRace`'s own full body never reaches the gate at all. P3's
+second item's own deliberately unported `FUN_1000_19F2` 4-face status panel is ported now
+(`drawOpponentPanel`), since this item's bounce icon needs the same row layout; shown for both the
+initial 3-pick and a replacement pick, closing that item's own deferred gap as a side effect. Two
+further render-only bugs, caught only once this item was actually rendered rather than just unit
+tested (a red "?" placeholder shown at the victim's own panel slot; the bounce's own final frame
+snapping to the wrong Y-offset, then -- once clamped -- wrongly assumed to freeze there rather than
+vanish) are both fixed; new open item, deliberately not applied without a live capture:
+`UNKNOWN_elimination_bounce_clip_band` (whether the icon's own lower rows are additionally clipped
+from the visible screen mid-bounce by a narrower VGA-refresh band, rests on an unconfirmed stride
+reading of `1000:089C`'s own copy loop).
+
 ## 9as. P1's first item: the logo intro's real per-frame animation (2026-09-24)
 
 Full account, and every cited address, in `docs/intro-and-codecard.md`'s own "The real per-frame
@@ -7129,3 +7178,402 @@ The picker's own rule logic remains additionally proven by `check-tournament.mjs
 against the fresh disassembly above; this live pass confirms the UI WIRING specifically
 (`enterOpponentPick`, the `leaveCharSelect` cancel-loops-back branch, the `PRESS_ANY_KEY` ->
 `nextAfterOutcome` fix) end to end, something no synthetic state poke alone can show.
+
+## 9ba. P3's third item: the elimination screen and the real replacement picker (2026-09-24)
+
+**Scope.** GOAL-DOS-PARITY.md P3's third checklist item: `ShowCharacterEliminatedTune6 1000:16de`
+("IS OUT!!", the wobble curve at `DS:034B`, already named in §9t but never disassembled), plus "the
+player picks the replacement" and "verify the round-robin victim rule against the bytes: §9k says
+'roster position modulo opponent count' is an interpretation, not a derivation." Research for this
+item ran as a background `Workflow` (2 parallel Ghidra research agents, each independently
+re-verified by a 3rd/4th agent) covering `1000:16de` itself and the real eviction rule, followed by
+direct main-session verification of three things the research left open (the icon asset at
+`DS:0A3A`, the wait function `1000:179B`'s own real exit condition, and `FUN_1000_0DB0`'s own
+branch priority), an advisor review of the resulting synthesized plan (before any code was written)
+that caught three real bugs, and a second advisor review of the committed code and tests that
+tightened the proof-of-failure methodology and settled a concrete double-eviction question the
+first pass's own `[0x310]`/`[28C1]` conflation had left unverified (see both "Corrected" sections
+below).
+
+**`ShowCharacterEliminatedTune6 1000:16DE`, fully re-disassembled (77 instructions,
+`1000:16DE-179A`) and independently re-verified.** Plays tune 6 once at entry (`1000:16E4`/`16F1`,
+the same query-then-play pattern `titleMusic`'s own header already documents). Takes the victim's
+own face-descriptor slot address as its incoming parameter (confirmed: the caller passes it in `AX`
+alone, not `AX`/`BX` as an intermediate draft of the eviction-rule research said). Sets the roster's
+own `|0x20` (eliminated) bit (`1000:1707`, `SI = DS:0164 + character`) and rebinds that SAME slot's
+descriptor from `FCNORMAL.CHR` to `FCSAD.CHR` (`1000:173D-1741`) before drawing "IS OUT!!" (`DS:03B6`)
+and the character's own name (`DS:0258+idx*8`), both via `DrawString8pxFont` (`1000:0929`,
+`DX=0xB54` = `FONT2.CHR`) at `(0x80, 0x64)` and `(0x48, 0x64)`. Then the 17-byte wobble curve at
+`DS:034B` (`[2,4,8,16,32,47,32,16,8,4,2,4,8,16,32,47,0]`, 0-terminated, byte-exact match confirmed
+independently twice) drives 16 real steps (the 17th byte is only ever read as a "stop" test,
+`1000:1757/1759`, never itself drawn or waited on): each step adds the table value to a FIXED
+baseline Y (restored after each write, not cumulative), toggles the sprite's own frame bit
+(`1000:175B`, alternating `charIndex*2`/`charIndex*2+1`), draws, and waits a literal 9 ticks
+(`1000:177F/1784: CMP [0x2],0x9 / JL`) -- no input is polled anywhere inside this loop (no
+`CALL 2D5B`, the input-poll routine every OTHER menu wait in this project calls), so it always runs
+to completion once started. **Correcting §9t's own "a short tone plays" claim** (see the inline
+correction where §9t's own text now sits): the only sound-driver calls in the whole function are
+the two at entry; every per-step call is a graphics routine. Each step is silent.
+
+**The icon: `FCSAD.CHR`, not `FCNORMAL.CHR` -- confirmed live, not left as a simplification.**
+`1000:173D: MOV SI,[0xA3A]; 1000:1741: MOV [BX+8],SI` rebinds the victim's own slot descriptor's
+pixel segment to whatever `DS:0A3A` holds. Read live this session: `193C:0A3A` = `0x37D8`.
+`chr.js`'s own `arenaOffset` formula (`(seg - ARENA_SEGMENT) * 16`, `ARENA_SEGMENT=0x2B78`, the
+Ghidra-relocated base -- NOT the file-format `0x1B78` `parseChrTable` uses when parsing raw file
+bytes, a distinction an early arithmetic slip in this same session got backwards before catching
+itself) gives `(0x37D8-0x2B78)*16 = 0xC600` -- `chr.js`'s own `FCSAD.CHR` entry (48x48, 22 frames =
+11 characters x 2), exactly. This ALSO settles why the frame math is `charIndex*2`/`charIndex*2+1`
+(0-21) rather than 0-13: `FCNORMAL` (14 frames) couldn't hold it, `FCSAD`'s 22 can, exactly. The
+bounce icon is a sad-face pose pair per character, not the normal carousel portrait.
+
+**`1000:179B`, the wait before the replacement picker: no real timeout past its own initial
+debounce.** Fully re-disassembled (27 instructions). Two stages, sharing one tick counter
+(`DS:0002`, reset once at entry, never again): stage 1 (`1000:17B5-17D5`) waits, up to `0x2BC`(700)
+ticks, for fire to stop being held (a debounce, matching the SAME shape `FUN_1000_17FF`'s own
+release-then-press pattern already documented for the tournament board, §9AY); stage 2
+(`1000:17D7-17F8`) then waits for a FRESH fire press or any key release -- but its own timeout test
+(`CMP CS:[0x93C2],0x2BC`) compares against a CS-relative constant §9AR e already proved has no
+writer anywhere in the binary, permanently 0 -- so `0 >= 0x2BC` never holds, and stage 2's own
+timeout branch is NEVER taken. In practice this screen waits for a keypress INDEFINITELY once the
+bounce ends. `get_xrefs_to 1000:179B` confirms it is the SAME wait function `ShowNextRaceIntroScreen
+Tune4or5` (the RACE_INTRO screen) uses (`1000:1395`) -- and this port's own existing RACE_INTRO
+handling ALREADY matches this exactly (a plain `confirm()`-driven wait, no `setTimeout`), so the
+elimination screen's own "press any key to continue" step reuses that SAME established idiom rather
+than `PRESS_ANY_KEY`'s own `pressAnyKeyTimer` (which WOULD be wrong here -- there is no real
+auto-timeout to replicate).
+
+**`FUN_1000_0DB0`'s own branch priority, re-verified: ELIMINATED (`0x20`) is tested BEFORE taken
+(`0x40`).** `1000:0DBC: TEST CL,0x20 / JZ 0DC5` (eliminated -> frame 12) comes before
+`1000:0DC5: TEST CL,0x40 / JZ 0DEE` (taken -> frame 13). Since `checkElimination` (below) never
+clears the victim's own `0x40` bit, an eliminated character's roster byte has BOTH bits set by the
+time anything re-displays it (e.g. the SAME carousel, now showing the replacement pick) -- and the
+real game shows such a character as "eliminated" (frame 12), not merely "taken" (frame 13).
+`screens.js`'s own `faceFrame` (P2's own item 3, §9ax) only ever checked `0x40`, defaulting an
+eliminated-and-taken byte to the WRONG pose -- fixed here to check `0x20` first, matching `0DB0`
+exactly (the `0DB0` branches this DOESN'T model -- its own `CH!=0` path, selecting between FCHAPPY/
+FCFROWN/FCSAD/FCNORMAL for OTHER screens entirely -- are out of scope for this item; the elimination
+bounce icon's own FCSAD binding is a separate, explicit rebind in `16DE` itself, confirmed above,
+not routed through `0DB0` at all).
+
+**The real eviction rule, fully re-derived -- resolving the goal item's own "not a derivation"
+flag.** Lives in `ShowRaceResultsScreenTune8or6` (`1000:1676-16DB`), NOT `RunTournamentLoop`/`1A82`
+as this file's own earlier prose assumed without ever having traced it. Gate: `[0x310] % 3 == 0`,
+tested on `completedRaceIndex` -- the race JUST finished, read BEFORE `RunTournamentLoop`'s own
+`[28C1]` INC (`1000:10F9`), since `13E4`'s own call (`1000:110D`) happens first -- the SAME
+pre/post-increment class of bug `effectiveRaceIndex`'s own header already names for the board and
+`tournamentIndex` (§9AY/§9AZ), now caught a third time, this time by an advisor review of the
+pre-implementation synthesis (before any code was written, evicting one race early in the plan as
+first proposed; see "Corrected" below for exactly when each fix landed). Reachable on 1st place (any
+race) or 2nd place (any race except the very last order-table entry) -- Challenge format only (H2H
+returns early, `1000:13F3`).
+
+`[0x310]` is a genuinely SEPARATE global from `[28C1]`, not the same counter under two names -- a
+second advisor pass (after implementation, reviewing the committed code and tests) flagged this
+file's own earlier claim that they were interchangeable as unverified, and re-disassembly settled
+it exhaustively: `[0x310]`'s only real accesses in the whole 83,662-byte image (a `search_byte
+_patterns` sweep for its address bytes, `10 03`, 7 hits, all individually re-disassembled; the two
+NOT listed below are false positives -- `2D8D`'s `CMP [0x108C],0x3` and `5546`'s `JMP 5858`, both
+coincidental byte runs, not this global) are three resets to 0 (`1000:0FCF`, `1000:1040`,
+`1000:10B4` -- each paired in the SAME instruction sequence with a `[28C1]=0` reset), one increment
+(`1000:10FD`, immediately after `10F9`'s own `INC [28C1]`, same basic block, unconditional), and the
+one read this section already covers (`1677`). So `[0x310]` and `[28C1]` are written together at
+every site that touches either -- provably always equal, by construction, for the entire life of a
+tournament. This also closes the second advisor pass's own sharper question directly: **can a bonus
+race reach the elimination gate a second time** (since `TriggerBonusRace 1A82` runs a whole race via
+its own `115C` call, separately from `RunTournamentLoop`'s normal per-race `110A`/`110D` pair)? No --
+`1A82`'s own full 13-instruction body (re-disassembled) calls only `115C` (setup+run) and `1C1B`
+(the bonus outcome/EXTRA_LIFE-or-NO_BONUS setter); it never calls `13E4`/`ShowRaceResultsScreenTune8
+or6` at all, and `115C` itself (also re-disassembled) never touches `[0x310]`/`[28C1]` or calls
+`13E4` either -- the bonus race's own completion is structurally incapable of reaching the
+elimination gate, not merely "happens not to" for the port's own tested schedules. The port's
+`reportRaceResult` already matches this exactly: its `pendingBonusRace` branch returns immediately,
+before `checkElimination` is ever reachable in that call. **Victim selection is a 3-SLOT DESCRIPTOR-ADDRESS CURSOR
+(`DS:0346`), not a roster-index computation** -- the goal item's own flagged "interpretation": on
+the FIRST eviction (`completedRaceIndex===3`, a literal equality in the bytes, not "the first time
+this runs"), the cursor is set to whichever of the 3 CURRENT opponent slots (`0xC1E`/`0xC39`/`0xC54`)
+holds the lowest character index; every LATER eviction just advances the cursor by 1, wrapping
+`0xC54->0xC1E` -- UNCONDITIONALLY, even on a no-op pass (confirmed: `DS:0346`'s own only 3
+references in the whole binary are the write sites `1000:16AB`/`16B0`/`16BE`, all inside this one
+gate, and the free-slot check runs AFTER the cursor is set), so a replacement CAN be evicted again
+once the cursor returns to its own slot. No-op: scan the 11-byte roster for one with neither
+`taken` nor `eliminated` set; none -> skip the visible eviction, but the cursor has already moved.
+On a real eviction, the victim's `0x20` bit is set but `0x40` is NEVER cleared (`1000:1707` is an
+`OR`) -- an eliminated character stays permanently excluded from the free-roster count (the
+free-slot scan tests `byte & 0x60`, either bit disqualifying) but is never "un-taken". **The
+replacement is chosen by the PLAYER, through the SAME interactive picker P3's second item ported**
+(`1000:16de`'s own trailing `1000:1796: CALL 0x1000:1A4A` -- the identical function, identical
+identity, confirmed by `get_xrefs_from`), not auto-picked -- correcting this file's own earlier
+claim (and docs/engine.md §9k's, which was right only as a description of THIS PORT's own
+now-superseded simplification, not of the original game).
+
+**Corrected pre-implementation (advisor review of the workflow synthesis, before any code was
+written).** Three real bugs in the PLANNED approach, caught and fixed before a single line of
+`tournament.js` changed, so no "first draft" of the code itself ever had them:
+1. **The trigger would have fired one race early.** The plan as first synthesized called
+   `checkElimination` with the ALREADY-ADVANCED `state.raceIndex` (post-`advance()`), which would
+   have evicted after completing races 2, 5, 8, ... instead of 3, 6, 9, .... Written instead as
+   capturing `completedRaceIndex = state.raceIndex` BEFORE `advance()` runs, matching `13E4`'s own
+   real pre-increment read (see above).
+2. **A bonus-triggering race would have skipped its own eviction.** The plan as first synthesized
+   kept the OLD code's own `if (!bonusTriggered && !state.over) checkElimination(...)` gate. The
+   real `13E4` runs BEFORE `RunTournamentLoop`'s own bonus-trigger check (`1123-113A`) -- a race
+   that ALSO triggers a bonus (the default streak=3 means this happens on the very FIRST eviction
+   race, race 3, in a perfect run) still evicts. Written instead with the gate removed --
+   `checkElimination` runs unconditionally, ahead of the bonus check, matching `13E4`'s own call
+   order exactly. `check-tournament.mjs`'s own test 7b is the dedicated regression test for this
+   (confirmed by reintroducing the gate and re-running the suite: it fails, specifically and only
+   this test plus test 6's tightened checkpoint-sequence assertion -- see below).
+3. **The RESULTS table would have shown the wrong driver.** The plan as first synthesized built
+   `advanceRace`'s own `names` array from `tournament.opponents` AFTER `reportRaceResult` ran --
+   which, on an evicting race, would have ALREADY nulled the victim's own slot, so the results table
+   for the very race that victim just drove would show "???" instead of their name. Written instead
+   as snapshotting `[...opponentCharactersFor(tournament)]` (a COPY, not a live reference --
+   `checkElimination` mutates `state.opponents` IN PLACE) BEFORE calling `reportRaceResult`; this
+   also replaces P3's second item's own earlier `wasQualifier`-based special case with one general
+   mechanism. `advanceRace` itself has no headless test (DOM/frame-bound), so `check-tournament.mjs`
+   gained test 7c, which proves the underlying hazard directly against `tournament.js`'s own
+   exported functions -- the same ones `advanceRace` calls, in the same order.
+
+Also fixed at the same pre-implementation stage: `faceFrame`'s own priority (above) -- now with its
+own direct assertions in `check-screens.mjs` (`faceFrame(0x60)===12`, `faceFrame(0x43)===13`,
+`faceFrame(5)===5`), confirmed by reintroducing the swapped branch order and re-running: only that
+test fails; a missing `subMenuMusic` call in `enterOpponentPick` was ALREADY fixed in P3's second
+item's own second correction round, not re-broken here, re-confirmed still correct now that the
+replacement picker reuses the identical function; and the 4-face status panel (`FUN_1000_19F2`) --
+deferred as unported when P3's second item shipped -- is ported now (`screens.js`'s
+`drawOpponentPanel`), since this item's own bounce icon needs the SAME row layout the panel defines
+(`Y=0x24`, `X=8+0x40*slot`) to be positioned correctly; this retroactively closes that item's own
+deferred gap too (the opponent picker's own screen, `enterOpponentPick`, now shows the panel as
+well, redrawn fresh from `tournament.opponents` on every repaint rather than the real game's own
+"drawn once, left on screen" approach -- a documented, low-risk port-side layering choice, not a
+real-bytes citation).
+
+**Corrected post-implementation (a second advisor review, of the committed code and tests).** Three
+findings, none requiring a behaviour change:
+1. **The `git stash push -u -- src/` proof-of-failure was too broad to be meaningful.** Stashing the
+   whole `src/` tree against the brand-new `elimination.js`/rewritten `tournament.js`/`screens.js`
+   only proved the new EXPORTS didn't exist yet (`SyntaxError: ... does not provide an export named
+   'hasEmptyOpponentSlot'`) -- a real failure, but not evidence that any specific assertion (test 6,
+   7, 7b, 7c, the `faceFrame` checks) actually catches its own bug. Redone properly: each of the
+   three pre-implementation bugs above was reintroduced individually into an otherwise-current
+   `tournament.js` (keeping the new exports intact) and the suite re-run each time -- bug 1 alone
+   fails test 7 (`no eviction after completing race 2 either`) and, as a side effect of the eviction
+   landing on the wrong race, test 7c; bug 2 alone fails test 7b directly plus test 6's own tightened
+   checkpoint-sequence assertion; the `faceFrame` swap fails only its own new dedicated assertion.
+   Bug 3 (the RESULTS snapshot) has no code left to "reintroduce" inside `tournament.js` itself since
+   the bug lived in `flow.js`'s own call ordering, which has no headless harness -- test 7c instead
+   proves the hazard it guards against is real (a live post-call read of `opponentCharactersFor`
+   DOES show a `null` on the exact race that just evicted someone) directly against the shared
+   functions `advanceRace` calls, in the order it must call them.
+2. **Whether `[0x310]` and `[28C1]` are really the same counter, or could disagree across a bonus
+   race** (raised as a concrete double-eviction risk: could a bonus race's own results reach the
+   `1676` gate a second time at the same `completedRaceIndex`, since `_evictionSlotCursor`'s own
+   "first eviction" branch would re-fire and reset to the lowest-index slot instead of advancing).
+   Settled definitively by direct re-disassembly, not by re-asserting the prior claim -- see the
+   `[0x310]` paragraph above. Not a bug, in either the original game or the port: the two globals are
+   provably always equal (written together at every site), and `TriggerBonusRace`'s own full body
+   never reaches the gate at all. `check-tournament.mjs`'s test 6 was also tightened from "exactly 7
+   eliminations" (a count, which a double-fire-then-run-dry-early scenario could still satisfy) to
+   asserting the exact checkpoint sequence `[3,6,9,12,15,18,21]`, so this class of bug would be
+   caught directly even though this specific mechanism turned out to be structurally impossible.
+3. **The pre/post-implementation provenance of the first advisor pass was stated inconsistently**
+   across this section, the `GOAL-DOS-PARITY.md` tick and the `PLAN-ENGINE.md` M3.55 row (one
+   self-contradicted: "run before any code was written, then caught three real bugs once the code
+   existed"). Corrected throughout, per the accurate account above: one advisor call, before any
+   `tournament.js`/`flow.js`/`screens.js` code was written, reviewing the synthesized plan itself.
+
+**Corrected after a third advisor review (of the second pass's own fixes and claims).** Two of the
+three findings above were themselves incomplete:
+1. **Test 7's own round-robin assertion was vacuous, not just weak.** `fillEmptyOpponentSlots`
+   always replaces with the next-HIGHER free roster character (ascending order), so under that
+   harness the lowest-current-index slot never moves once vacated -- "the 3-slot cursor advances"
+   and "always evict the lowest current index" predict the SAME victim at every checkpoint the old
+   test 7 drove to. The item's own central claim (a slot cursor, not a roster-index computation) had
+   no test that could fail without it. Fixed: new test 7a picks all replacements explicitly and OUT
+   of ascending order (`opponents=[3,2,1]` to start, `0`/`4`/`5` as replacements placed by hand, not
+   by the harness), driving 4 checkpoints where the two hypotheses diverge, culminating in a
+   replacement (character 0, placed at race 3) being RE-EVICTED at race 12 once the cursor cycles
+   back to its own slot -- a result no roster-index rule of any kind can produce. Confirmed by
+   substituting "always evict the lowest current index" for the cursor and re-running: exactly two
+   of test 7a's checks fail (the two discriminating checkpoints), the rest of the suite unaffected.
+2. **Test 7c never exercised the code `advanceRace` actually calls.** It called `tournament.js`'s
+   raw `opponentCharactersFor`/`reportRaceResult` in the right order itself, which proves the HAZARD
+   is real but not that `flow.js`'s own `advanceRace` avoids it -- reordering `advanceRace`'s two
+   lines would have left every test green. Fixed by extracting the ordering into a new export,
+   `reportRaceResultWithOpponentSnapshot(state, result)` (snapshots `opponentCharactersFor(state)`,
+   THEN calls `reportRaceResult`, returns the snapshot), and rewiring `advanceRace` to call it
+   instead of doing the two steps inline; test 7c now calls this SAME export directly. Confirmed by
+   swapping the two lines INSIDE the helper and re-running: test 7c fails, specifically and only.
+3. **The `1A4A`/`179B`/`0C15` "is there really a wait after the picker" question**, raised as a
+   possible missing-screen bug in both this item and item 2 -- resolved, not a bug, see the
+   dedicated paragraph above (`1A4A`'s own trailing `CALL 0C15` IS the "press any key", reached
+   identically for a 3-slot initial pick or a 1-slot replacement; `179B`'s separate wait runs earlier,
+   before the picker, not after).
+
+**Corrected after a fourth advisor review (of the render this item had never actually looked at).**
+Two real, independently confirmed bugs, neither previously caught because no prior pass had rendered
+the elimination screen mid-bounce or at the moment it finishes:
+1. **The panel showed the real "unpicked" placeholder (a red "?", frame 11) at the victim's own
+   slot, throughout the whole bounce.** `paintEliminated` (`flow.js`) passes `tournament.opponents`
+   straight to `drawEliminatedScreen`, and `checkElimination` has ALREADY set that slot to `null`
+   before this screen ever starts -- so the port's own `drawOpponentPanel` (redrawn fresh every
+   frame, a documented simplification vs. the real game's one-time draw) kept showing the "nobody's
+   picked this yet" icon under the bouncing FCSAD face. Fresh re-disassembly of `19F2` (26
+   instructions, not fully covered before) shows the real game does something different: it reads
+   each slot's face-DESCRIPTOR frame field (NOT the roster byte) through `0DB0`, after masking to
+   `0x4F` (`1000:1A0E`) -- so it can only ever show "unpicked" (`0xB`), the generic "taken" state
+   (bit `0x40`), or a plain portrait, NEVER "eliminated" (that bit lives on the roster byte, a
+   different address `19F2` never reads). `1000:170A: OR word ptr [BX+0x13],0x40` sets exactly that
+   bit on the VICTIM's own descriptor, immediately before the panel's own ONE-TIME draw
+   (`170E: CALL 19F2`) -- and rendering `faceFrame(0x40)` (frame 13) confirmed it is genuinely BLANK
+   artwork in `FCNORMAL.CHR`, not a visible silhouette as an initial reading of `0DB0`'s branch name
+   suggested: the victim's static portrait simply vanishes from the panel, leaving only the bouncing
+   FCSAD icon to represent them. Fixed: a new pure export, `eliminatedPanelSlots(opponents, slot)`
+   (`screens.js`), substitutes `0x40` at the victim's own slot before the panel is built; verified
+   with a rendered PNG (three visible portraits, one blank slot, the sad-face icon bouncing
+   separately) matching this derivation exactly, and with a dedicated regression test comparing
+   `drawEliminatedScreen`'s own output (not a hand-rolled equivalent) against an un-fixed reference
+   over the exact panel rows (13-47 of the sprite's 48) confirmed to differ between the two frames --
+   chosen at `step=15` specifically, where the bouncing icon has moved far enough down not to
+   obscure the comparison (rows 0-12 are blank in both frames regardless, at any step).
+2. **The frozen final frame, during the whole indefinite `179B` wait, was wrong -- twice.** First
+   fix attempt: `eliminationStep` incremented `state.step` to 16 the instant the bounce finished
+   (before returning `done`), and `screens.js`'s own defensive `WOBBLE_TABLE[step] ?? 0` silently
+   fell back to a Y-offset of 0 -- the icon visibly SNAPPED back to the panel's own baseline row the
+   instant the bounce ended. Clamping `state.step` to `WOBBLE_TABLE.length-1` (15) fixed that snap,
+   but rested on an UNVERIFIED assumption (that the icon simply stays at its own last bounced
+   position, offset 47, for the whole wait) that a follow-up advisor pass challenged directly by
+   asking what `1000:1790`'s own `CALL 08BC` -- called right after the loop exits -- actually draws.
+   Re-disassembling it (20 instructions, a plain, unambiguous 200-row copy) plus the loop's own
+   `1776: CALL 05B4` (`RestoreSpriteBackground`, ALSO re-disassembled: copies the pixels the sprite's
+   own blit overwrote back over it -- i.e. erases the sprite from the work buffer) settled it: `05B4`
+   runs EVERY loop iteration, including the last, so the icon is already erased from the work buffer
+   the instant the loop exits (`1759`); nothing between that exit and `1790`'s own full-screen
+   present draws anything new -- so the real screen shows NO icon at all during the wait, not one
+   frozen at offset 47. Fixed properly: `drawEliminatedScreen` now takes an explicit `done` flag and
+   skips the icon draw entirely when true (not merely clamping its position); confirmed both by
+   reintroducing the bug (removing the `done` skip) and re-running the suite, AND by rendering the
+   `done` state to PNG and looking -- three portraits, one blank slot, no icon, matching this
+   derivation exactly. A second latent bug the first fix attempt's own `state.step` clamp surfaced:
+   calling `eliminationStep` again after done would have waited another full 9 ticks before
+   re-signalling done (the tick-counting logic ran unconditionally); fixed with an explicit
+   `state.done` latch, checked first. **Deliberately NOT modelled, still open**
+   (`UNKNOWN_elimination_bounce_clip_band`, `elimination.js`'s own header): `089C`
+   (`CopyFrontViewRowsToVga`, the loop's own PARTIAL per-step present, distinct from `08BC`'s full
+   200-row one) is called every step with literal row-count/start-row parameters (`0x3C`/`0x20`)
+   that -- IF a specific stride reading of its own copy loop is right, not independently confirmed --
+   would mean only a ~60-row band (view-relative rows 32-91) actually reaches the real screen each
+   step, clipping the icon's own lower rows whenever its offset (32 or 47) pushes it below that band.
+   Not applied: the stride arithmetic behind it rests on one reading of `089C`'s own SI/DI
+   advancement that was not independently cross-checked, unlike the two fixes above (each resting on
+   a single, simple, unambiguous function). Needs either a cleaner re-derivation or a live DOSBox
+   capture before it should change any rendering.
+
+**Port.** `src/frontend/elimination.js` (new, pure `eliminationInitialState`/`eliminationStep`, no
+input parameter -- the real loop never polls input). `src/frontend/tournament.js`:
+`checkElimination` rewritten around the 3-slot cursor (`state._evictionSlotCursor`) and
+`completedRaceIndex`; `state.opponents` is now `[null,null,null]` for Challenge (a fixed 3-slot
+array, `null` = the real `0xB` "unpicked" sentinel) instead of a variable-length array;
+`pickOpponentCharacter` fills the FIRST empty slot instead of appending; new `hasEmptyOpponentSlot`
+(replaces the old `opponents.length` checks everywhere, including inside `needsOpponentPick`);
+`state.pendingElimination` (`{victim, slot}`) signals `flow.js` to show the bounce screen; new
+`reportRaceResultWithOpponentSnapshot` (snapshots `opponentCharactersFor` BEFORE calling
+`reportRaceResult`, returns the snapshot -- the one correct way to build a post-race names list on
+an evicting race, extracted so `flow.js` and its own test can share the identical code path).
+`src/frontend/screens.js`: `drawOpponentPanel` (`FUN_1000_19F2`), `drawEliminatedScreen`
+(`1000:16DE`'s own layout), `faceFrame`'s priority fix, new `eliminatedPanelSlots` (the victim's own
+slot substitution, `1000:170A`). `src/engine/sound.js`: `eliminatedMusic`
+(tune 6). `flow.js`: `enterEliminatedScreen`/`eliminationTick`/`leaveEliminatedScreen` (the SAME
+RAF-tick-driven pattern every other P1/P2/P3 phase uses, but with no reader -- the bounce takes no
+input -- and no auto-timeout once done, matching `179B`'s own real behaviour above); wired into
+`nextAfterOutcome` AHEAD of `needsOpponentPick`/`shouldShowBoard` (`13E4`'s own call order: RESULTS
+-> ELIMINATED -> replacement picker -> PRESS ANY KEY -> [bonus race if pending] -> board -> next
+race intro); `leaveCharSelect`'s `challenge-opponent` branch now checks `hasEmptyOpponentSlot`
+instead of `opponents.length<3`, so the SAME code path serves both the initial 3-pick and a single
+replacement; `advanceRace` now calls `reportRaceResultWithOpponentSnapshot` instead of a manual
+snapshot-then-call pair.
+
+**Tests.** `tools/check-elimination.mjs` (new, `npm run elimination`): the wobble table matches
+`DS:034B` exactly (16 real steps), each step holds exactly `WOBBLE_STEP_TICKS`(9) ticks, the frame
+alternates starting `frameOn=true` on the very first rendered step (the real loop toggles BEFORE
+every draw, including the first), the bounce always completes in exactly 144 ticks, it never reads
+an input parameter, `state.step` freezes at 15 (never 16) once done with `WOBBLE_TABLE[state.step]`
+always defined, and calling `eliminationStep` again after done stays frozen rather than waiting
+another 9 ticks. `tools/check-screens.mjs` gained `eliminatedPanelSlots` unit checks plus an
+end-to-end pixel check of `drawEliminatedScreen`'s own panel rows against an un-fixed reference.
+`tools/check-tournament.mjs` rewritten substantially (test 7 re-derived
+against the corrected mechanics; new test 7a decisively distinguishes the 3-slot cursor from "always
+evict the lowest current index" and from a roster-index round robin, over 4 checkpoints with
+explicit, non-ascending replacement picks; new test 7b specifically proves a bonus-triggering race
+still
+evicts -- the exact scenario bug #2 above would have failed; new test 7c calls
+`reportRaceResultWithOpponentSnapshot` directly, proving both that its return value names every
+opponent as of the moment it was called and that the live array read afterward does not (bug #3's
+own regression test, now against the exact function `advanceRace` calls); test 6 extended to assert
+the exact checkpoint sequence `[3,6,9,12,15,18,21]` over a full perfect run (tightened from a bare
+count of 7, which a double-fire-then-run-dry-early scenario could still satisfy), from the arithmetic
+`11 roster - 1 player - 3 initial opponents = 7 free characters`, one consumed per eviction check,
+with the 8th (`completedRaceIndex 24`) always the no-op. `tools/check-screens.mjs` gained
+`drawOpponentPanel`/`drawEliminatedScreen` smoke cases plus three direct `faceFrame` assertions.
+Every one of these regression tests was individually confirmed by reintroducing its own bug (not by
+a single whole-`src/` `git stash`, which only proves missing exports exist -- see the second
+"Corrected" section above) and re-running the suite: each fails specifically and only its own
+dedicated assertion(s), then passes again once reverted. Full regression suite re-ran clean
+throughout, including after every one of these individual bug-reintroduction checks.
+
+**Live check.** Driven end to end in a foreground Chrome tab: the existing boot-chain drive-through
+to the initial 3-opponent pick (P3's second item's own precedent), then -- rather than completing
+three real races, blocked by the same backgrounded-tab `requestAnimationFrame` limitation §9AY/§9AZ
+already documented -- `tournament.pendingElimination` was poked directly (`{victim: <a picked
+opponent>, slot: 0}`, with `opponents[0]` nulled to match `checkElimination`'s own real effect) and
+`confirm()` called from the pre-existing `PRESS_ANY_KEY` phase, landing correctly in `ELIMINATED`.
+Screenshotted: the 4-face panel, the victim's own name and "IS OUT!!" banner, matching the intended
+layout. `forceEliminationSteps` ran the bounce to completion; confirming again correctly cleared
+`pendingElimination` and entered the replacement picker, which correctly showed the vacated slot as
+the real "unpicked" placeholder (frame 11) alongside the other two still-filled slots (screenshotted).
+Picking a replacement correctly filled that exact slot and proceeded to `PRESS_ANY_KEY` with the
+new roster reflected in `tournament.opponents`. No console errors from the point the console-message
+tool was attached (the same standing caveat every prior live-check paragraph this session names).
+
+**A later render is what actually caught the panel/freeze bugs above.** This original live-check
+pass, like every one before it, never looked closely at a mid-bounce frame or the exact moment the
+bounce ends -- both bugs it missed are specifically about those moments. A follow-up headless render
+(`drawEliminatedScreen` at several `step`/`done` values, `indexedToRgba` + `tools/png.mjs`, saved to
+a scratch PNG and looked at) showed the fix's own intended picture at each stage: mid-bounce, three
+visible portraits, a blank fourth slot (not the red "?" `FCNORMAL.CHR` frame 11, confirmed by a
+side-by-side render of both), and the FCSAD icon bouncing separately below the panel row; once done,
+the SAME three portraits and blank slot, but with the icon gone entirely -- matching this section's
+own derivation exactly at both stages.
+
+**Where that `PRESS_ANY_KEY` actually comes from, settled by a third advisor pass.** The paragraph
+above states the observed port behaviour correctly, but this section originally attributed it to the
+wrong instruction. `FUN_1000_1A4A` itself, fully re-disassembled (20 instructions, not previously
+done in full): `1A4A: CALL 19F2` (the 4-face panel, drawn ONCE at entry, not per pick); then a loop
+from `BX=0xC03` (the PLAYER's own face-descriptor slot, `+0x1B` per step through the 3 opponent
+slots `0xC1E`/`0xC39`/`0xC54`) scanning for `[BX+0x13]==0xB` (the "unpicked" sentinel); on a hit,
+`1A69` remembers the slot, runs `09E0` (the SAME character-select carousel) for that ONE slot, and
+either re-enters the SAME slot on ESC (`1A78: JNC 1A7C / JMP 1A69`, confirming this section's own
+earlier claim) or, on a real pick, loops back to `1A53` to RE-SCAN FROM THE START (`BX=0xC03` again)
+-- so the NEXT slot filled is whichever the scan finds first in slot order, not necessarily the
+next-highest index; the port's own `pickOpponentCharacter` (fills the first `null` in `state.
+opponents`) matches this exactly, since the player's own slot is always already filled by the time
+`1A4A` runs. Once the scan finds no `0xB` slot left (`BX>0xC54`), `1A65: CALL 0C15; RET` -- and
+`0C15` (`get_xrefs_to`: 3 callers, `RunOnePlayerChallenge 108A` and `RunOnePlayerHeadToHeadVsCpu
+101B`, both right after the PLAYER's own single character pick, plus `1A4A` itself) is the SAME
+"PRESS ANY KEY TO START" the qualifier's own character select already leads to once -- confirmed,
+not assumed, by that shared-caller identity. So the "press any key" this section's live check
+observed comes from `1A4A`'s OWN trailing call, reached identically whether `1A4A` fills 3 empty
+slots (item 2's initial pick) or just 1 (this item's replacement pick) -- **not** from a separate
+step `16DE`'s own tail or the port invented. `16DE`'s own tail (`1789-179A`, also now fully
+re-disassembled) is unrelated and comes EARLIER: the loop's own `1759: JZ 178B` exit (when the
+wobble table's 17th/terminator byte is read) lands at `178B: MOV word ptr [BX+0x13],0x0B` (resetting
+the VICTIM's own face descriptor to the same "unpicked" sentinel `1A4A`'s scan looks for -- the real
+"vacate the slot" mechanism, matching `checkElimination`'s own `state.opponents[slot]=null`
+one-for-one), `1790: CALL 08BC` (a redraw), `1793: CALL 179B` (the indefinite wait this section
+already covers), THEN `1796: CALL 1A4A`. So the real order is bounce -> vacate+redraw -> wait for a
+key -> run the picker (which ends with ITS OWN wait for a key, via `0C15`) -- exactly two separate
+waits, both already correctly ported (`ELIMINATED`'s own confirm-gated wait, then `PRESS_ANY_KEY`
+after `1A4A`'s scan finds no more `0xB` slots), not the missing-wait bug a third advisor pass
+initially suspected from `16DE`'s own tail alone (which, read in isolation, has nothing after its
+own `1796: CALL 1A4A` besides `POPA;RET` -- correct, because the wait already happened INSIDE the
+callee, at `0C15`, before `1A4A` ever returns).

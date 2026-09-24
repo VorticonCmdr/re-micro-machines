@@ -71,7 +71,11 @@ and stays local to your machine.
   against real DOSBox captures (`GOAL-DOS-PARITY.md` P1/P2, `docs/engine.md` §9as-§9ax), and the
   real tournament board screen between Challenge races (the `CASE.CHR` "vehicle display case" with
   one `MINATURE.CHR` icon per race, at the real per-icon positions, the newest one blinking as a
-  preview of the class of the race about to run) -- `GOAL-DOS-PARITY.md` P3, `docs/engine.md` §9ay.
+  preview of the class of the race about to run), and the real elimination/replacement screen (the
+  evicted character's own 16-step silent bounce on their `FCSAD.CHR` portrait, then the same
+  interactive carousel re-prompting only the vacated slot -- the real victim rule is a 3-slot
+  descriptor-address cursor, not a roster-index computation) -- `GOAL-DOS-PARITY.md` P3,
+  `docs/engine.md` §9ay/§9az/§9ba.
 - **The race engine**: 35 Hz fixed-timestep physics (steering, velocity, collisions, terrain
   hazards per round, checkpoints/laps, airborne/ramps, the full car state machine), the drone AI,
   and per-round camera — all reproduced from the disassembly, not approximated.
@@ -79,8 +83,11 @@ and stays local to your machine.
   win-streak bonus races (round 9, "RUFFTRUX"), lives, and driver elimination/replacement, including
   the real interactive opponent picker (pick your 3 Challenge opponents yourself, right after
   passing the qualifier — the qualifier's own drones are a hardcoded trio in the original itself,
-  not a real pick) — see `docs/engine.md`'s front-end section for exactly which parts are still
-  simplified (the elimination-replacement picker still auto-picks, for instance) and why.
+  not a real pick) and the real elimination/replacement rule (every third Challenge race — won or
+  2nd place, never the last — a real 3-slot descriptor-address cursor picks the victim, who can be
+  re-evicted once the cursor returns to their slot; you then pick the replacement yourself, through
+  the same carousel) — see `docs/engine.md`'s front-end section for exactly which parts are still
+  simplified and why.
 - **Sound**: real OPL2 synthesis running in an `AudioWorklet`, ticked off the audio clock the way
   the original driver was, with an optional strict-YM3812 mode (see below).
 - **The real GAME OPTIONS screen** (`game.html`, shown after the code card, before the title): F1/
@@ -109,12 +116,11 @@ and stays local to your machine.
 
 ## What's not implemented
 
-- Two-human head-to-head and the Challenge elimination-replacement picker — both named explicitly
-  in `docs/engine.md`'s front-end sections, with the reason each was cut (the tournament board
-  screen and the interactive opponent picker are now both implemented — see above). Palette fades
-  exist (the README previously said otherwise); see
-  `docs/engine.md` §9an for the one real difference (the port fades in at race start, the original
-  doesn't).
+- Two-human head-to-head — named explicitly in `docs/engine.md`'s front-end sections, with the
+  reason it was cut (the tournament board screen, the interactive opponent picker, and the
+  elimination/replacement screen are now all implemented — see above). Palette fades exist (the
+  README previously said otherwise); see `docs/engine.md` §9an for the one real difference (the
+  port fades in at race start, the original doesn't).
 - Gamepad/mouse input during a race (keyboard only) -- mouse input elsewhere (the logo intro's
   click-to-skip) is implemented. The GAME OPTIONS screen's own F7 (joystick calibration) is gated
   correctly (never shown without a joystick) but its analog-read body isn't ported, same reason.
@@ -135,6 +141,7 @@ npm run trace        # replay a live-captured DOSBox trace through the physics
 npm run ai           # drone AI against the same trace, and a full AI+physics loop
 npm run rounds       # all 9 rounds x every race x both race formats run clean
 npm run tournament   # the one-player tournament state machine's rules
+npm run elimination  # the real elimination-screen bounce animation matches the disassembly
 npm run sound        # the sound driver model, engine pitch, sfx wiring
 npm run opl-toggle   # the two OPL2 waveform modes actually sound different
 npm run si2          # the JS OPL2 core reproduces every register write DOSBox made

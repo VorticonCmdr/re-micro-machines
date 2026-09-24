@@ -13,6 +13,7 @@ import { drawString, drawStringCentred, blitChr, MENU_VIEW } from '../render/men
 import { blitTransparent } from '../render/blit.js'
 import { CHARACTER_NAMES, CHARACTER_SKILLS, trackName, OPTIONS_MENU_LINES, OPTIONS_FOOTER, OPTIONS_TITLE, SMOOTHNESS_LABELS, SOUND_LABELS, CREDITS_LINES, REDEFINE_GROUP_LABELS, REDEFINE_SLOT_LABELS, REDEFINE_DISPLAY_CHAR, REDEFINE_DISPLAY_CHAR_DEFAULT, TITLE_COPYRIGHT, TITLE_CLASS_NAMES, SELECT_GAME_TITLE, ONE_PLAYER_LABEL, TWO_PLAYER_LABEL, GAME_LABEL, ONE_PLAYER_ITEM_LABELS, ORDER_TABLE, BOARD_ICON_POSITIONS } from '../data/frontend-tables.js'
 import { CONTROL_NAME } from '../formats/globaldata.js'
+import { WOBBLE_TABLE } from './elimination.js'
 
 function rec(name) {
   return CHR_TABLE.find((r) => r.name === name)
@@ -69,20 +70,25 @@ export function drawOnePlayerGameMenu(buf, arena, { selection = 0 } = {}) {
 
 // P2's third item: RunCharacterSelectMenuTune2 1000:09e0, the real scrolling FCNORMAL.CHR
 // carousel (src/frontend/charSelect.js). `scroll`: the carousel's own raw position (0..0x2C0),
-// `roster`: tournament.js's roster array (raw byte values -- 0-10 free, |0x40 taken). Each of the
-// 11 faces' own screen X is `pos - 0xD8` (1000:0d1f), cyclic from `scroll`; `blitChr` clips
-// off-screen ones automatically, so all 11 are drawn unconditionally, matching the original's own
-// clip-in-the-blitter approach rather than pre-filtering. FCNORMAL's own frame semantics
-// (`FUN_1000_0db0`, re-disassembled for this item): frame = the roster byte itself (0-10, the
-// character's own portrait) once its `0x40` (taken) bit is stripped to frame 13, matching the
-// real function's own `uVar3=0xd` branch -- there is no separate `taken` list parameter needed,
-// the roster array already encodes it. `blinkOn`: the picked face flashes between its own
-// portrait and the "taken" pose (frame 13) during the 5-blink commit sequence -- a simplified
-// stand-in for `0db0`'s own more intricate bit-toggled blink frame math, not pixel-ported (this
-// file's own usual caveat). `prompt`: 'WHO DO YOU WANT TO BE ?' (DS:020F) for the player's own
-// pick, 'WHO DO YOU WANT TO RACE ?' (DS:0227) for the Head-to-Head CPU opponent.
+// `roster`: tournament.js's roster array (raw byte values -- 0-10 free, |0x40 taken, |0x20
+// eliminated). Each of the 11 faces' own screen X is `pos - 0xD8` (1000:0d1f), cyclic from
+// `scroll`; `blitChr` clips off-screen ones automatically, so all 11 are drawn unconditionally,
+// matching the original's own clip-in-the-blitter approach rather than pre-filtering. `blinkOn`:
+// the picked face flashes between its own portrait and the "taken" pose (frame 13) during the
+// 5-blink commit sequence -- a simplified stand-in for `0db0`'s own more intricate bit-toggled
+// blink frame math, not pixel-ported (this file's own usual caveat). `prompt`: 'WHO DO YOU WANT
+// TO BE ?' (DS:020F) for the player's own pick, 'WHO DO YOU WANT TO RACE ?' (DS:0227) for the
+// Head-to-Head CPU opponent, the Challenge opponent picker, and the elimination replacement pick.
 const CAROUSEL_FACE_Y = 90
-function faceFrame(rosterByte) {
+/** `FUN_1000_0db0`'s own roster-byte branch (`1000:0dbc-0dee`), re-disassembled and independently
+ * verified for P3's third item: ELIMINATED (`0x20`) is tested BEFORE taken (`0x40`), not after --
+ * an eliminated character's own roster byte keeps its `0x40` bit set too (`checkElimination`'s own
+ * header, docs/engine.md §9ba: the real `1000:1707` never clears it), so checking `0x40` first, as
+ * an earlier draft of this function did, would show an eliminated character as merely "taken"
+ * (frame 13) instead of "eliminated" (frame 12) once both bits are set -- exactly the wrong pose in
+ * the SAME replacement carousel this item adds. */
+export function faceFrame(rosterByte) {
+  if (rosterByte & 0x20) return 12 // eliminated
   if (rosterByte & 0x40) return 13 // taken
   return rosterByte & 0x1f // the plain 0-10 portrait once the flag bits are stripped
 }
@@ -169,6 +175,91 @@ export function drawTournamentBoard(buf, arena, { raceIndex, blinkOn = true } = 
     const { round, race } = ORDER_TABLE[i]
     const { x, y } = BOARD_ICON_POSITIONS[i - 1]
     blitChr(buf, arena, miniature, (round - 1) + (race - 1) * 8, x, y)
+  }
+}
+
+/** `FUN_1000_19F2` (docs/engine.md §9az/§9ba): the 4-face status panel `1A4A` draws once before
+ * either the initial 3-opponent pick or a single elimination replacement pick. Deferred as an
+ * unported cosmetic gap when P3's second item shipped; now ported, since P3's third item (the
+ * elimination screen) needs this SAME row for its own bouncing icon. Draws the shared header
+ * (`WORDS.CHR` "MicroMachines" at its real `(0x48, 8)`), then one `FCNORMAL.CHR` portrait per
+ * `slots` entry (player + 3 opponents for Challenge -- this port never calls it with H2H's own
+ * 2-slot layout, out of scope) in a row at `Y=0x24`(36), `X = 8 + 0x40*i` (`1000:19FB`/`1000:1A29`'s
+ * own literal start-X and per-slot step). `slots[i]`: a roster-byte-style value (character index,
+ * optionally `|0x40`/`|0x20`) for a filled slot, or `null` for the real "unpicked" sentinel
+ * (`0xB`, `faceFrame`'s own fallthrough doesn't cover this -- handled directly here). `header`:
+ * draws the "MicroMachines" line too (the real screen's own standalone use, e.g. the eliminated
+ * screen below) -- `false` when this is drawn ALONGSIDE `drawCharacterSelect`'s own prompt text
+ * (both would otherwise land on the same `y=8` row; a port-only layering choice this file's own
+ * "hand-placed, not measured" convention already covers, not a real-bytes citation). */
+const PANEL_Y = 0x24
+const PANEL_X0 = 8
+const PANEL_STEP_X = 0x40
+export function drawOpponentPanel(buf, arena, { slots, header = true }) {
+  if (header) blitChr(buf, arena, rec('WORDS.CHR'), 0, 0x48, 8)
+  const face = rec('FCNORMAL.CHR')
+  slots.forEach((slot, i) => {
+    const frame = slot == null ? 11 : faceFrame(slot)
+    blitChr(buf, arena, face, frame, PANEL_X0 + i * PANEL_STEP_X, PANEL_Y)
+  })
+}
+
+/** P3's third item: ShowCharacterEliminatedTune6 1000:16de (docs/engine.md §9ba,
+ * src/frontend/elimination.js). "IS OUT!!" (`DS:03B6`) and the eliminated character's own name
+ * (`DS:0258+idx*8`), both `FONT2.CHR` via `DrawString8pxFont` (`1000:0929`, `DX=0xB54` -- the same
+ * font this file's own `drawString`/`drawStringCentred` already use as `FONT2.CHR`) at their real
+ * positions, `1000:1711-1733`: the name at `(0x48, 0x64)`, "IS OUT!!" at `(0x80, 0x64)`. The panel
+ * (`drawOpponentPanel`) is drawn ONCE, matching `1000:170E`'s own single `CALL 19F2` -- fully
+ * re-disassembled (an advisor review flagged this as unverified): `19F2` reads each slot's own
+ * face-DESCRIPTOR frame field (not the roster byte) through `0DB0`, masked to `0x4F` first
+ * (`1000:1A0E`), so it can only ever show "unpicked" (`0xB`, `FCNORMAL.CHR`'s own frame 11 -- a red
+ * "?" mark, confirmed by rendering), the "taken" frame (bit 0x40 set -> frame 13, `0DB0`'s branch --
+ * confirmed by rendering to be genuinely BLANK/empty artwork in `FCNORMAL.CHR`, not a visible
+ * silhouette, discarding the character's own identity bits entirely once 0x40 is set), or a plain
+ * portrait (no bits) -- never "eliminated" (frame 12, bit 0x20, since 0x20 is set on the ROSTER
+ * byte at `1707`, a SEPARATE memory location `19F2` never reads). `1000:170A: OR word ptr
+ * [BX+0x13],0x40` sets JUST that bit on the VICTIM's own descriptor, immediately before this
+ * one-time panel draw -- so the victim's own slot goes BLANK (a sensible, deliberate effect: their
+ * static portrait vanishes from the panel right as they're about to bounce out, leaving only the
+ * FCSAD icon to represent them), not their own portrait and NOT the real "unpicked" placeholder
+ * (frame 11, the red "?") `opponents[slot]` -- already `null`, `checkElimination` vacates it before
+ * this screen ever starts -- would otherwise produce. The real "unpicked" reset (`1000:178B`) and
+ * the FCSAD rebind (`173D`/`1741`)/base-frame overwrite (`1744`) all happen AFTER this one draw,
+ * and `19F2` is never called again for the rest of `16DE`'s own body (bounce or wait) -- the panel
+ * image is a static snapshot, unlike this port's own `drawOpponentPanel`, which is redrawn fresh
+ * every frame (a documented, harmless port-side simplification EXCEPT at the victim's own slot,
+ * where redrawing from the ALREADY-vacated `tournament.opponents` would show the wrong pose; fixed
+ * below by substituting the SAME `0x40`-only sentinel the real `170A` OR produces). The victim's
+ * OWN icon then bounces IN that same panel row (its own slot's X, `PANEL_Y + WOBBLE_TABLE[step]`),
+ * using `FCSAD.CHR` (confirmed live this session, see `elimination.js`'s own header for the full
+ * derivation), NOT `FCNORMAL` -- frame `victim*2 + (frameOn?1:0)`. **The icon disappears entirely
+ * once the bounce finishes**, not a beat later and not frozen at its own last position (a first fix
+ * attempt's own wrong assumption, caught by re-disassembling the loop's own draw sequence): its last
+ * draw is immediately followed, same iteration, by `1000:1776: CALL 05B4`
+ * (`RestoreSpriteBackground`, re-disassembled -- copies the pixels the blit overwrote back over it,
+ * i.e. erases the sprite from the work buffer), and nothing between the loop's own exit
+ * (`1000:1759`) and the real game's next full-screen present (`1000:1790: CALL 08BC`, distinct from
+ * the loop's own partial-band `089C`) draws anything new -- so `done` (`elimination.js`'s own
+ * latched flag, not merely `step===WOBBLE_TABLE.length-1`) must suppress the icon draw entirely, not
+ * just clamp its position. `opponents`: the CURRENT 3-slot array (`tournament.opponents`, already
+ * `null` at `slot`). `slot`: 0-2, which of the 3 opponent columns (panel column `slot+1`, column 0
+ * is always the player) the victim occupied. `step`/`frameOn`/`done`: `elimination.js`'s own step
+ * state. */
+/** 1000:170A's own OR (`[BX+0x13] |= 0x40`), the victim's slot only: extracted as its own pure,
+ * directly-testable function (`tools/check-screens.mjs`) since the render-level effect is hard to
+ * observe reliably -- the bouncing FCSAD icon drawn on top covers most of the same sprite rows the
+ * panel frame choice would otherwise visibly differ in (see `drawEliminatedScreen`'s own header). */
+export function eliminatedPanelSlots(opponents, slot) {
+  return opponents.map((o, i) => (i === slot ? 0x40 : o))
+}
+
+export function drawEliminatedScreen(buf, arena, { victim, playerCharacter, opponents, slot, step = 0, frameOn = true, done = false }) {
+  drawOpponentPanel(buf, arena, { slots: [playerCharacter, ...eliminatedPanelSlots(opponents, slot)] })
+  drawString(buf, arena, rec('FONT2.CHR'), CHARACTER_NAMES[victim] ?? '', 0x48, 0x64)
+  drawString(buf, arena, rec('FONT2.CHR'), 'IS OUT!!', 0x80, 0x64)
+  if (!done) {
+    const y = PANEL_Y + (WOBBLE_TABLE[step] ?? 0)
+    blitChr(buf, arena, rec('FCSAD.CHR'), victim * 2 + (frameOn ? 1 : 0), PANEL_X0 + (slot + 1) * PANEL_STEP_X, y)
   }
 }
 

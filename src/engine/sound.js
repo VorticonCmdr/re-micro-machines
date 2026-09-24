@@ -189,6 +189,14 @@ export function raceOutcomeMusic(driver, outcomeCode) {
   driver.playTune(outcomeCode % 2 === 1 ? 8 : 6)
 }
 
+/** P3's third item: `ShowCharacterEliminatedTune6 1000:16DE`'s own entry (`1000:16E4`/`16F1`,
+ * AH=9-query-then-AH=4-play, collapsed the same way `titleMusic`'s own header note already
+ * documents), played ONCE before the bounce animation starts -- confirmed this session, along with
+ * the correction that no further tune plays during the bounce itself (docs/engine.md §9ba). */
+export function eliminatedMusic(driver) {
+  driver.playTune(6)
+}
+
 /** Champion screen (docs/sound.md's tune table: "3 champion"). */
 export function championMusic(driver) {
   driver.playTune(3)
