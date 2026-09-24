@@ -332,7 +332,7 @@ commits.
   run-on paragraph. Keep the history in the §9x sections.
 - [ ] D3. Rename the misleading Ghidra function names listed in §7 ("Ghidra names to fix": `0fbf`,
   `102b`). Ghidra isn't in git; save the program with `save_program`.
-- [ ] D4. Delete the old backup files (`src/engine/race.js.bak2`, `src/engine/sound.js.bak2`,
+- [x] D4. Delete the old backup files (`src/engine/race.js.bak2`, `src/engine/sound.js.bak2`,
   `src/render/raceView.js.bak2`, and anything else `git ls-files '*.bak*'` lists). The baseline
   commit keeps them in history. First check that nothing imports them. Do this item first; it is
   a one-commit cleanup.
