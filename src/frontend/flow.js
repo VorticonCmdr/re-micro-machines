@@ -828,10 +828,11 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
         // two-car race only checks slot 0 ([3FC]), after the [2630] exit fix-up that `runStep`
         // already applied (the slot-1 entry can be the absent car 2) -- docs/engine.md §9am.
         const finishPosition = raceFormat === 2 ? (raceState.rankOrder[0] === 0 ? 1 : 2) : raceState.rankOrder.indexOf(0) + 1
-        // Cheat type 0 ([406]--, 3652) takes a life at pause time; the tournament reads [406] after
-        // the race, so it is applied to the tournament's own counter here.
-        if (globalState.lives) tournament.lives = Math.max(0, tournament.lives + globalState.lives)
-        resolve(isBonus ? { won: cars[0].state === 0xf } : { finishPosition, cars })
+        // Cheat type 0 ([406]--, 3652: CheckCheatSpotsThenPause's own `DEC byte [0x406]`, re-scanned
+        // on every pause with no over-check at all) takes a life at pause time; carried out here as
+        // `lifeDelta` because `reportRaceResult` (tournament.js) applies it, composed with the
+        // `25011968` cheat's own reset, at `11BA`'s own real position (docs/engine.md §9bc).
+        resolve(isBonus ? { won: cars[0].state === 0xf, lifeDelta: globalState.lives ?? 0 } : { finishPosition, cars, lifeDelta: globalState.lives ?? 0 })
       }
       function frame(now) {
         const dtMs = Math.min(now - last, 250) // clamp a tab-backgrounded stall instead of spiraling
@@ -896,7 +897,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     const result = await runOneRace(race)
     if (result.aborted) { enterTitle(); return } // ESC quit, see runOneRace
     if (race.round === 9) {
-      reportRaceResult(tournament, { won: result.won })
+      reportRaceResult(tournament, { won: result.won, lifeDelta: result.lifeDelta, cheatActive })
       lastStandings = null
       lastPassed = result.won
     } else {
@@ -907,12 +908,10 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       // read state.opponents instead -- the ORIGINAL bug this snapshot fixed), and on a race 1+
       // result its own checkElimination can NULL a slot of the SAME array IN PLACE -- a live
       // reference, or a snapshot taken too late, would show the just-evicted opponent as missing
-      // from the RESULTS table for the very race they raced in.
-      const raceOpponents = reportRaceResultWithOpponentSnapshot(tournament, { finishPosition: result.finishPosition })
-      // The 25011968 cheat (DS:0F69, set on the OPTIONS screen): lives forced to 10 after every
-      // race, docs/engine.md §7's own "cheat [F69] -> 10 after every race" (re-confirmed this
-      // session against the fresh OPTIONS disassembly).
-      if (cheatActive) tournament.lives = 10
+      // from the RESULTS table for the very race they raced in. `lifeDelta`/`cheatActive` just pass
+      // through to `reportRaceResult`, which applies them (via `applyPostRaceLives`) as its own
+      // very first statement, before this same call's own loss check -- docs/engine.md §9bc.
+      const raceOpponents = reportRaceResultWithOpponentSnapshot(tournament, { finishPosition: result.finishPosition, lifeDelta: result.lifeDelta, cheatActive })
       const names = [CHARACTER_NAMES[tournament.playerCharacter], ...raceOpponents.map((i) => CHARACTER_NAMES[i])]
       // Two-car: racePosition can be stale for car 1 (car 2 can hold a slot, docs/engine.md §9am), so
       // the two places come from the result itself.
@@ -1048,10 +1047,10 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       // no visible effect until whatever race-loss the player next reaches -- at which point, in
       // the REAL game, [0x406] being a single BYTE (166D/1403's own CMP byte [0x406],0) means the
       // NEXT loss's own DEC AL underflows 0 to 0xFF(255), so the tournament does NOT end there --
-      // it silently continues with 255 lives. This port's own `state.lives<=0` (an ordinary signed
-      // number) ends the run at that point instead, the OPPOSITE of the real behaviour -- a known,
-      // deliberately unfixed divergence (applyLivesCheat's own header), left for the goal file's
-      // next item ("what ends the tournament at 0 lives") to resolve.
+      // it silently continues with 255 lives. `tournament.js`'s own `decrementLives` now reproduces
+      // this exactly (GOAL-DOS-PARITY.md's "two INFERRED tournament rules" item, docs/engine.md
+      // §9bc), so this port matches: `applyLivesCheat` followed by a loss correctly does NOT end
+      // the run here either.
       applyLivesCheat(tournament)
       if (tournament.over) nextAfterOutcome()
       return

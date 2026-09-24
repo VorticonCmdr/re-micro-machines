@@ -6300,14 +6300,42 @@ which waits indefinitely on `keydown` (Space/Enter only), no timeout, matching e
 phase's own idiom in this project but not this specific screen's real exit conditions. The SAME
 release-not-keydown mismatch also applies to `]` itself (`1DCD` tests the release latch, this
 port's own handler fires on `keydown`). **The `]`-cheat's own real byte-wraparound consequence at 0
-lives** (`applyLivesCheat`'s own header, `src/frontend/tournament.js`) -- `[0x406]` is a single
-byte, so a loss reached with it already at 0 underflows to 255 rather than ending the tournament;
-this port's own `state.lives<=0` test does not reproduce that -- belongs to GOAL-DOS-PARITY.md's
-own still-open item, "what ends the tournament at 0 lives" (P3's next item), which already has
-most of its own evidence in hand from this session: `166D`(Challenge)/`1403`(two-car) both test
-`CMP byte [0x406],0` right after `1C1B` returns; the lives writes themselves are `1CEA`(decrement,
-CX=2)/`1D00`(increment, CX=3), both on `AL`; the qualifier's own fail path (`10E7`) is separate and
-involves no lives at all.
+lives is now RESOLVED, not still open** -- see §9bc (added the same day, right after this note was
+first written): `[0x406]` is a single byte, so a loss reached with it already at 0 underflows to
+255 rather than ending the tournament; `tournament.js`'s own `decrementLives` now reproduces this
+exactly, closing GOAL-DOS-PARITY.md's own "two INFERRED tournament rules" item in full.
+
+**Added 2026-09-24 (§9bc).** GOAL-DOS-PARITY.md's own "two INFERRED tournament rules" item
+resolved: what ends the tournament at 0 lives (an exhaustive `search_byte_patterns` sweep of every
+`[0x406]` reference found it's a single BYTE, tested for EXACT zero at `166D`/`1403`, wrapping to
+255 rather than going negative on underflow -- `decrementLives`/`incrementLives` now reproduce this
+exactly), and the win-streak-after-a-bonus-race half (already settled by an earlier session, §9t,
+just needed the header's own stale "not evidence" framing removed now both halves are cited
+together). The SAME sweep also surfaced, and this pass fixed IN PLACE rather than leaving open, a
+real pre-existing bug: `flow.js`'s own `finishRace()` read CHEATS.BIN spot-effect TYPE 0's
+accumulated life loss (`globalState.lives`, `cheats.js`'s own `case 0`) through an ordinary signed
+`Math.max(0, ...)` clamp instead of the same byte-wrap -- found by grepping the actual call sites
+rather than trusting `cheats.js`'s own header comment, which claimed (by then stale) that `lives`
+"has no reader." Fixed via a new `applyLivesDelta(state, delta)` export (`tournament.js`), applied
+by `reportRaceResult` (`finishRace()` itself only carries the delta out); `cheats.js`'s header
+corrected to point at the real reader.
+A real ordering bug surfaced by a follow-up review (an earlier check only confirmed `cheatActive`
+can't turn on mid-tournament, which doesn't cover a race where a type-0 decrement AND a loss happen
+together): the port's own `25011968`-cheat reset ran in `advanceRace`, AFTER the full
+result-reporting pass (including the loss check), instead of BEFORE it as `1000:11BA` does (right
+after the race, before the results screen) -- so an active cheat's own type-0 pause decrements
+could survive long enough to genuinely zero `tournament.lives` and end the run, the opposite of
+DOS. Fixed, not left open: `reportRaceResult` itself (`tournament.js`, the one function that IS
+unit-tested) now takes `lifeDelta`/`cheatActive` and calls a new `applyPostRaceLives(state, delta,
+cheatActive)` export (delta, then reset in DOS's own order) as its own very first statement, before
+every branch below it; `flow.js`'s `finishRace` no longer touches `tournament` directly, only
+carrying `lifeDelta` out in its resolve payload for `advanceRace` to forward. Since
+`reportRaceResult` is shared by every race type, this also closes the port's separate pre-existing
+"never re-arms for a bonus race" gap for free. This closes `UNKNOWN_25011968_reset_timing` in full.
+(Two earlier claims in this paragraph's own history were checked and corrected in place, not
+silently dropped: that the gap "could still end the tournament on the cheat's very first loss" --
+false, then that it reduces to an inert, unobservable byte value with "nothing observable to fix"
+-- also false, once a type-0 decrement is in the same race as the loss.)
 
 ## 9as. P1's first item: the logo intro's real per-frame animation (2026-09-24)
 
@@ -7838,8 +7866,9 @@ the real game does NOT end the tournament at that next loss; it silently continu
 This port's own `state.lives<=0` (an ordinary signed JS number: `state.lives--` then a `<=0` test)
 ends the run immediately instead -- the OPPOSITE of the real byte-wraparound behaviour. A genuinely
 obscure combination (needs the debug cheat itself to reach at all), left as a known, cited
-divergence with starting citations (`166D`/`1CEA`/`1403`) for that next item. Ported as a new pure
-export, `tournament.js`'s `applyLivesCheat(state)` -- the
+divergence with starting citations (`166D`/`1CEA`/`1403`) for that next item. **Resolved the same
+day, §9bc**: `decrementLives`/`incrementLives` now reproduce the byte wraparound exactly, closing
+this divergence. Ported as a new pure export, `tournament.js`'s `applyLivesCheat(state)` -- the
 reachability guard (`lastOutcome` being `ONE_LIFE_LOST` or `EXTRA_LIFE`, no-op otherwise) lives
 INSIDE this function, not in the caller (an advisor review caught that leaving it only in
 `flow.js` meant it was never actually tested); zeroes lives, ends the tournament immediately only
@@ -7868,3 +7897,196 @@ it). `tools/check-sound.mjs`'s existing outcome-music pin rewritten from "5 code
 exception" to "6 codes, exception-free parity". Every new/changed assertion was individually
 confirmed by reintroducing its own bug and re-running the suite: each fails specifically and only
 its own check(s), then passes again once reverted.
+
+## 9bc. The two INFERRED tournament rules, both resolved (2026-09-24)
+
+**Scope.** GOAL-DOS-PARITY.md's own next P3 item, `tournament.js`'s file header: "what ends the
+tournament at 0 lives, and whether the win streak resets to 3 after a bonus race. Re-derive both
+from `10a0`/`115c` and replace the inference with cited code." The streak-reset half was already
+settled by an earlier session (§9t, `1000:1220`) -- see the pointer at the end of this section. The
+lives half was genuinely still an inference (`tournament.js`'s own header: "It is implemented the
+way the surrounding rules read most naturally... not a silent assumption" -- an honest hedge, not
+evidence) until this pass.
+
+**What ends the tournament at 0 lives -- fully re-disassembled, resolved.** An exhaustive
+`search_byte_patterns` sweep of `[0x406]`'s disp16 bytes (`06 04`, 13 hits, all individually
+checked) found every reference in the whole 83,662-byte image:
+- **Init to 3**: `1000:0ED0-0ED8` (inside `ResetTournamentState`), a byte `MOV AL,3` broadcast to
+  `[0x406]`/`[0x407]`/`[0x408]` -- confirming `[0x406]` is a plain BYTE, and matching this port's
+  own `lives: 3` default exactly. (`[0x407]`/`[0x408]` are not read anywhere this pass found --
+  consistent with CLAUDE.md's own existing "only `[406]` is used" note; not chased further.)
+- **The `25011968` cheat's own write of 10**: `1000:11BA: MOV byte ptr [0x406],0xA` -- also
+  byte-sized, matching the VALUE this port's existing `if (cheatActive) tournament.lives = 10`
+  writes, but **not the moment, an inaccuracy a second advisor pass caught in an earlier draft of
+  this section**: `11BA` sits INSIDE `SetupTournamentRace 115C`, after `CALL 3039` (the race
+  itself) but BEFORE `115C` returns to its own three callers (`10C8` the qualifier, `110A` a
+  regular race, `1A87` `TriggerBonusRace`'s own bonus race) -- so DOS re-writes lives=10 for EVERY
+  race, qualifier and bonus races included, and does so BEFORE that race's own results/outcome
+  screen (`13E4`/`1439`) ever runs, but AFTER `CALL 3039` (`RunRaceMainLoop`) -- the SAME function
+  that calls `CheckCheatSpotsThenPause` (confirmed with `analyze_call_graph`), i.e. any in-race
+  type-0 CHEATS.BIN pause decrement happens BEFORE this reset, not after.
+  **Two claims in earlier drafts of this bullet were checked against the code and found false.**
+  One said the port's late write (`flow.js`'s old `advanceRace`-only reset, AFTER
+  `reportRaceResultWithOpponentSnapshot`, non-bonus races only) "could still end the tournament on
+  the cheat's very first loss after being turned on mid-run" -- FALSE: `cheatActive` (`flow.js:239`)
+  only ever becomes `true` inside `optionsKey`, reachable only pre-tournament, so an ordinary loss
+  with NO cheat-spot decrement involved could never see anything but a freshly-reset 10. The
+  correction that followed then claimed the whole divergence was reduced to an inert, unobservable
+  intermediate BYTE VALUE with "nothing observable to fix" -- also FALSE, once the SAME race can
+  also contain a type-0 pause decrement (not just an ordinary loss): the port's actual order was
+  delta (`finishRace`) -> the full result-reporting pass INCLUDING THE LOSS CHECK
+  (`reportRaceResultWithOpponentSnapshot`) -> reset (`advanceRace`, too late) -- so an active cheat's
+  own type-0 decrements COULD survive long enough to zero `tournament.lives` and end the run for
+  real, the opposite of DOS (where the reset always lands between the type-0 decrements and the
+  loss check, erasing them first). **Fixed**: `reportRaceResult` (`tournament.js`) takes
+  `lifeDelta`/`cheatActive` and calls `applyPostRaceLives` as its OWN very first statement, before
+  every branch below it (qualifier/twocar/bonus/Challenge-fail) -- matching `11AF-11BA`'s real
+  position relative to the loss check, and living inside the one function that IS unit-tested
+  (a call-site composition in `flow.js` itself would be untestable, since `flow.js` has no
+  automated harness). `flow.js`'s `finishRace` no longer touches `tournament` at all; it carries
+  the accumulated delta out in the resolve payload (`lifeDelta`), and `advanceRace` forwards it plus
+  `cheatActive` into both `reportRaceResult` call sites. Since `reportRaceResult` is shared by every
+  race type, this also closes the separate "never re-arms for a bonus race" gap the ORIGINAL
+  non-bonus-only `advanceRace` reset had, for free. This makes the port's own event order for a
+  single race -- type-0 decrements, THEN the cheat reset, THEN the loss check -- structurally
+  identical to DOS's, closing `UNKNOWN_25011968_reset_timing` in full rather than leaving it open.
+  Test 16 (`tools/check-tournament.mjs`) now calls `reportRaceResult` itself (10 lives, 9 type-0
+  decrements via `lifeDelta:-9`, `cheatActive:true`, a 3rd/4th finish in that SAME call) and asserts
+  the reset erases the decrements before the loss check ever sees them, plus a bonus-race variant
+  proving the same reset now reaches round 9 too.
+- **The decrement**: `1000:1CEA` (inside `ShowRaceOutcomeMessageTune8or6`'s own `CX=2`/
+  `ONE_LIFE_LOST` branch) -- `1CE1: MOV AL,[0x406]` / `DEC AL` / `MOV [0x406],AL`, an 8-bit `DEC`.
+- **The increment**: `1000:1D00` (the SAME function's `CX=3`/`EXTRA_LIFE` branch) -- the mirror
+  image, `INC AL` / `MOV [0x406],AL`.
+- **The `]` debug cheat's own zero**: `1000:1E12: MOV byte ptr [0x406],0` (docs/engine.md §9bb
+  item 5, already ported as `applyLivesCheat`).
+- **A cheat-SPOT effect, TWO genuinely separate mechanisms this section originally conflated into
+  one (a second advisor pass caught this too)**: `1000:36A0: DEC byte ptr [0x406]`, inside
+  `CheckCheatSpotsThenPause`, is CHEATS.BIN spot-effect TYPE 0 (`3652-3656`'s own dispatch,
+  `CMP AX,0 / JZ 36A0`) -- a plain life decrement, nothing else, falling through to the shared
+  pause-banner tail (`3734`) with NO life check anywhere nearby. This is a DIFFERENT effect from
+  the "instant end the race" one §9x's own cheat-effect table describes (`36A7`, TYPE 1,
+  `CMP AX,1 / JZ 36A7` -- sets `[26C6]=4` and resets several car fields; it never touches
+  `[0x406]` at all) -- an earlier draft of THIS section wrongly merged the two into "an instant
+  end the race effect that also costs a life," which is not what either byte range actually does.
+  `applyCheatEffect` (`src/engine/cheats.js`) already had a `case 0` for the real effect
+  (`globalState.lives = (globalState.lives ?? 0) - 1`), but that file's OWN header comment used to
+  say **`lives` has no reader** -- an earlier draft of this section trusted that comment at face
+  value (a `src/` comment, exactly the kind GOAL-DOS-PARITY.md warns goes stale) instead of
+  grepping for the actual call sites. Grepping (`grep -rn "\.lives\b|globalState" src/`) found
+  `flow.js`'s own `finishRace()` (inside `runOneRace`) DOES read `globalState.lives`, applying it
+  to `tournament.lives` -- but with `Math.max(0, tournament.lives + globalState.lives)`, an
+  ordinary signed-number floor-at-0 clamp, not the byte-wrap this whole section is about. Both the
+  stale comment and the real clamp bug are now fixed IN THIS SAME PASS (not left as a separate open
+  item): `applyLivesDelta(state, delta)` (`tournament.js`, `state.lives = (state.lives + delta) &
+  0xff`) replaces the clamp, applied by `reportRaceResult` (via `applyPostRaceLives`, below --
+  `finishRace()` itself only carries the accumulated delta out as `lifeDelta` now), and
+  `cheats.js`'s header comment is corrected to point at the real reader. So the 5 real type-0 spots
+  shipped in `GAME1/CHEATS.BIN`
+  (round 1 race 1/4, round 3 race 1/3, round 4 race 3, confirmed by parsing the real file with
+  `parseCheats`) now reach the SAME byte-wrap arithmetic as the `]` debug cheat, ordinary play
+  included, not just the debug key -- correcting the claim two paragraphs below this one, which an
+  earlier draft of this section had said was reachable "only via the `]` cheat." Test 15
+  (`tools/check-tournament.mjs`) is `applyLivesDelta`'s own direct unit test; the `Math.max` clamp
+  was reintroduced and re-tested to confirm it is what test 15 catches.
+- Two more `06 04` hits (`1000:166F`, `1000:36A2`) are not separate references at all -- they're the
+  disp16 operand bytes of instructions already listed above (`166D`'s own `CMP`, `36A0`'s own `DEC`),
+  and one (`1000:1A4E`) is a coincidental false positive inside `1A4D: MOV word [0x404],0` (a
+  different, already-confirmed-dead global, `1A4A`'s own header). A follow-up sweep for `05 04`
+  (ruling out a WORD access at `[0x405]` that would also touch `[0x406]`'s own high byte) found 19
+  hits, all either immediate-operand false positives (`ADD AX,0x4` etc.) or in unrelated code/data
+  far from the tournament logic -- no word access to `[0x406]` exists anywhere.
+
+**The real test, at the two sites that actually end a run**: `1000:166D` (Challenge, right after
+`ShowRaceOutcomeMessageTune8or6`'s own `CX=2` call returns, inside `ShowRaceResultsScreenTune8or6`)
+and `1000:1403` (two-car, the structurally identical site in the SAME shared function) -- BOTH
+`CMP byte ptr [0x406],0 / JZ <tournament-over, STC>`. Two things this settles, neither obvious from
+the prose alone:
+1. **Exact zero, not "non-positive."** `[0x406]` is an UNSIGNED byte. `166D`/`1403` test equality
+   with 0, never inequality or a sign flag. In NORMAL play this is indistinguishable from "reached
+   0 or below" (the decrement can only ever land on 0 from 1, one step at a time, through ordinary
+   play) -- but it is NOT indistinguishable once the `]` cheat (docs/engine.md §9bb item 5) can
+   plant a 0 directly outside the normal decrement sequence.
+2. **A decrement below 0 WRAPS to 255, it does not go negative.** This is the case the `]` cheat
+   opens up: press `]` while viewing an `EXTRA_LIFE` outcome screen (the one reachable outcome the
+   cheat's own real caller, `TriggerBonusRace`'s `1AA9`, never checks `[0x406]==0` immediately
+   after -- §9bb item 5's own already-documented finding) to zero lives silently, then lose the
+   NEXT regular race: `1CEA`'s own `DEC AL` on `AL=0` wraps to `0xFF`(255), and `166D`'s own
+   `CMP byte [0x406],0` reads 255, not 0 -- so the real game does NOT end the tournament at that
+   next loss at all. It silently continues, now effectively with 255 lives. This IS what the
+   real bytes do, and it is the one place an ordinary signed-number port of "lives" (which this
+   file's own pre-existing `state.lives<=0` inference was) provably diverges from the real byte
+   semantics, not just an unverified guess that happened to be directionally right. The `]` debug
+   cheat is the OBVIOUS way to reach a pre-zeroed `[0x406]`, but not the only one: the CHEATS.BIN
+   type-0 spot-effect bullet above reaches the identical wrap through entirely ordinary play (no
+   debug key needed) -- an earlier draft of this section said the wrap was "reachable only via the
+   `]` cheat," which was wrong once that spot-effect's own wiring bug (same bullet) was found and
+   fixed in this pass.
+
+**Ported.** `decrementLives(state)`/`incrementLives(state)` (`tournament.js`, both new, private):
+`state.lives = (state.lives ∓ 1) & 0xFF`, matching the real 8-bit wraparound exactly;
+`decrementLives` returns whether the result landed on EXACTLY 0 (the real test), and its two real
+call sites (the Challenge fail branch, the two-car fail branch) now use that return value to decide
+`state.over` instead of the old `state.lives<=0` inference. `applyLivesCheat` (§9bb item 5) needed
+no code change -- it already just sets `state.lives=0` directly, which is now correctly byte-typed
+by construction (0 is a valid byte). Also new: `applyLivesDelta(state, delta)` (the general
+byte-wrapped form, used by the CHEATS.BIN type-0 path) and `applyPostRaceLives(state, delta,
+cheatActive)` (delta composed with the `25011968` cheat's own reset in DOS's real order), the
+latter called from `reportRaceResult`'s own very first statement -- `flow.js` no longer touches
+`tournament.lives` directly at all, only carrying `lifeDelta` out of `finishRace` in its resolve
+payload and passing it plus `cheatActive` into both `reportRaceResult` call sites in `advanceRace`.
+The file's own header (`tournament.js`) is rewritten: the "INFERRED"/"filled by inference, not
+evidence" language is removed, replaced with a full citation of both settled rules.
+
+**The win-streak-after-a-bonus-race half was already resolved**, by an earlier session (§9t,
+2026-09-22): `[0x3FA]` resets to 3 at `1000:1220` (`ShowNextRaceIntroScreenTune4or5`'s own bonus-race
+INTRO gate, `[28BF]==9`), BEFORE the bonus race runs, not after it resolves as the file's own header
+had guessed -- confirmed-equivalent to this port's own resolution-time reset (nothing reads
+`state.streak` while `pendingBonusRace` is set, so the two timings are unobservably identical). No
+code change was needed then, and none is needed now; this pass's only contribution to that half is
+removing the stale "confirmed-equivalent... the next session should not re-chase it" framing from
+the header now that BOTH halves are settled together, not just noted as separately resolved.
+
+**Tests.** `tools/check-tournament.mjs` test 14: wins a bonus race (`EXTRA_LIFE`), applies the `]`
+cheat (zeroing lives with no immediate check), then loses the next regular race and asserts
+`lives===255 && over===false` -- the exact scenario that discriminates byte-wrap semantics from a
+signed-number guess. Confirmed by reintroducing the old `state.lives-1`/`<=0` logic and re-running
+the suite: fails specifically and only this one assertion, then passes again once reverted. Test
+15 is `applyLivesDelta`'s own direct unit test (a single decrement to exactly 0 does not wrap; one
+more wraps to 255 with no `over` check; a multi-step negative delta wraps correctly in one step; a
+positive delta also wraps correctly) -- confirmed the same way, reintroducing the `Math.max(0,
+...)` clamp this export replaced and re-running the suite: assertion 1 (the decrement to exactly 0)
+passes either way, since `Math.max(0,0)` is still 0; assertions 2 and 3 fail because the clamp
+floors at 0 instead of wrapping; assertion 4 fails too, but only because it starts from that
+floored 0 rather than the correctly-wrapped 252 (`0+10=10`, not `6`) -- passes again once reverted.
+
+**A follow-up review caught a further, real ordering bug in this same fix** (an earlier check only
+confirmed `cheatActive` cannot become true mid-tournament, true but beside the point): the
+`25011968` cheat's own reset (`1000:11BA`) and a type-0 delta both apply to the SAME race when the
+cheat is active and the player also pauses on a spot, and DOS applies them in a specific order --
+delta (inside `CALL 3039`, confirmed by `analyze_call_graph` to be the function that calls
+`CheckCheatSpotsThenPause`), THEN the reset (`11B3-11BA`, right after `3039` returns), THEN the
+results screen's own loss check (`1CEA`/`166D`, reached only after `115C` returns to its caller). An
+earlier draft of this item's fix got the PORT's own order backwards: `applyLivesDelta` in
+`finishRace`, then the full `reportRaceResultWithOpponentSnapshot` pass (including the loss check),
+THEN a `cheatActive` reset only in `advanceRace` afterward -- which let an active cheat's own
+type-0 pause decrements survive long enough to zero `tournament.lives` and genuinely end the
+tournament, the opposite of DOS. **Fixed by moving the composition into the tested function
+itself**: `reportRaceResult` (`tournament.js`) now takes `lifeDelta`/`cheatActive` and calls
+`applyPostRaceLives` as its OWN first statement, before every branch below it (composing this at
+the `flow.js` call site instead would be untestable, since `flow.js` has no automated harness);
+`flow.js`'s `finishRace` no longer touches `tournament` at all, only carrying `lifeDelta` out in its
+resolve payload, and `advanceRace` forwards it plus `cheatActive` into both `reportRaceResult` call
+sites. Since `reportRaceResult` is shared by every race type, this also correctly re-arms lives for
+BONUS races too, closing a second, smaller pre-existing gap in the same motion -- the port's old
+`advanceRace`-only reset never touched bonus races at all. Test 16 now calls `reportRaceResult`
+itself (10 lives, `lifeDelta:-9`, `cheatActive:true`, a 3rd/4th finish, all in one call) and asserts
+the reset erases the decrements before the loss check sees them (`lives===9 && over===false`, not
+`0`/`over===true`), plus a second case proving the same reset now reaches a bonus race
+(`pendingBonusRace` set, a win, `lives===11`) -- confirmed by reintroducing the EXACT historical
+bug shape (the reset moved to run AFTER `decrementLives` in the Challenge fail branch instead of
+before any branch, and dropped entirely from the bonus branch, matching the old `advanceRace`-only,
+non-bonus-only reset) and re-running the suite: case 1 lands on `lives===10 && over===true` (the
+reset overwrites the value but arrives too late to stop the loss from ending the tournament), case
+2 lands on `lives===2` (no reset at all reaches the bonus branch, so the delta and the win's own
+`+1` both apply to the un-reset value) -- both wrong, both fail, pass again once reverted.

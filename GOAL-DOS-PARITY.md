@@ -364,9 +364,52 @@ docs, (6) commit.
   there after an advisor review noted a first draft left it untested in the caller), wired into
   `flow.js`'s `onKeydown`. Every changed/new assertion individually confirmed by reintroducing its
   own bug and re-running the suite.**
-- [ ] **The two INFERRED tournament rules** in `tournament.js`'s header: what ends the tournament at
+- [x] **The two INFERRED tournament rules** in `tournament.js`'s header: what ends the tournament at
   0 lives, and whether the win streak resets to 3 after a bonus race. Re-derive both from `10a0`/`115c`
   and replace the inference with cited code.
+  **Done, §9bc: both resolved. The streak-reset half was already settled by an earlier session
+  (§9t, `1000:1220`, confirmed-equivalent to the port's own resolution-time reset) -- no code
+  change needed, just the header's own stale framing cleaned up now that both halves are settled
+  together. The lives half was a genuine gap, now closed by an exhaustive `search_byte_patterns`
+  sweep of every `[0x406]` reference in the image: it's a single BYTE (init to 3 at `0ED0`,
+  decrement at `1CEA`, increment at `1D00`, the `]` cheat's own zero at `1E12`), tested for EXACT
+  zero (not "non-positive") at the two real sites that end a run, `166D` (Challenge) and `1403`
+  (two-car), both `CMP byte [0x406],0`. Because it's an UNSIGNED byte, a decrement past 0 WRAPS to
+  255 rather than going negative -- the one place this port's own prior `state.lives<=0` inference
+  (an ordinary signed number) provably diverged from the real bytes, reachable via the `]` cheat
+  (§9bb item 5) zeroing lives on an `EXTRA_LIFE` screen and then losing the next race. Ported as
+  `decrementLives`/`incrementLives` (`(lives ∓ 1) & 0xFF`), replacing the two ad hoc `lives--`/`<=0`
+  sites. Confirmed by reintroducing the old signed-number logic and re-running the suite: fails
+  specifically the one new test that exercises the wrap (win a bonus race, apply the `]` cheat, lose
+  the next race, expect `lives===255 && over===false`), passes again once reverted.
+  The SAME `[0x406]` sweep surfaced a SECOND, real, currently-shipping bug, found and fixed in this
+  same pass rather than left open: `flow.js`'s own `finishRace()` read CHEATS.BIN spot-effect TYPE 0
+  (`36A0`, a plain `DEC [0x406]`, genuinely DIFFERENT from `36A7`/type 1's "instant end the race" --
+  an earlier draft of this note wrongly merged the two) through a signed `Math.max(0, ...)` clamp
+  instead of the same byte-wrap -- found by grepping the actual call sites rather than trusting
+  `cheats.js`'s own header comment, which claimed (by then stale) that `lives` "has no reader."
+  Confirmed the same way: reintroducing the clamp fails 3 of the new unit test's 4 assertions,
+  passes again once reverted.
+  A follow-up review then caught a THIRD real bug in the same fix: the `25011968` cheat's own reset
+  (`11BA`, inside `SetupTournamentRace`, confirmed to run AFTER `CALL 3039` -- the SAME function
+  that calls `CheckCheatSpotsThenPause` -- and BEFORE the results screen) needs to land BETWEEN a
+  race's type-0 decrements and its own loss check, not after the loss check as the port's own
+  `advanceRace` reset did; getting this backwards let an active cheat's own type-0 pause decrements
+  survive long enough to zero `tournament.lives` and genuinely end the tournament, the opposite of
+  DOS (an earlier check had only confirmed `cheatActive` can't turn on mid-tournament, which doesn't
+  cover a race with both a decrement and a loss in it). Fixed by moving the composition into
+  `reportRaceResult` itself (`tournament.js`, the one function that IS unit-tested), not composed at
+  the `flow.js` call site (untestable there, since no automated harness covers `flow.js`): a new
+  `applyPostRaceLives(state, delta, cheatActive)` export (delta, then reset in DOS's own order) is
+  called as `reportRaceResult`'s own very first statement, taking `lifeDelta`/`cheatActive`;
+  `flow.js`'s `finishRace` no longer touches `tournament` at all, only carrying `lifeDelta` out in
+  its resolve payload for `advanceRace` to forward. Since `reportRaceResult` is shared by every race
+  type, this closes the port's separate pre-existing "never re-arms for a bonus race" gap for free.
+  This closes `UNKNOWN_25011968_reset_timing` in full. (Two earlier claims in this note's own
+  history were checked and corrected in place, not silently dropped: that the gap "could still end
+  the tournament on the cheat's very first race" -- false, then that it was reduced to an
+  unobservable byte value with "nothing to fix" -- also false, once a type-0 decrement is in the
+  same race. Full account, docs/engine.md §9bc.)**
 - [ ] **The results screen's tune condition.** It uses a pass/fail boolean; the real condition is
   the narrower `word[3FC]`/`[3FE]` test (§9ai). Port it exactly.
 - [ ] **The H2H race-intro variant** (§9an 8, "the H2H race-intro variant").

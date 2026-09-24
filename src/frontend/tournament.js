@@ -6,23 +6,33 @@
 //
 // Source discipline: every rule below is transcribed from docs/engine.md §7, an EARLIER session's
 // live disassembly pass (`[STATIC]`) -- this module does not re-disassemble `RunTournamentLoop`
-// itself. One genuine gap in that prose is filled by inference, not evidence, and is called out
-// at its point of use below (search "INFERRED"): what closes the loop when lives reach 0 (the
-// prose never states it, only that a life is lost and the SAME race re-runs). It is implemented the
-// way the surrounding rules read most naturally and is exercised by name in
-// `tools/check-tournament.mjs`, so a future live check has a single, named claim to confirm or
-// refute -- not a silent assumption.
+// itself, except where noted below.
 //
-// The OTHER gap this file used to carry ("whether the win streak resets to 3 after a bonus race
-// resolves") is now settled, not inferred (docs/engine.md §9t, 2026-09-22): live disassembly of
-// `ShowNextRaceIntroScreenTune4or5` (1000:1220) shows `[3fa]=3` written at the bonus race's own
-// INTRO screen, gated on `[28bf]==9` -- i.e. before the bonus race runs, not after it resolves as
-// this file previously guessed. Checked against this module's own `reportRaceResult` (below) and
-// confirmed the timing difference is NOT observable here: nothing reads `state.streak` while
-// `pendingBonusRace` is set, so resetting at resolution time (this file) or at intro time (the real
-// game) produce the identical state by the time anything downstream looks at `streak` again. Kept
-// as resolution-time for simplicity -- this is a confirmed-equivalent finding, not a bug, and the
-// next session should not re-chase it.
+// GOAL-DOS-PARITY.md's own "two INFERRED tournament rules" item (docs/engine.md §9bc) is now FULLY
+// resolved, neither one left as a guess:
+// - **What closes the loop when lives reach 0**: `[0x406]` (lives) is a single BYTE (confirmed by
+//   an exhaustive `search_byte_patterns` sweep of every reference: init to 3 at `1000:0ED2`, the
+//   `25011968` cheat's own write of 10 at `1000:11BA`, the decrement at `1000:1CEA`, the increment
+//   at `1000:1D00`, all byte-sized `MOV`/`DEC`/`INC` forms). It is tested for EXACT zero, not
+//   "non-positive," at the two real post-outcome-message sites: `1000:166D` (Challenge, inside
+//   `ShowRaceResultsScreenTune8or6`) and `1000:1403` (two-car, the analogous site in the same
+//   function) -- both `CMP byte [0x406],0 / JZ <tournament-over>`. Because `[0x406]` is an
+//   UNSIGNED byte, a decrement that would go below 0 WRAPS to 255, not a negative value -- this
+//   port now matches that exactly (`decrementLives`/`incrementLives`, below), replacing the earlier
+//   `state.lives<=0` guess (an ordinary signed JS number) that could never observe a wrap. Ordinary
+//   play never reaches the wrap (lives only ever reach exactly 0 through the normal decrement path,
+//   which this now-byte-exact test still ends the run on, same as the port's own prior behaviour);
+//   the wrap is reachable only via the `]` debug key's own `applyLivesCheat` (docs/engine.md §9bb
+//   item 5), zeroing lives on an `EXTRA_LIFE` screen (no immediate check) and THEN losing again.
+// - **Whether the win streak resets to 3 after a bonus race**: settled, not inferred (docs/engine.md
+//   §9t, 2026-09-22): live disassembly of `ShowNextRaceIntroScreenTune4or5` (1000:1220) shows
+//   `[3fa]=3` written at the bonus race's own INTRO screen, gated on `[28bf]==9` -- i.e. before the
+//   bonus race runs, not after it resolves as this file previously guessed. Checked against this
+//   module's own `reportRaceResult` (below) and confirmed the timing difference is NOT observable
+//   here: nothing reads `state.streak` while `pendingBonusRace` is set, so resetting at resolution
+//   time (this file) or at intro time (the real game) produce the identical state by the time
+//   anything downstream looks at `streak` again. Kept as resolution-time for simplicity -- this is
+//   a confirmed-equivalent finding, not a bug.
 //
 // Deliberately not modelled: two-HUMAN head-to-head (`RunHeadToHeadTournament 1faf`) -- its track
 // selection is `DS:0002 & 7`, the vsync tick counter, so it is not input-deterministic and this
@@ -310,6 +320,59 @@ function advance(state) {
 }
 
 /**
+ * `[0x406]` (lives) as an unsigned BYTE, matching the real bytes exactly (see the file header,
+ * GOAL-DOS-PARITY.md's "two INFERRED tournament rules" item, docs/engine.md §9bc): a decrement
+ * below 0 wraps to 255, an increment above 255 wraps to 0. Returns whether the decrement landed on
+ * EXACTLY 0 -- the real test (`1000:166D`/`1403`, both `CMP byte [0x406],0`), not "non-positive".
+ */
+function decrementLives(state) {
+  state.lives = (state.lives - 1) & 0xff
+  return state.lives === 0
+}
+function incrementLives(state) {
+  state.lives = (state.lives + 1) & 0xff
+}
+
+/**
+ * The general form: apply an arbitrary signed delta with the SAME byte wraparound, no over-check
+ * at all -- matching `1000:36A0: DEC byte ptr [0x406]` (CHEATS.BIN spot-effect TYPE 0, "lose a
+ * life", `1000:3652-3656`'s own dispatch, `CheckCheatSpotsThenPause`), which re-scans on EVERY
+ * pause with no once-only guard and no life check anywhere nearby -- so repeatedly pausing on one
+ * of the 5 real shipped type-0 spots (`GAME1/CHEATS.BIN`, confirmed live: round 1 race 1, round 1
+ * race 4, round 3 race 1, round 3 race 3, round 4 race 3) genuinely wraps `[0x406]` through 0 to
+ * 255 in the ORIGINAL game too, with no debug key needed at all (GOAL-DOS-PARITY.md's "two
+ * INFERRED tournament rules" item, docs/engine.md §9bc -- corrects that section's own first draft,
+ * which wrongly claimed the wrap was reachable only via the `]` debug cheat). `flow.js`'s own
+ * `finishRace` accumulates `cheats.js`'s own `applyCheatEffect` type-0 output across however many
+ * times the player paused on the spot during the race, and carries it out as `lifeDelta`;
+ * `reportRaceResult` (via `applyPostRaceLives`, below) applies it with this function instead of the
+ * `Math.max(0, ...)` signed clamp an earlier draft had, which silently discarded the wrap.
+ */
+export function applyLivesDelta(state, delta) {
+  state.lives = (state.lives + delta) & 0xff
+}
+
+/**
+ * The `25011968` cheat's own reset composed with `applyLivesDelta`, in the REAL order
+ * (`1000:11AF-11BA`, `SetupTournamentRace`, re-disassembled: `11AF CALL 3039` (`RunRaceMainLoop`,
+ * confirmed by `analyze_call_graph` to be the SAME function that calls `CheckCheatSpotsThenPause`
+ * -- i.e. any type-0 CHEATS.BIN spot decrement happens INSIDE this call) / `11B3 CMP [0xF69],1` /
+ * `11BA MOV [0x406],0xA` -- the reset fires right after the race returns, gated only on the cheat
+ * flag, BEFORE the results/outcome screen chain (`11C4`/`11C7`) ever runs, for EVERY race
+ * (qualifier, regular, bonus alike -- `115C` has exactly the three callers `10C8`/`110A`/`1A87`).
+ * An earlier draft of GOAL-DOS-PARITY.md's "two INFERRED tournament rules" item applied the delta
+ * and reset in the WRONG order (`flow.js`'s `advanceRace` reset landed AFTER the loss check, not
+ * before it), which let an active cheat's own type-0 pause decrements survive long enough to zero
+ * `tournament.lives` and end the run. Called from `reportRaceResult` itself, as its own very first
+ * statement, rather than composed at the `flow.js` call site: `flow.js` has no automated test, so a
+ * call-site composition can't be regression-tested.
+ */
+export function applyPostRaceLives(state, delta, cheatActive) {
+  applyLivesDelta(state, delta)
+  if (cheatActive) state.lives = 10
+}
+
+/**
  * `1000:1123-113A`, fully re-disassembled (GOAL-DOS-PARITY.md P3's 4th item, docs/engine.md §9bb):
  * the TRIGGER itself has NO cap on `[0x342]`/`bonusRacesTaken` -- only three conditions gate it
  * (`1123`: player won; `112B/112F`: streak reaches 0; `1131/1138`: not the last race), and none of
@@ -341,9 +404,19 @@ function maybeTriggerBonusRace(state) {
  * `pendingBonusRace` is set) ignored in favour of the explicit `won` flag `[291D]`'s reading
  * feeds in the real game (docs/engine.md §7: "outcome 3 EXTRA LIFE if `[291D]==1` else 4").
  * `activeDroneIndices` (the 3 opponents' character indices) is only consulted on an eviction tick.
+ *
+ * `lifeDelta`/`cheatActive` apply `applyPostRaceLives` (the CHEATS.BIN type-0 delta accumulated
+ * during the race, composed with the `25011968` cheat's own reset) as the VERY FIRST thing this
+ * function does, matching `1000:11AF-11BA`'s own real position -- right after the race itself
+ * (`CALL 3039`, which is also what calls `CheckCheatSpotsThenPause`), BEFORE any of the branches
+ * below (the qualifier/twocar/bonus/Challenge fail paths) run their own loss check. This lives
+ * HERE rather than being composed by the caller (`flow.js`'s `advanceRace`) so it's covered by
+ * this file's own test suite -- `flow.js` has no automated test (GOAL-DOS-PARITY.md's "two
+ * INFERRED tournament rules" item, docs/engine.md §9bc).
  */
-export function reportRaceResult(state, { finishPosition, won } = {}) {
+export function reportRaceResult(state, { finishPosition, won, lifeDelta = 0, cheatActive = false } = {}) {
   if (state.over) return
+  applyPostRaceLives(state, lifeDelta, cheatActive)
   if (state.pendingBonusRace) {
     state.lastOutcome = won ? OUTCOME.EXTRA_LIFE : OUTCOME.NO_BONUS
     if (won) {
@@ -352,7 +425,7 @@ export function reportRaceResult(state, { finishPosition, won } = {}) {
       // bonus race skips straight to `1AA9: CALL 1C1B` with neither ever happening. An advisor
       // review caught both real gaps in an earlier draft of this fix, which incremented the
       // counter unconditionally and never granted a life at all.
-      state.lives++ // 1000:1CFA-1D02: INC [0x406], CX=3 (EXTRA_LIFE) only -- the outcome screen's OWN name says "extra life"
+      incrementLives(state) // 1000:1CFA-1D02: INC [0x406], CX=3 (EXTRA_LIFE) only -- the outcome screen's OWN name says "extra life"
       state.bonusRacesTaken = Math.min(state.bonusRacesTaken + 1, MAX_BONUS_RACES) // 1000:1A99-1AA5: [0x342]'s own cap, WIN-gated -- a lost bonus race re-offers the SAME track next time, it does not advance to the next one
     }
     state.streak = 3 // confirmed-equivalent timing, not the real game's own moment -- see the file header (docs/engine.md §9t)
@@ -372,7 +445,7 @@ export function reportRaceResult(state, { finishPosition, won } = {}) {
     // A win shows no screen at all (13FB -> 140C, lastOutcome null); a loss is "ONE LIFE LOST" and
     // the SAME race again, and no lives left ends the run (1403-140A STC -> 1110) -- docs/engine.md §9an.
     if (finishPosition === 1) { state.lastOutcome = null; advance(state) }
-    else { state.lastOutcome = OUTCOME.ONE_LIFE_LOST; state.lives--; if (state.lives <= 0) state.over = true }
+    else { state.lastOutcome = OUTCOME.ONE_LIFE_LOST; if (decrementLives(state)) state.over = true }
     return
   }
 
@@ -386,7 +459,7 @@ export function reportRaceResult(state, { finishPosition, won } = {}) {
   const passThreshold = isLastRace ? 1 : 2
   if (finishPosition > passThreshold) {
     state.lastOutcome = OUTCOME.ONE_LIFE_LOST
-    state.lives--
+    const outOfLives = decrementLives(state)
     // docs/engine.md §7: "[3fa]=3" on a 3rd/4th result, explicit -- the real site is
     // `RunTournamentLoop`'s own `1000:113F-114E` (re-disassembled: `1144: JZ 114E` resets the
     // streak UNCONDITIONALLY once `[28C1]==0x19`/the last race, regardless of 2nd vs 3rd/4th place,
@@ -394,7 +467,7 @@ export function reportRaceResult(state, { finishPosition, won } = {}) {
     // `ShowRaceOutcomeMessageTune8or6`'s own CX=2 outcome-message/life-decrement call, a different
     // function for a different purpose that merely happens to fire on the same losing race).
     state.streak = 3
-    if (state.lives <= 0) state.over = true // INFERRED floor, file header
+    if (outOfLives) state.over = true // 1000:166D: CMP byte [0x406],0 / JZ -- exact zero, byte-wrapped (decrementLives's own header)
     return
   }
 
@@ -438,17 +511,14 @@ export function reportRaceResultWithOpponentSnapshot(state, result) {
  * exits right there, while `EXTRA_LIFE`'s own caller (`TriggerBonusRace`'s `1AA9`) has no such
  * check at all, so the zeroed value there is silent until some LATER race loss.
  *
- * `state.lives<=0` (this port's own tournament-over test) is NOT a faithful match for that later
- * moment -- flagged here, not fixed (out of THIS item's own scope; GOAL-DOS-PARITY.md's next item,
- * "what ends the tournament at 0 lives," is where this belongs). `[0x406]` is a single BYTE
- * (`1CE1: MOV AL,[0x406]` / `1CEA: DEC AL`, both 8-bit), so a 3rd/4th-place loss reached with
- * `[0x406]` already at 0 (via this exact cheat) UNDERFLOWS to `0xFF`(255), not a negative value --
- * `166D`/`1403` (the SAME `CMP byte [0x406],0` test, confirmed shared by both the Challenge and
- * two-car formats) then read 255, NOT 0, so the real game does NOT end the tournament at that next
- * loss at all; it silently continues with 255 lives. This port's own `state.lives<=0` (an ordinary
- * signed JS number, `state.lives--` then a `<=0` test) ends the run immediately instead -- the
- * OPPOSITE of the real byte-wraparound behaviour. A genuinely obscure combination (requires the
- * debug cheat itself), left as a known, cited divergence for that next item to resolve.
+ * `state.lives` is now a byte-wrapped value (`decrementLives`/`incrementLives`, GOAL-DOS-PARITY.md's
+ * "two INFERRED tournament rules" item, docs/engine.md §9bc), so this DOES reproduce the real
+ * byte-underflow consequence: zeroing lives here (via this cheat, on `EXTRA_LIFE` specifically,
+ * where nothing checks it immediately) means the NEXT 3rd/4th-place loss's own `decrementLives`
+ * wraps `0` to `255`, not to a negative value, and `outOfLives` (its own return value) is
+ * correctly `false` -- the tournament does NOT end at that next loss, matching `166D`/`1403`'s own
+ * real `CMP byte [0x406],0` test reading 255. This was flagged as a known, unfixed divergence when
+ * this item was first written; it's now closed.
  */
 export function applyLivesCheat(state) {
   if (state.lastOutcome !== OUTCOME.ONE_LIFE_LOST && state.lastOutcome !== OUTCOME.EXTRA_LIFE) return

@@ -1,11 +1,12 @@
 // M3.9 acceptance test (PLAN-ENGINE.md): the tournament state machine, headless, driven by
 // synthetic race results -- no DOSBox needed, the direct analogue of what check-rounds.mjs did
-// for M3.8. Exercises every named rule in docs/engine.md §7 and both places tournament.js itself
-// flags an INFERRED (not directly evidenced) behaviour. Also covers P3's second item
+// for M3.8. Exercises every named rule in docs/engine.md §7. Also covers P3's second item
 // (docs/engine.md §9az, the qualifier's own fixed JETHRO trio and the real interactive opponent
-// picker) and P3's third item (docs/engine.md §9ba, the real elimination/replacement rule).
+// picker), P3's third item (docs/engine.md §9ba, the real elimination/replacement rule), and P3's
+// 5th item (docs/engine.md §9bc, both of tournament.js's own file-header rules, formerly
+// INFERRED, now fully cited).
 //   node tools/check-tournament.mjs
-import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, QUALIFIER_OPPONENTS, OUTCOME } from '../src/frontend/tournament.js'
+import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, applyLivesDelta, QUALIFIER_OPPONENTS, OUTCOME } from '../src/frontend/tournament.js'
 import { ORDER_TABLE_LAST_INDEX, MAX_BONUS_RACES } from '../src/data/frontend-tables.js'
 
 let bad = 0
@@ -159,15 +160,17 @@ function passRace(state, finishPosition, extra) {
   check('3rd/4th resets the streak to 3 (docs: "[3fa]=3", explicit)', s.streak === 3)
 }
 
-// 5. Lives reaching 0 ends the tournament (INFERRED floor -- docs never state this explicitly,
-// only that a life is lost and the race re-runs; flagged in tournament.js's file header).
+// 5. Lives reaching 0 ends the tournament -- fully re-disassembled and cited, no longer an
+// inference (docs/engine.md §9bc): `1000:166D: CMP byte [0x406],0 / JZ` (Challenge), `1000:1403`
+// (two-car, the same shared function) both test the lives byte for EXACT zero right after the
+// outcome-message call returns.
 {
   const s = initTournament()
   pickPlayerCharacter(s, 0)
   reportRaceResult(s, { finishPosition: 1 })
   fillEmptyOpponentSlots(s)
   for (let i = 0; i < 3 && !s.over; i++) passRace(s, 4)
-  check('3 straight last-places (starting from 3 lives) exhausts lives and ends the tournament (INFERRED)', s.lives === 0 && s.over === true && !s.champion)
+  check('3 straight last-places (starting from 3 lives) exhausts lives and ends the tournament (1000:166D)', s.lives === 0 && s.over === true && !s.champion)
 }
 
 // 6. A full 1st-place run reaches the champion screen; bonus races fire on schedule and never
@@ -457,5 +460,79 @@ function freshAtLastRace() {
   check('winning a bonus race DOES advance the track counter', s.bonusRacesTaken === 1)
 }
 
-console.log(bad ? `${bad} check(s) failed` : 'check-tournament: qualifier pass/fail, the real opponent picker, the real elimination/replacement rule, Challenge/two-car race rules, streak/bonus-race schedule, the last-race 2nd-place fail, the uncapped bonus trigger, the win-gated bonus-race counter/life, the conditional RESULTS->OUTCOME transition and the ] lives cheat all match docs/engine.md §7/§9az/§9ba/§9bb')
+// 14. Lives are a byte, not a signed number (GOAL-DOS-PARITY.md's "two INFERRED tournament rules"
+// item, docs/engine.md §9bc): a decrement below 0 wraps to 255, matching `1000:166D`/`1403`'s own
+// `CMP byte [0x406],0` test reading a genuinely UNSIGNED byte, not "non-positive". The `]` cheat on
+// an `EXTRA_LIFE` screen (zeroing lives with no immediate check) is ONE way to reach the wrap in
+// play -- NOT the only one: repeatedly pausing on one of the 5 real CHEATS.BIN type-0 spots
+// (`applyLivesDelta`, test 15 below) reaches the exact same wrap through entirely ordinary
+// gameplay, no debug key needed (an earlier draft of this comment claimed otherwise).
+{
+  const s = initTournament()
+  pickPlayerCharacter(s, 0)
+  reportRaceResult(s, { finishPosition: 1 }) // qualifier pass
+  fillEmptyOpponentSlots(s)
+  passRace(s, 1, { won: true }) // race 1: streak 3->2
+  passRace(s, 1, { won: true }) // race 2: streak 2->1
+  passRace(s, 1, { won: true }) // race 3: streak 1->0 -> bonus race triggers
+  reportRaceResult(s, { won: true }) // WIN the bonus race
+  check('the bonus race win produced EXTRA_LIFE', s.lastOutcome === OUTCOME.EXTRA_LIFE)
+  applyLivesCheat(s) // ] pressed on the EXTRA_LIFE screen
+  check('] zeroed lives; EXTRA_LIFE has no immediate check, so the tournament is not yet over', s.lives === 0 && s.over === false)
+  reportRaceResult(s, { finishPosition: 4 }) // the NEXT loss -- this is where the real byte test runs
+  check('the next loss wraps 0 to 255 (byte underflow) instead of ending the tournament, matching the real CMP byte [0x406],0 test', s.lives === 255 && s.over === false)
+}
+
+// 15. `applyLivesDelta` (1000:36A0, CHEATS.BIN spot-effect TYPE 0 "lose a life", fully
+// re-disassembled, docs/engine.md §9bc): a plain byte-wrapped delta with NO over-check at all --
+// `reportRaceResult` uses this (via `applyPostRaceLives`, test 16 below), not a `Math.max(0, ...)`
+// signed clamp an earlier draft had, which silently discarded the wrap this export reproduces.
+// Confirmed against `GAME1/CHEATS.BIN`: 5 real type-0 spots ship in the game (round 1 race 1/4,
+// round 3 race 1/3, round 4 race 3), so this is reachable through entirely ordinary play (pause
+// repeatedly on one of those 5 spots), not just the `]` debug key.
+{
+  const s = initTournament()
+  s.lives = 1
+  applyLivesDelta(s, -1)
+  check('a single decrement to exactly 0 does not wrap (matches decrementLives\' own boundary)', s.lives === 0)
+  applyLivesDelta(s, -1)
+  check('one more decrement past 0 wraps to 255, with NO over-check (applyLivesDelta never touches state.over)', s.lives === 255 && s.over === false)
+  applyLivesDelta(s, -3) // simulating 3 more pause-triggers accumulated in cheats.js's own globalState.lives before this is applied once
+  check('a multi-step negative delta (accumulated across several pause-triggers) wraps correctly in one step', s.lives === 252)
+  applyLivesDelta(s, 10)
+  check('a positive delta (were one ever to exist) also wraps correctly', s.lives === 6)
+}
+
+// 16. `reportRaceResult`'s own `applyPostRaceLives(state, lifeDelta, cheatActive)` call, as its
+// VERY FIRST statement (`1000:11AF-11BA`, `SetupTournamentRace`, docs/engine.md §9bc): the
+// `25011968` cheat's own reset composed with the type-0 delta in the REAL order -- delta, THEN
+// reset if the cheat is active, BEFORE any of this function's own branches (including the loss
+// check) run. Driven through `reportRaceResult` itself (the function `flow.js` actually calls),
+// not a bare `applyPostRaceLives` call, so a regression in the ORDER -- an active cheat's own
+// type-0 pause decrements surviving long enough to zero `tournament.lives` and end the run for
+// real, the opposite of what DOS does -- is caught here rather than only in an isolated unit test.
+{
+  const s = initTournament()
+  pickPlayerCharacter(s, 0)
+  reportRaceResult(s, { finishPosition: 1 }) // qualifier pass, no lives logic, no lifeDelta
+  fillEmptyOpponentSlots(s)
+  s.lives = 10
+  // A single race: 9 pause-triggered type-0 decrements accumulated during the race, cheat active,
+  // and a 3rd/4th finish in that SAME race -- exactly what `lifeDelta`/`cheatActive` carry through
+  // from `flow.js`'s `finishRace`/`advanceRace` in one `reportRaceResult` call.
+  reportRaceResult(s, { finishPosition: 4, lifeDelta: -9, cheatActive: true })
+  check('the reset erases this race\'s own type-0 decrements BEFORE the loss check sees them, so the loss decrements from 10 (not the pre-reset 1) and the tournament does not end', s.lives === 9 && s.over === false)
+}
+{
+  // The bonus-race variant, closing the SAME reset's own pre-existing "never re-arms for a bonus
+  // race" gap (the old `advanceRace`-only reset skipped round 9 entirely; `reportRaceResult` is
+  // shared by every race type, so this now Just Works without any bonus-specific code).
+  const s = initTournament()
+  s.lives = 10
+  s.pendingBonusRace = { round: 9, race: 1 }
+  reportRaceResult(s, { won: true, lifeDelta: -9, cheatActive: true })
+  check('a bonus race under an active cheat also gets its type-0 decrements erased before the win\'s own +1 life applies', s.lives === 11)
+}
+
+console.log(bad ? `${bad} check(s) failed` : 'check-tournament: qualifier pass/fail, the real opponent picker, the real elimination/replacement rule, Challenge/two-car race rules, streak/bonus-race schedule, the last-race 2nd-place fail, the uncapped bonus trigger, the win-gated bonus-race counter/life, the conditional RESULTS->OUTCOME transition, the ] lives cheat, the byte-exact lives wraparound (both the outcome-screen and the cheat-spot paths), and the 25011968 cheat\'s own reset applied in the real order relative to the loss check, for every race type including a bonus race, all match docs/engine.md §7/§9az/§9ba/§9bb/§9bc')
 process.exitCode = bad ? 1 : 0

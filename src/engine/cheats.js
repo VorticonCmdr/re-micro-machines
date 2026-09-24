@@ -22,7 +22,12 @@ export function findCheatSpot(cheats, car, round, race) {
  * `globalState` (a plain object this port keeps for the handful of globals these types touch).
  * `play.js` copies type 1's `raceOverCount` (=4, [26C6]) and `fixedOrder` (car0, car2, car1, car3)
  * into its `raceState` on the next step, which `step.js`'s race-over logic then acts on
- * (docs/engine.md §9ah); `projectilesForAll` feeds `ctx.projectilesForAll`; `lives` has no reader.
+ * (docs/engine.md §9ah); `projectilesForAll` feeds `ctx.projectilesForAll`; `lives` is carried out
+ * of `flow.js`'s `finishRace()` as `lifeDelta` and applied to `tournament.lives` by
+ * `reportRaceResult` (`tournament.js`, via `applyPostRaceLives` -- `GOAL-DOS-PARITY.md`'s "two
+ * INFERRED tournament rules" item, docs/engine.md §9bc). This comment previously said "lives has no
+ * reader", which was true of an earlier version of `flow.js` but went stale once that wiring
+ * landed; caught only by grepping the actual call sites instead of trusting this file's own claim.
  */
 export function applyCheatEffect(car, cheat, globalState = {}) {
   switch (cheat.type) {
