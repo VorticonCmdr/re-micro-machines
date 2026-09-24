@@ -5109,6 +5109,18 @@ phases, `startNextRace`/`nextAfterOutcome`), `screens.js` (`drawCharacterSelect`
 - *Not ported.* The carousel's look is not ported: the 13-tick eased scroll, the 80-tick FCHAPPY
   flash and the portrait slots. The page keeps its list-style select. Nor is the race intro's H2H
   variant (the portraits and the facing cars).
+  **Corrected 2026-09-24 (GOAL-DOS-PARITY.md's "H2H race-intro variant" item, docs/engine.md
+  §9be)**: "the H2H variant" undersold the gap -- `12BD`'s portrait panel plus vehicle-icon reveal
+  is the ONLY race-intro mechanism for a regular race in EITHER format (this port's own
+  `drawRaceIntro`, then just "RACE" and the track name, had no analogue of it at all), and only the
+  icon-slide's own exit condition and icon count (2 vs 4) are actually H2H-specific; the portrait
+  panel and its own setup are shared code. The sprite panel itself remains unported (matching
+  §9az's own established precedent for the SAME `19F2` function), but two things ARE now ported:
+  the mechanism's own mandatory-hold TIMING (`tournament.js`'s `raceIntroHoldTicks` -- the `131F`
+  slide loop's own 59 H2H / 121 Challenge ticks specifically, not the full real hold, which also
+  includes an undeterminable-duration palette fade before the loop starts, `UNKNOWN_race_intro_
+  prehold`), and a text-only participant list (`raceIntroParticipants`, a stand-in for `19F2`'s own
+  face panel) that `drawRaceIntro` now shows as a third row.
 
 ### 2. The race exit: 100 ticks of the frozen frame, then a subtractive fade -- ported
 
@@ -6039,7 +6051,11 @@ resumes at the first key click (no 2 s minimum). New or carried open items (deta
 - the Challenge flow's own divergences (final race 2nd = fail, uncapped bonus trigger, no OUTCOME
   after a passed race, tune 5 unreachable, the main menu's tune 1, OUTCOME 4's screen, the `1A4A`
   replacement picker, ']' on OUTCOME 2/3);
-- the carousel look of the character select and the H2H race-intro variant;
+- the carousel look of the character select and the H2H race-intro variant -- **the race-intro
+  variant's own mandatory-hold TIMING (the slide loop's own portion; the palette fade before it
+  has no derivable duration, `UNKNOWN_race_intro_prehold`) and its text-only participant list both
+  resolved and ported 2026-09-24 (§9be); its sprite panel itself (and the carousel's own look)
+  remain unported, matching §9az's own precedent**;
 - `UNKNOWN_bc5_high_byte`, `UNKNOWN_93c2_writer`, `UNKNOWN_a329_writer` -- **all three closed, §9ar
   d/e/f**.
 
@@ -6363,6 +6379,30 @@ found wrong there (`resultsPassed`'s own formula disagrees with `lastOutcome` fo
 reverted. Also independently confirmed, not assumed: `finishPosition` reads the same order-array
 slots `[3FC]`/`[3FE]` DOS does, including under the instant-win cheat (`36A7`'s own writes resolve
 to exactly `[0,2,1,3]` at `11D5`, matching `cheats.js`'s own `fixedOrder` hardcode).
+
+**Added 2026-09-24 (§9be).** GOAL-DOS-PARITY.md's "H2H race-intro variant" item resolved, scoped:
+`1000:11F8`'s full body re-disassembled (162 instructions), settling that `12BD`'s portrait panel
+(`19F2`, already disassembled by §9az for its OTHER call site) plus a 4-slot vehicle-class icon
+reveal is the ONLY race-intro mechanism for a regular race in EITHER format -- not an "H2H variant"
+of something otherwise-ported, correcting §9an 1's own parenthetical. Only the icon-slide's exit
+condition and count (2 vs 4) are format-specific: H2H converges two icons over 59 ticks, Challenge
+marquees four over 121, both fully traced tick-for-tick. Two things ported, per an explicit user
+decision after being shown the full-sprite-panel alternative: `raceIntroHoldTicks(state)` (the
+`131F` slide loop's own tick count, wired into `flow.js` as a hold on `confirm`; a press during it
+is discarded because `179B`'s own entry clears the key-release latch, not merely because the loop
+itself never polls, and proven only for a press-and-release inside the hold, not a key still held
+when it ends -- the same gap as `UNKNOWN_outcome_screen_timeout`) and `raceIntroParticipants(state)`
+(two text rows listing the player then the opponents, standing in for `19F2`'s own face panel --
+two rows and space-separated, not one comma-separated row, since `drawString`'s own glyph map has
+no comma/lowercase; caught by rendering both formats to PNG and looking at them). The sprite panel
+itself remains unported, matching §9az's own established precedent for the same `19F2` function.
+New, narrower open items: `[BX+0xA]`'s
+exact meaning (likely a flip byte); the vehicle-icon asset's own binding;
+`UNKNOWN_challenge_qualifier_intro_banner` (`127E-12BA`, a genuinely separate, unexplored mechanism
+for the Challenge qualifier's own screen); and `UNKNOWN_race_intro_prehold` -- `raceIntroHoldTicks`
+covers only the `131F` slide loop, not the `32CE` palette fade-up that runs before it, which has no
+derivable tick duration at all (already established elsewhere as CPU-speed-bound, not tick-paced),
+so this port's own hold understates the real DOS delay by that fade's own duration.
 
 ## 9as. P1's first item: the logo intro's real per-frame animation (2026-09-24)
 
@@ -8242,3 +8282,170 @@ position on an ordinary race (1st/2nd pass, 3rd/4th fail) and the very last race
 test 17's own last-race assertion AND the pre-existing test 9 ("the LAST race: 2nd place FAILS"),
 confirming the refactor didn't silently lose that earlier item's own coverage; passes again once
 reverted.
+
+## 9be. The H2H race-intro variant: the mandatory hold timing, ported (2026-09-24)
+
+**Scope.** GOAL-DOS-PARITY.md's next P3 item: "The H2H race-intro variant (§9an 8, 'the H2H
+race-intro variant')." §9an 1's own text (2026-09-23) had already LOCATED the mechanism -- "races
+1+ take `12BD`, which even has H2H-only code (`1307-131A`, `1354-1375`: the two cars slide in and
+face each other)" -- and §9an 8 listed it, alongside the character-select carousel's own look, as
+"not ported." Neither pass disassembled `12BD` itself.
+
+**Correction to §9an 1's own parenthetical.** "The H2H variant (the portraits and the facing cars)"
+undersells what's missing: there is no PLAIN variant to compare it against. `12BD` -- the portrait
+panel (`19F2`, a face-preview reveal ALREADY fully disassembled by §9az for its OTHER call site,
+`1A4A`'s own opponent picker: 4 faces, or 2 for H2H, at fixed `Y=0x24`, `X` stepping `0x40`) plus a
+4-slot vehicle-class icon reveal below it (this pass's own find) -- is the ONLY race-intro path for
+a REGULAR race in EITHER format. The port's own `drawRaceIntro` (two centred text lines, "RACE" +
+the track name) has no analogue of ANY of this, in either format. What's H2H-SPECIFIC is narrower
+than the parenthetical implied: only the vehicle-icon reveal's own exit condition and the count of
+icons drawn (2 vs 4) differ by format; the portrait panel and its own setup are shared code.
+
+**`1000:11F8` (`ShowNextRaceIntroScreenTune4or5`)'s full body, fully re-disassembled (`11F8-13E3`,
+162 instructions), settles the branch structure:**
+- `11F8-1218`: tune select (4, or 5 on the tournament's very last race) -- already ported
+  (`raceIntroMusic`).
+- `1219-126D`: bonus race (`[28BF]==9`) takes its own separate banner/reveal (`1220-126A`,
+  `[0xBB6]=0x5A` then `CALL 01DE`, `JMP 1395` straight past `12BD`) -- the already-resolved
+  "TRIPLE WIN/BONUS RACE/BEAT THE CLOCK/TIMETRIALS" banner (`UNKNOWN_beat_the_clock_timetrials`).
+  Out of this item's scope; not touched.
+- `126D-127B`: the qualifier (`[28C1]==0`), H2H format (`[3F8]==1`) -- `JMP 13E3` (`RET`), no
+  screen at all. Matches this port's own `hasRaceIntro` returning `false` for exactly this case.
+- `127E-12BA`: the qualifier, CHALLENGE format -- a DIFFERENT banner (`SI=0x35C`/`0x367`, two
+  string draws at `Y=0x32`/`0x46`, a separate `[0xBC5]`-keyed reveal via `01DE`/`0xBB6=0x5A`) --
+  genuinely unrelated to `12BD`'s own mechanism. Not disassembled further; not ported; a new,
+  narrower open item (`UNKNOWN_challenge_qualifier_intro_banner`).
+- `12BD-1395`: a REGULAR race (not the qualifier, not a bonus race) -- both formats, the mechanism
+  this item is actually about.
+- `1395-13E3`: the shared `179B` "wait for a key" stage (already understood elsewhere, §9ar
+  d/e/§9az) plus a race-skip/auto-advance loop (`1398-13E0`, already flagged in §9ai as the
+  "race-skip hotkey," `13aa`/`13bf`) -- not re-derived here, out of scope.
+
+**`12BD-1395`, the regular-race reveal, fully re-disassembled:**
+```
+12BD: CALL 19F2                          ; the portrait panel (§9az's own 19F2, reused here)
+12C0: BX=0x6C; CALL 1867                 ; the track name / race number (DrawTrackNameAndRaceNumber, already cited)
+12C6: CX = [28BF]-1                      ; vehicle-class-1, the base icon frame
+12D3: [0xBB6]=0x80; CALL 01DE            ; a decorative draw -- 01DE's OWN 18 instructions read in
+                                          ; full show no loop, no wait, no INT call; draws something
+                                          ; at Y=[0xBB6]+0x40 of width/count [0xBC5], then returns
+                                          ; (its three callees, 053A/0862/08F0, were NOT themselves
+                                          ; read instruction-by-instruction). NOT a timed reveal --
+                                          ; an earlier draft of this section mislabelled it one.
+12DC: CALL 08BC                          ; present the full screen (200 rows) to VGA -- the SAME
+                                          ; plain full-screen copy elimination.js's own header
+                                          ; already identifies at its own tail, 1790
+12DF: CALL 32CE                          ; PaletteFadeUpFromBlack -- THE real reveal (fades the
+                                          ; portraits/track-name up from black). Already established
+                                          ; elsewhere (the palette-fade finding): a busy loop with NO
+                                          ; INT 1Ah/vsync wait anywhere in it, paced purely by 1994
+                                          ; CPU speed -- "no derivable value to port"
+12E3-1305: for BX in {0xCDB,0xCF6,0xD11,0xD2C} (4 slots, stride 0x1B, same as everywhere else):
+    [BX+0x13] = CX; CX += 8              ; frame = class-1, class-1+8, class-1+16, class-1+24
+    [BX+0x2]  = AX; AX += 0x40           ; X = 0x100, 0x140, 0x180, 0x1C0
+    [BX+0x4]  = 0x5A                     ; Y = 90, same for all 4
+    [BX+0xA]  = 1                        ; a per-slot byte this pass did NOT need to resolve (not ported -- see below)
+1307: if H2H ([0x3F8]!=0):
+    [0xCDD] (slot 0's X) = 0xFFE0 (-32, signed)
+    [0xCF8] (slot 1's X) = 0x100 (unchanged from the loop above, restated)
+    [0xCE5] (slot 0's [BX+0xA]) = 0
+131F-1393: the tick loop (see `tournament.js`'s own `raceIntroHoldTicks` header for the exact
+  per-tick trace and tick counts -- 59 for H2H, 121 for Challenge)
+1395: CALL 179B                          ; falls into the shared "wait for a key" stage
+```
+
+**What's ported, and what isn't.** Ported:
+1. `tournament.js`'s new `raceIntroHoldTicks(state)` -- the `131F-1393` SLIDE-LOOP's own tick count
+   (59 H2H / 121 Challenge / 0 for the qualifier or a bonus race, neither of which reaches `12BD`),
+   wired into `flow.js`'s `startNextRace`/`confirm` as a hold timer (a `performance.now()`-based
+   deadline, not a per-tick `requestAnimationFrame` loop, since nothing the port draws changes
+   during the hold). **Why a press during this window has no effect isn't just "the loop never
+   polls input"** (true -- no `CALL 2D5B` anywhere in `131F-1393` -- but the keyboard ISR still
+   maintains the release latch `[0x107E]`/`[0x107F]` in the background regardless of whether any
+   code explicitly polls it, so that alone doesn't prove a press is DISCARDED rather than buffered
+   for later). The real mechanism, confirmed by disassembling `179B` itself: its own entry
+   (`17AB`/`17B0`) unconditionally CLEARS the release latch before its own wait loop ever runs, so
+   whatever the ISR latched during the slide loop is wiped the instant `179B` starts -- a press
+   during the hold is provably discarded, not queued. This is proven for a key PRESSED AND RELEASED
+   entirely inside the hold; it does NOT cover a key still HELD when the hold ends (DOS exits `179B`
+   on that key's own later release, `17C9`, while this port's own `confirm()` needs a fresh
+   `keydown`) -- the same release-vs-keydown mismatch already recorded as
+   `UNKNOWN_outcome_screen_timeout` (docs/engine.md §10, under the §9bb entry), not re-fixed here.
+   This also STRENGTHENS `elimination.js`'s own analogous claim for its own bounce loop, rather than
+   leaving it merely plausible: `179B` is the SAME shared function, confirmed elsewhere in this file
+   (§9ar e: "the shared two-phase wait `179B-17FE`, called from `ShowNextRaceIntroScreenTune4or5`...
+   `ShowCharacterEliminatedTune6`...") to be the bounce's own successor stage too, and the gap
+   between them was checked directly, not assumed: `1000:1776-179B`, disassembled, shows the bounce
+   loop's own exit tail (`178B: MOV [BX+0x13],0xB`, `1790: CALL 08BC`) falling straight into
+   `1793: CALL 179B` with no `CALL 2D5B` and no read of `[0x107E]`/`[0x107F]` anywhere in between --
+   so the SAME entry-clear is confirmed to apply there too, not just plausible by analogy.
+2. `tournament.js`'s new `raceIntroParticipants(state)` -- the text equivalent of `19F2`'s own
+   face-preview panel (`[player, ...opponents]` by character index, `null` for the qualifier/a
+   bonus race, matching `raceIntroHoldTicks`' own gate exactly, since `19F2` is only ever called
+   from `12BD`). `screens.js`'s `drawRaceIntro` gained two new text rows (`Y=120` the player's own
+   name, `Y=140` "VS" plus the opponents, checked for no collision with the existing `Y=60`/`Y=100`
+   rows, and split across two rows -- not one, and not comma-separated -- because `drawString`'s
+   own glyph map only covers `0-9`/`A-Z`/`!`/`?`; a comma would silently draw as a blank gap, and a
+   single combined row risks overflowing the 256px view at the worst-case name-length case).
+   Rendered to PNG and looked at directly (both H2H and the worst-case 4-name Challenge case, both
+   readable and fully on-screen with no overflow) after an earlier draft's own lowercase "vs" and
+   comma separators were caught in this same check -- neither has a glyph, so both would have
+   silently rendered as blank 8px gaps instead of what the text intended. A text-only stand-in for
+   the 4-face (or 2-face) sprite panel, matching this project's established `screens.js` bar.
+   Ported per an explicit user decision, presented with the alternative of doing nothing here at
+   all.
+
+**Not ported, deliberately, matching an established precedent**: the sprite panel itself -- the
+portraits (`19F2`), the vehicle-class icon reveal, and the H2H-vs-Challenge slide/marquee animation
+that produces the 59/121 tick counts in the first place. `19F2` is the SAME function §9az already
+found and left unported for the opponent picker's own call site, for the same reason: this
+project's `screens.js` is hand-drawn text, not full sprite-panel parity, and a persistent sprite
+panel is a real new feature, not a bug fix -- a scope this session's user chose explicitly, after
+being shown the tradeoff against a full sprite-panel port (which would also need a DOSBox live
+capture to verify layout/flip/asset, not attempted this pass).
+
+**What `raceIntroHoldTicks` does NOT cover -- a real gap, not just an unexplored corner.** The
+`131F` slide loop is only PART of `12BD`'s own total delay before a confirm is accepted. Before it
+even starts, `12BD` runs `19F2` (the portrait draw), `1867` (the track name), `01DE` (its OWN 18
+instructions read in full show no loop and no wait -- but its three callees, `053A`/`0862`/`08F0`,
+were NOT themselves read instruction-by-instruction, so "contributes ~0 ticks" rests on `01DE`'s
+own body having no loop around those calls, not on a proof that none of the callees loop
+internally), and -- critically -- `32CE` (`PaletteFadeUpFromBlack`), which has **no derivable tick
+duration at all**: already established elsewhere in this file as a busy loop with no vsync/tick
+pacing, bound purely by 1994 CPU speed -- and that finding's own text notes `32CE`'s own callee,
+`32AE`, was likewise not fully re-disassembled instruction by instruction, so the "no derivable
+value" conclusion rests on the outer loop's shape and the upload routine, not an exhaustive read of
+every byte in between. So the REAL total hold (screen-appears to input-accepted) is
+`raceIntroHoldTicks`'s own count PLUS an unknown, non-zero, non-tick-expressible amount for that
+fade -- new, narrower open item `UNKNOWN_race_intro_prehold`, the SAME open-endedness the
+palette-fade finding already has elsewhere applied to this specific call site, not a new kind of
+gap. This port's own hold therefore UNDERSTATES the real delay by that fade's own (likely short,
+on any modern machine, but formally unknown) duration.
+
+**Left unresolved, deliberately out of scope, none of it affecting the timing/participant-list
+port:** `[BX+0xA]`'s own exact meaning (very likely a horizontal-flip byte given the results-row
+loop's own `XOR CH,0x1` alternation at a structurally similar site, `1000:1534` -- but not
+confirmed here, since nothing this port draws depends on it); the vehicle-icon asset itself (which
+`.CHR` bank slot 8's own descriptor range binds to, and whether the `class-1+8i` frame stride is a
+colour/orientation variant); the qualifier's own Challenge-only banner (`127E-12BA`).
+
+**Tests.** `tools/check-tournament.mjs` test 18: `raceIntroHoldTicks` across a regular Challenge
+race (121), a regular H2H race (59), the H2H qualifier (0), the Challenge qualifier (0), and a
+bonus race (0). Confirmed by reintroducing an off-by-one on both non-zero counts (58/120 instead of
+59/121) and re-running the suite: both of the two non-zero-count assertions fail, pass again once
+reverted. Test 19: `raceIntroParticipants` across H2H (2 entries), Challenge (4 entries), the
+qualifier (`null`), and a bonus race (`null`). Confirmed by reintroducing a version with no
+qualifier/bonus-race guard and re-running the suite: both `null`-case assertions fail, pass again
+once reverted. `tools/check-screens.mjs` gained two new synthetic cases for `drawRaceIntro`'s own
+`participants` row (H2H, and the worst-case 4-name Challenge width), and both were rendered to PNG
+via the same buffer-to-RGBA path `tools/`'s other render scripts use and looked at directly --
+readable, fully on-screen, no missing glyphs (see the "Ported" paragraph above for what that check
+caught in an earlier draft).
+
+**Verification status.** `game.html` was loaded live (a browser check) and confirmed to boot with
+no console errors; `drawRaceIntro`'s own new participant rows were rendered to PNG and looked at
+directly (above). NOT exercised in-browser this pass: the `flow.js` wiring itself
+(`startNextRace`'s own `raceIntroHoldUntil` deadline, `confirm`'s new gate, `paintMenu`'s own
+`participants` plumbing) -- reaching a real race-1 intro needs completing the qualifier race
+first, which this pass didn't attempt. `mmGame.confirm()`/`getPhase()` (the existing debug hooks)
+can drive and check this once a session reaches `RACE_INTRO`, if that becomes cheap to set up.

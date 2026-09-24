@@ -146,6 +146,8 @@ const cases = [
   ['drawRaceIntro (named track)', () => drawRaceIntro(createMenuBuffer(), arena, { round: 1, race: 1 })],
   ['drawRaceIntro (nameless qualifier)', () => drawRaceIntro(createMenuBuffer(), arena, { round: 2, race: 1 })],
   ['drawRaceIntro (round 9, the bonus race -- no names in TRACK_NAMES at all)', () => drawRaceIntro(createMenuBuffer(), arena, { round: 9, race: 1 })],
+  ['drawRaceIntro (H2H, 2 participants)', () => drawRaceIntro(createMenuBuffer(), arena, { round: 1, race: 1, participants: [0, 6] })], // WALTER vs JETHRO
+  ['drawRaceIntro (Challenge, worst-case width: 4 six-letter names)', () => drawRaceIntro(createMenuBuffer(), arena, { round: 1, race: 1, participants: [5, 6, 7, 8] })], // DWAYNE vs JETHRO CHERRY EMILIO
   ['drawResults (passed)', () => drawResults(createMenuBuffer(), arena, { standings: [{ name: 'WALTER', position: 1 }, { name: 'MIKE', position: 2 }, { name: 'ANNE', position: 3 }, { name: 'JOEL', position: 4 }], passed: true })],
   ['drawResults (failed)', () => drawResults(createMenuBuffer(), arena, { standings: [{ name: 'WALTER', position: 4 }], passed: false })],
   // Regression guard for an advisor-caught bug from an earlier session (a qualifier failure used

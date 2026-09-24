@@ -136,6 +136,92 @@ export function hasRaceIntro(state) {
 }
 
 /**
+ * `ShowNextRaceIntroScreenTune4or5 1000:11F8`'s own mandatory hold on the SLIDE-LOOP portion of
+ * the screen, before the shared `179B` "wait for a key" stage is reached (GOAL-DOS-PARITY.md's
+ * "H2H race-intro variant" item, docs/engine.md §9be has the full derivation). Not the WHOLE
+ * hold -- see the "What this does NOT cover" paragraph below.
+ *
+ * The tick loop's own exact shape (`131F-1393`: `132C` draw -> `134B` VRAM present -> `1354`
+ * format branch -> test -> move-or-stop -> `1375`/`1393` loop back), traced tick-for-tick:
+ * - **H2H** (`1354-1375`, "the two cars slide in and face each other," §9an 8): car 0's icon
+ *   starts at `X=-32` (`0xFFE0`, set once at `130E`) and moves `+2`/tick; car 1's starts at
+ *   `X=0x100`(256) and moves `-2`/tick; each tick draws the CURRENT position, then tests
+ *   `car0.X==0x54`(84) BEFORE moving -- so the position sequence drawn is `-32,-30,...,84`
+ *   inclusive, `(84-(-32))/2+1 = 59` ticks total.
+ * - **Challenge** (`1377-1393`): all 4 icons start at `X=0x100`(256) and move `-2`/tick together;
+ *   each tick draws, then tests `car0.X<=0x10`(16) before moving -- position sequence
+ *   `256,254,...,16` inclusive, `(256-16)/2+1 = 121` ticks total.
+ *
+ * "59/121 ticks" means 59/121 loop ITERATIONS, each resetting `[0x261F]` and waiting for the next
+ * tick edge -- an iteration is exactly one 70Hz tick only if its own draw/restore/`089C` present
+ * work finishes inside that 1/70s window; on slower hardware (or Challenge's own 4-icon iteration,
+ * doing twice H2H's own per-tick work), an iteration can round up to two real ticks, the same
+ * family of CPU-speed dependence the `32CE` fade already has, just smaller in degree.
+ *
+ * **Why a press during this window has no effect isn't just "the loop never polls input"** (true --
+ * no `CALL 2D5B` anywhere in `131F-1393` -- but not, on its own, proof a press is DISCARDED rather
+ * than buffered by the keyboard ISR that maintains `[0x107E]`/`[0x107F]` in the background
+ * regardless of whether any code explicitly polls it). The real mechanism, confirmed by
+ * disassembling `179B` itself: its own entry (`17AB: MOV byte[0x107F],0` / `17B0: MOV
+ * byte[0x107E],0`) unconditionally CLEARS the release latch before its own wait loop ever runs --
+ * so whatever the ISR latched during the slide loop is wiped the instant `179B` starts, and only a
+ * release that happens AFTER that point can register. This is provable for a key PRESSED AND
+ * RELEASED entirely inside the hold. It does NOT cover a key still HELD when the hold ends: DOS
+ * exits `179B` on that key's own later release (`17C9`), while this port's own `confirm()` needs a
+ * fresh `keydown` -- the same release-vs-keydown mismatch already recorded as
+ * `UNKNOWN_outcome_screen_timeout` (docs/engine.md §10, under the §9bb registry entry), not
+ * re-fixed here.
+ *
+ * **What this does NOT cover.** `12BD` runs three things BEFORE this tick loop even starts: the
+ * portrait panel (`19F2`), a one-shot decorative draw (`01DE` -- its OWN 18 instructions show no
+ * loop or wait, but its three callees weren't themselves read instruction-by-instruction, so
+ * "contributes ~0 ticks" isn't as airtight as a full disassembly of everything it touches would
+ * be), and a palette fade-up (`32CE`,
+ * `PaletteFadeUpFromBlack`) -- already established elsewhere (docs/engine.md, the palette-fade
+ * finding) to have **no derivable tick duration at all**: it is a busy loop with no `INT 1Ah`/vsync
+ * wait anywhere in it, paced purely by 1994 CPU speed, "no derivable value to port." So the REAL
+ * total hold (screen-appears to input-accepted) is `raceIntroHoldTicks`'s own count PLUS an
+ * unknown, non-zero, non-tick-expressible amount for that fade -- new, narrower open item
+ * `UNKNOWN_race_intro_prehold`, matching the SAME open-endedness the palette-fade finding already
+ * has elsewhere, not a new kind of gap.
+ *
+ * Only reached for a REGULAR race: NOT the qualifier (`[28C1]==0`, `12BD` is never reached -- H2H
+ * shows no intro at all, `hasRaceIntro` above; Challenge's own qualifier banner at `127E` is a
+ * separate, unported mechanism, out of this item's scope) and NOT a bonus race (`[28BF]==9` takes
+ * its own, entirely separate `01DE`/`32CE` reveal at `1220`, `JMP 1395` straight past `12BD`, also
+ * out of scope) -- both of those paths ALSO run their own `01DE`/`32CE` pair before `1395`, so
+ * returning 0 here means "this port's own hold is unchanged from before this item," not "DOS has
+ * no delay there either."
+ *
+ * This function ports ONLY the slide-loop's own tick count, not the sprite panel itself (the
+ * portraits from `19F2`, or the sliding/marquee vehicle icons) -- matching the established
+ * precedent for the SAME `19F2` function's other call site (the opponent picker, docs/engine.md
+ * §9az): this project's own `screens.js` is hand-drawn text/graphics, not full sprite-panel
+ * parity, and a persistent sprite panel is a real new feature, not a bug fix -- a scope this
+ * session's user explicitly chose over the full sprite port after being shown the tradeoff.
+ */
+export function raceIntroHoldTicks(state) {
+  if (state.pendingBonusRace) return 0
+  if (state.raceIndex === 0) return 0
+  return state.format === 'twocar' ? 59 : 121
+}
+
+/**
+ * The intro screen's own participant list, as character indices `[player, ...opponents]` -- text
+ * equivalent of `19F2`'s own face-preview panel (one face per active car, 2 in H2H / 4 in
+ * Challenge, docs/engine.md §9be), gated the SAME way as `raceIntroHoldTicks` above (only a
+ * regular race reaches `12BD`/`19F2` at all -- `null` for the qualifier or a bonus race, neither
+ * of which shows a participant panel in the original either). `opponentCharactersFor` already
+ * returns the right thing for both formats once past the qualifier (`state.opponents`: a 1-entry
+ * array for H2H, 3 for Challenge), so this needs no format branch of its own.
+ */
+export function raceIntroParticipants(state) {
+  if (state.pendingBonusRace) return null
+  if (state.raceIndex === 0) return null
+  return [state.playerCharacter, ...opponentCharactersFor(state)]
+}
+
+/**
  * The screen after a race (`13E4` results / `1C1B` outcome message, docs/engine.md §9an):
  * - the qualifier, in either format, never shows the results table -- straight to the outcome
  *   message (qualified / failed to qualify, `10E4`/`10EC`);

@@ -6,7 +6,7 @@
 // 5th item (docs/engine.md §9bc, both of tournament.js's own file-header rules, formerly
 // INFERRED, now fully cited).
 //   node tools/check-tournament.mjs
-import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, resultsPassed, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, applyLivesDelta, QUALIFIER_OPPONENTS, OUTCOME } from '../src/frontend/tournament.js'
+import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, raceIntroHoldTicks, raceIntroParticipants, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, resultsPassed, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, applyLivesDelta, QUALIFIER_OPPONENTS, OUTCOME } from '../src/frontend/tournament.js'
 import { ORDER_TABLE_LAST_INDEX, MAX_BONUS_RACES } from '../src/data/frontend-tables.js'
 
 let bad = 0
@@ -552,5 +552,54 @@ function freshAtLastRace() {
   check('2nd place does NOT pass on the very last race -- the one place the rule narrows', resultsPassed(s, 2) === false)
 }
 
-console.log(bad ? `${bad} check(s) failed` : 'check-tournament: qualifier pass/fail, the real opponent picker, the real elimination/replacement rule, Challenge/two-car race rules, streak/bonus-race schedule, the last-race 2nd-place fail, the uncapped bonus trigger, the win-gated bonus-race counter/life, the conditional RESULTS->OUTCOME transition, the ] lives cheat, the byte-exact lives wraparound (both the outcome-screen and the cheat-spot paths), the 25011968 cheat\'s own reset applied in the real order relative to the loss check for every race type including a bonus race, and the byte-exact results-screen tune/pass condition all match docs/engine.md §7/§9az/§9ba/§9bb/§9bc/§9bd')
+// 18. `raceIntroHoldTicks` (`1000:11F8`'s own `12BD` portrait/icon-reveal, `131F-1393`'s own
+// SLIDE-LOOP portion, fully re-disassembled, docs/engine.md §9be, GOAL-DOS-PARITY.md's "H2H
+// race-intro variant" item): the tick count for JUST that loop, during which a press is discarded
+// (179B's own entry clears the release latch, not merely "the loop doesn't poll" -- see
+// raceIntroHoldTicks' own header for why that distinction matters). NOT the whole real hold: `12BD`
+// also runs a one-shot draw (`01DE`, ~0 ticks) and a palette fade-up (`32CE`) with NO derivable
+// tick duration at all (already established elsewhere as CPU-speed-bound, not tick-paced) BEFORE
+// this loop even starts -- `UNKNOWN_race_intro_prehold`. H2H: car 0 slides `-32->84` at +2/tick
+// (59 ticks). Challenge: all 4 icons slide `256->16` at -2/tick (121 ticks). Zero for the qualifier
+// (raceIndex 0) and a bonus race (pendingBonusRace set) -- meaning THIS PORT'S hold is unchanged
+// for those cases, not that DOS has no delay there either (both paths run their own `01DE`/`32CE`
+// pair too, just not the `131F` slide loop specifically).
+{
+  const s = initTournament()
+  s.format = 'challenge'
+  s.raceIndex = 3
+  check('a regular Challenge race\'s own slide loop holds for 121 ticks', raceIntroHoldTicks(s) === 121)
+  s.format = 'twocar'
+  check('a regular H2H race\'s own slide loop holds for 59 ticks', raceIntroHoldTicks(s) === 59)
+  s.raceIndex = 0
+  check('the H2H qualifier never reaches 12BD at all (hasRaceIntro is already false there)', raceIntroHoldTicks(s) === 0)
+  s.format = 'challenge'
+  check('the Challenge qualifier never reaches 12BD either -- its own 127E banner is a separate, unported mechanism', raceIntroHoldTicks(s) === 0)
+  s.raceIndex = 5
+  s.pendingBonusRace = { round: 9, race: 1 }
+  check('a bonus race never reaches 12BD either -- its own 1220 banner is a separate mechanism', raceIntroHoldTicks(s) === 0)
+}
+
+// 19. `raceIntroParticipants` (docs/engine.md §9be): the text equivalent of `19F2`'s own
+// face-preview panel -- `[player, ...opponents]` by character index, gated the SAME way as
+// `raceIntroHoldTicks` (null for the qualifier or a bonus race).
+{
+  const s = initTournament()
+  s.format = 'twocar'
+  s.playerCharacter = 3
+  s.opponents = [5]
+  s.raceIndex = 2
+  check('H2H lists exactly 2 participants: the player and the one CPU opponent', JSON.stringify(raceIntroParticipants(s)) === JSON.stringify([3, 5]))
+  s.format = 'challenge'
+  s.playerCharacter = 0
+  s.opponents = [1, 2, 4]
+  check('Challenge lists exactly 4 participants: the player and all 3 opponents', JSON.stringify(raceIntroParticipants(s)) === JSON.stringify([0, 1, 2, 4]))
+  s.raceIndex = 0
+  check('the qualifier has no participant list (12BD is never reached)', raceIntroParticipants(s) === null)
+  s.raceIndex = 5
+  s.pendingBonusRace = { round: 9, race: 1 }
+  check('a bonus race has no participant list either', raceIntroParticipants(s) === null)
+}
+
+console.log(bad ? `${bad} check(s) failed` : 'check-tournament: qualifier pass/fail, the real opponent picker, the real elimination/replacement rule, Challenge/two-car race rules, streak/bonus-race schedule, the last-race 2nd-place fail, the uncapped bonus trigger, the win-gated bonus-race counter/life, the conditional RESULTS->OUTCOME transition, the ] lives cheat, the byte-exact lives wraparound (both the outcome-screen and the cheat-spot paths), the 25011968 cheat\'s own reset applied in the real order relative to the loss check for every race type including a bonus race, the byte-exact results-screen tune/pass condition, and the H2H/Challenge race-intro slide-loop hold timing plus its own participant list all match docs/engine.md §7/§9az/§9ba/§9bb/§9bc/§9bd/§9be')
 process.exitCode = bad ? 1 : 0

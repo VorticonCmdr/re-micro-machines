@@ -113,10 +113,24 @@ export function drawPressAnyKey(buf, arena) {
   drawStringCentred(buf, arena, rec('FONT2.CHR'), 'PRESS ANY KEY TO START', 96)
 }
 
-export function drawRaceIntro(buf, arena, { round, race }) {
+/** `participants`: `tournament.js`'s own `raceIntroParticipants` (character indices,
+ * `[player, ...opponents]`), or `null` for the qualifier/a bonus race -- text equivalent of
+ * `19F2`'s own face-preview panel (docs/engine.md §9be), not the sprite panel itself. Two rows,
+ * not one, and no comma separator: `drawString`'s own glyph map (`menuView.js`'s `glyphFrame`,
+ * `[PROVEN]` against FONT1/FONT2.CHR.png) only covers `0-9`/`A-Z`/`!`/`?` -- a comma or lowercase
+ * "vs" would silently draw as a blank 8px gap, not the intended character (lowercase is safe only
+ * because `drawString` itself upper-cases first). Space-separated fits even the worst case
+ * (3 six-letter Challenge opponent names, `VS JETHRO CHERRY EMILIO` = 23 chars = 184px, well
+ * inside the 256px view) without needing to measure/wrap. */
+export function drawRaceIntro(buf, arena, { round, race, participants }) {
   drawStringCentred(buf, arena, rec('FONT2.CHR'), 'RACE', 60)
   const name = trackName(round, race)
   drawStringCentred(buf, arena, rec('FONT1.CHR'), name || `ROUND ${round} RACE ${race}`, 100)
+  if (participants) {
+    const [player, ...opponents] = participants
+    drawStringCentred(buf, arena, rec('FONT1.CHR'), CHARACTER_NAMES[player], 120)
+    drawStringCentred(buf, arena, rec('FONT1.CHR'), `VS ${opponents.map((i) => CHARACTER_NAMES[i]).join(' ')}`, 140)
+  }
 }
 
 export function drawResults(buf, arena, { standings, passed }) {

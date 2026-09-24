@@ -37,7 +37,7 @@ import { raceStart, updateEngines, createRaceJitter, raceOverSequence, raceOverS
 import { lapLineSegments, nearestPaletteIndex } from '../engine/lapLine.js'
 import { Si2Player } from '../audio/si2Player.js'
 import { RUFF_TRUCK_TIMES } from '../data/engine-tables.js'
-import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, resultsPassed, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, OUTCOME } from './tournament.js'
+import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, raceIntroHoldTicks, raceIntroParticipants, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, resultsPassed, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, OUTCOME } from './tournament.js'
 import { CHARACTER_NAMES, OUTCOME_MESSAGES, resolveSmoothnessForPlay } from '../data/frontend-tables.js'
 import { drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawOpponentPanel, drawEliminatedScreen, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
 import { createSmoothnessGate } from '../engine/smoothness.js'
@@ -699,7 +699,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   function paintMenu() {
     menuBuf.fill(0)
     if (phase === 'PRESS_ANY_KEY') drawPressAnyKey(menuBuf, arena)
-    else if (phase === 'RACE_INTRO') drawRaceIntro(menuBuf, arena, currentRace(tournament))
+    else if (phase === 'RACE_INTRO') drawRaceIntro(menuBuf, arena, { ...currentRace(tournament), participants: raceIntroParticipants(tournament) })
     else if (phase === 'RESULTS') drawResults(menuBuf, arena, { standings: lastStandings, passed: lastPassed })
     else if (phase === 'OUTCOME') drawOutcome(menuBuf, arena, { message: OUTCOME_MESSAGES[tournament.lastOutcome] })
     else if (phase === 'CHAMPION') drawChampion(menuBuf, arena, { playerName: CHARACTER_NAMES[tournament.playerCharacter] })
@@ -960,11 +960,22 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     paintMenu()
   }
 
+  let raceIntroHoldUntil = 0 // performance.now() timestamp; confirm() is a no-op before this (see raceIntroHoldTicks)
+
   /** The next race's intro -- or, for the Head-to-Head qualifier, no intro at all (11F8 starts tune 4
-   * and returns without a screen, 126D-127B): straight into the race. */
+   * and returns without a screen, 126D-127B): straight into the race. `raceIntroHoldTicks`
+   * (tournament.js, docs/engine.md §9be, GOAL-DOS-PARITY.md's "H2H race-intro variant" item): a
+   * regular race's own intro runs a real per-tick loop (the portrait/icon reveal, not ported here --
+   * see that export's own header) whose own successor stage (179B) clears the key-release latch at
+   * its own entry, discarding anything latched during the loop -- so a confirm during this window
+   * is ignored, matching the real hardware. */
   function startNextRace() {
     raceIntroMusic(sound)
-    if (hasRaceIntro(tournament)) { phase = 'RACE_INTRO'; return }
+    if (hasRaceIntro(tournament)) {
+      phase = 'RACE_INTRO'
+      raceIntroHoldUntil = performance.now() + raceIntroHoldTicks(tournament) * INTRO_TICK_MS
+      return
+    }
     advanceRace()
   }
 
@@ -991,6 +1002,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       leaveEliminatedScreen()
       return
     } else if (phase === 'RACE_INTRO') {
+      if (performance.now() < raceIntroHoldUntil) return // a press during the hold is discarded, not queued: 179B's own entry clears the release latch unconditionally before its own wait starts (raceIntroHoldTicks' own header)
       advanceRace()
       return
     } else if (phase === 'RESULTS') {

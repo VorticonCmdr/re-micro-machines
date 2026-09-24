@@ -437,7 +437,40 @@ docs, (6) commit.
   `resultsPassed` itself. Confirmed by reintroducing a naive `finishPosition<=2` (no last-race
   narrowing) and re-running the suite: fails both the new pinning test AND a pre-existing one,
   passes again once reverted.**
-- [ ] **The H2H race-intro variant** (§9an 8, "the H2H race-intro variant").
+- [x] **The H2H race-intro variant** (§9an 8, "the H2H race-intro variant").
+  **Done, §9be: `1000:11F8`'s full body re-disassembled (162 instructions). "The H2H variant
+  (portraits and facing cars)" undersold the gap -- `12BD`'s portrait panel (`19F2`, already
+  disassembled by §9az for its opponent-picker call site) plus a 4-slot vehicle-class icon reveal
+  is the ONLY race-intro mechanism for a regular race in EITHER format; only the icon-slide's own
+  exit condition and count (2 vs 4) are format-specific. H2H converges two icons over 59 ticks
+  (`-32->84` at `+2`/tick); Challenge marquees four over 121 (`256->16` at `-2`/tick), both traced
+  tick-for-tick -- this is the `131F` slide loop's OWN portion only, not the full real hold: `12BD`
+  also runs a one-shot draw (`01DE`, its own 18 instructions show no loop, though its callees
+  weren't read instruction-by-instruction) and a palette fade-up (`32CE`) BEFORE the slide loop
+  starts, and that fade has NO derivable tick duration at all (already established elsewhere as
+  CPU-speed-bound, not tick-paced) -- new open item `UNKNOWN_race_intro_prehold`, this port's own
+  hold understates the real delay by that amount. Scoped per an explicit user decision, presented
+  with the full-sprite-panel alternative (a full port would duplicate §9az's own declined scope for
+  the identical `19F2` function, and would need a DOSBox live capture to verify layout/flip/asset):
+  two things ported -- `raceIntroHoldTicks(state)` (the slide loop's own tick count, wired into
+  `flow.js` as a `performance.now()` deadline; a confirm during it has no effect because `179B`'s
+  own entry clears the key-release latch unconditionally, not merely because the loop itself never
+  polls -- checked directly by disassembling `179B`, not inferred from the loop's own silence; this
+  also strengthens, not just parallels, `elimination.js`'s own identical claim: `179B` is confirmed
+  the SAME shared successor stage for the elimination bounce too (§9ar e, not §9an as an earlier
+  draft cited), and the gap between them was checked directly -- `1000:1776-179B` disassembled
+  shows the bounce's own exit tail falling straight into `179B`'s own call with no `CALL 2D5B` and
+  no read of the release latch anywhere in between. Proven only for a key
+  pressed AND released inside the hold -- a key still held when the hold ends is the SAME
+  release-vs-keydown mismatch already open as `UNKNOWN_outcome_screen_timeout`, not re-fixed here)
+  and `raceIntroParticipants(state)` (two text rows -- the player's name, then "VS" plus the
+  opponents -- standing in for `19F2`'s own face panel; two rows and space-separated, not one row
+  with commas, because `drawString`'s own glyph map has no comma/lowercase and an earlier draft's
+  single-row, comma-separated version would have silently rendered those as blank gaps, caught by
+  rendering both formats to PNG and looking at them). The sprite panel itself stays unported.
+  Confirmed by reintroducing an off-by-one on both tick counts (58/120), and separately a version of
+  `raceIntroParticipants` with no qualifier/bonus-race guard, and re-running the suite each time:
+  the targeted assertions fail, pass again once reverted.**
 
 ### P4: two-human Head to Head
 - [ ] Port `FUN_1000_1e20` → `1ef1` / `RunHeadToHeadTournament 1000:1faf` / `2329` / `256e`: the WON/LOST
