@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createMenuBuffer, MENU_VIEW } from '../src/render/menuView.js'
-import { drawTitleScreen, drawMainMenu, drawCharacterSelect, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion } from '../src/frontend/screens.js'
+import { drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion } from '../src/frontend/screens.js'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const GAME = join(ROOT, 'game')
@@ -32,8 +32,10 @@ function nonEmpty(buf) {
 
 const cases = [
   ['drawTitleScreen', () => drawTitleScreen(createMenuBuffer(), arena, { classIndex: 2 })],
-  ['drawMainMenu (cursor 0)', () => drawMainMenu(createMenuBuffer(), arena, { cursor: 0 })],
-  ['drawMainMenu (cursor 2)', () => drawMainMenu(createMenuBuffer(), arena, { cursor: 2 })],
+  ['drawSelectGame (nothing selected)', () => drawSelectGame(createMenuBuffer(), arena, { selection: 0 })],
+  ['drawSelectGame (TWO PLAYER selected)', () => drawSelectGame(createMenuBuffer(), arena, { selection: 2 })],
+  ['drawOnePlayerGameMenu (nothing selected)', () => drawOnePlayerGameMenu(createMenuBuffer(), arena, { selection: 0 })],
+  ['drawOnePlayerGameMenu (Challenge selected)', () => drawOnePlayerGameMenu(createMenuBuffer(), arena, { selection: 2 })],
   ['drawCharacterSelect', () => drawCharacterSelect(createMenuBuffer(), arena, { cursor: 3, taken: [0, 3] })],
   ['drawCharacterSelect (H2H opponent prompt)', () => drawCharacterSelect(createMenuBuffer(), arena, { cursor: 5, taken: [4], prompt: 'WHO DO YOU WANT TO RACE ?' })],
   ['drawPressAnyKey', () => drawPressAnyKey(createMenuBuffer(), arena)],

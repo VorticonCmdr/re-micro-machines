@@ -39,10 +39,11 @@ import { Si2Player } from '../audio/si2Player.js'
 import { RUFF_TRUCK_TIMES } from '../data/engine-tables.js'
 import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, currentRace, reportRaceResult, OUTCOME } from './tournament.js'
 import { CHARACTER_NAMES, OUTCOME_MESSAGES, resolveSmoothnessForPlay } from '../data/frontend-tables.js'
-import { drawTitleScreen, drawMainMenu, drawCharacterSelect, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawOptionsScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
+import { drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawOptionsScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
 import { createSmoothnessGate } from '../engine/smoothness.js'
 import { introInitialState, introStep, smPalette, SCREEN_W as LOGO_W, SCREEN_H as LOGO_H } from '../formats/gfx1.js'
 import { attractInitialState, attractStep } from './attract.js'
+import { twoItemMenuInitialState, twoItemMenuStep } from './frontMenu.js'
 import { composeCodeCardScreen, fontbinPalette, targetFromTickByte, moveCursor, CURSOR_X0, CURSOR_Y0, CODECARD_W, CODECARD_H } from '../formats/fontbin.js'
 import { cycleControl, cycleSound, cycleSmoothness, advanceCheatCursor, redefineKeyAccepted, redefineGroupOf, redefineSlotInGroup, REDEFINE_TOTAL_SLOTS, REDEFINE_SLOTS_PER_GROUP } from './options.js'
 
@@ -358,20 +359,106 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     titleRafId = requestAnimationFrame(titleTick)
   }
   /** real_entry's own master loop (1000:0086-0095, re-disassembled for this item): fire or any
-   * other key release (CF=0) falls into RunMainMenuKeepTitleTune (0220, P2's second item -- still
-   * the flattened MENU phase until that item lands); ESC release (CF=1) loops all the way back to
-   * StopMusic+OPTIONS, not some intermediate state. */
+   * other key release (CF=0) falls into RunMainMenuKeepTitleTune (0220, P2's second item);
+   * ESC release (CF=1) loops all the way back to StopMusic+OPTIONS, not some intermediate state. */
   function leaveTitle(exit) {
     if (titleRafId != null) { cancelAnimationFrame(titleRafId); titleRafId = null }
     titleReader?.dispose(); titleReader = null
     if (exit === 'options') { enterOptions(); return }
-    phase = 'MENU'
-    menuCursor = 0
-    paintMenu() // no music call: tune 1 just keeps playing (docs/engine.md §7's "the main menu keeps tune 1"), unlike this phase's own pre-P2 flattened transition
+    enterSelectGame() // no music call: tune 1 just keeps playing (docs/engine.md §7's "the main menu keeps tune 1")
+  }
+
+  // P2's second item (GOAL-DOS-PARITY.md, src/frontend/frontMenu.js): RunMainMenuKeepTitleTune
+  // 1000:0220 (SELECT GAME) and RunOnePlayerGameMenu 1000:02e0 (ONE PLAYER GAME) -- one shared
+  // driver, since both are the exact same RunTwoItemMenu (0382) state machine, differing only in
+  // the screen painted and what a confirm/cancel does next. [0x130]/[0x132], the two levels' own
+  // persisted selections, are real static-image scratch words this session read live (resting
+  // value 1/2, docs/engine.md §9av's own correction of the earlier "nothing selected" claim) --
+  // and a genuine asymmetry between them: SELECT GAME (`02CB`) only persists a REAL confirm (the
+  // write is skipped entirely on a cancel), while ONE PLAYER GAME (`0360`) persists EVERY exit,
+  // including a cancel (CX=0, "nothing selected" for the NEXT visit) -- re-checked directly
+  // against the raw disassembly, not assumed symmetric.
+  let lastSelectGameSelection = 1 // [0x130]'s own resting value
+  let lastOnePlayerSelection = 2 // [0x132]'s own resting value
+  let twoItemState = null
+  let twoItemReaders = null // { p1, p2 } -- 0382 sets [0x1080]=0, combining both players' input at every level of this menu
+  let twoItemPaint = null
+  let twoItemOnExit = null // (exit, selection) => void
+  let twoItemRafId = null
+  let twoItemLast = 0
+  let twoItemAcc = 0
+  function enterTwoItemMenu(phaseName, initialSelection, paintFn, onExit) {
+    canvas.width = MENU_VIEW.w
+    canvas.height = MENU_VIEW.h
+    phase = phaseName
+    twoItemState = twoItemMenuInitialState(initialSelection)
+    twoItemReaders = { p1: createKeyboardReader(p1Keys(), window), p2: createKeyboardReader(p2Keys(), window) }
+    menuReleaseTracker.reset() // 1000:038c: [0x107e]=0 at every 0382 entry
+    twoItemPaint = paintFn
+    twoItemOnExit = onExit
+    twoItemPaint()
+    twoItemLast = performance.now()
+    twoItemAcc = 0
+    twoItemRafId = requestAnimationFrame(twoItemTick)
+  }
+  function twoItemTick(now) {
+    if (phase !== 'SELECT_GAME' && phase !== 'ONE_PLAYER_GAME') return
+    twoItemAcc += Math.min(now - twoItemLast, 250)
+    twoItemLast = now
+    while (twoItemAcc >= INTRO_TICK_MS) {
+      twoItemAcc -= INTRO_TICK_MS
+      const bits = twoItemReaders.p1.read() | twoItemReaders.p2.read()
+      const { escReleased } = menuReleaseTracker.read()
+      const r = twoItemMenuStep(twoItemState, { bits, escReleased })
+      if (r.exit) { leaveTwoItemMenu(r.exit, r.selection); return }
+    }
+    twoItemPaint()
+    twoItemRafId = requestAnimationFrame(twoItemTick)
+  }
+  function leaveTwoItemMenu(exit, selection) {
+    if (twoItemRafId != null) { cancelAnimationFrame(twoItemRafId); twoItemRafId = null }
+    twoItemReaders.p1.dispose(); twoItemReaders.p2.dispose(); twoItemReaders = null
+    const onExit = twoItemOnExit
+    twoItemOnExit = null
+    onExit(exit, selection)
+  }
+  function paintSelectGame() {
+    menuBuf.fill(0)
+    drawSelectGame(menuBuf, arena, { selection: twoItemState.selection })
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
+    statusEl.textContent = 'SELECT GAME'
+  }
+  function enterSelectGame() {
+    enterTwoItemMenu('SELECT_GAME', lastSelectGameSelection, paintSelectGame, (exit, selection) => {
+      if (exit === 'cancel') { enterTitle(); return } // 0220's own top-level idle/ESC cancel (1000:0093 JC 0069): back to the tune-1 dance + TITLE
+      lastSelectGameSelection = selection // 1000:02cb -- only reached on a real (nonzero) confirm
+      if (selection === 2) { // TWO PLAYER: RunTwoPlayerHeadToHeadSetup 1e20, two-human H2H -- out of scope (P4)
+        statusEl.textContent = 'Two-human head-to-head is not implemented in this port.'
+        enterSelectGame()
+        return
+      }
+      enterOnePlayerGame()
+    })
+  }
+  function paintOnePlayerGame() {
+    menuBuf.fill(0)
+    drawOnePlayerGameMenu(menuBuf, arena, { selection: twoItemState.selection })
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
+    statusEl.textContent = 'ONE PLAYER GAME'
+  }
+  function enterOnePlayerGame() {
+    enterTwoItemMenu('ONE_PLAYER_GAME', lastOnePlayerSelection, paintOnePlayerGame, (exit, selection) => {
+      lastOnePlayerSelection = exit === 'confirm' ? selection : 0 // 1000:0360 -- unconditional, unlike SELECT GAME's own guarded write
+      if (exit === 'cancel') { enterSelectGame(); return } // 0220's own CLC;RET after CALL 02e0 -- straight back to SELECT GAME, no tune restart, no title
+      // selection 1 = LEFT = Head to Head vs CPU (0fbf); 2 = RIGHT = Challenge (102b)
+      tournament = initTournament({ format: selection === 1 ? 'twocar' : 'challenge' })
+      phase = 'CHAR_SELECT'; charWho = 'player'; charCursor = lastPick.player
+      subMenuMusic(sound) // docs/sound.md tune table: "2 all sub-menus" -- confirmed live on this screen
+      paintMenu()
+    })
   }
 
   let phase = introState ? 'LOGO' : fontbinBytes ? 'CODECARD' : 'OPTIONS'
-  let menuCursor = 0
   let charCursor = 0
   let charWho = 'player' // 'player' ("WHO DO YOU WANT TO BE ?") or 'opponent' (H2H: "WHO DO YOU WANT TO RACE ?")
   // The select screens start on the session's last picks: statics [3F4]=10 / [3F6]=9 (SPIDER/BONNIE),
@@ -387,8 +474,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
 
   function paintMenu() {
     menuBuf.fill(0)
-    if (phase === 'MENU') drawMainMenu(menuBuf, arena, { cursor: menuCursor })
-    else if (phase === 'CHAR_SELECT') drawCharacterSelect(menuBuf, arena, { cursor: charCursor, taken: tournament.roster.filter((r) => r.taken).map((r) => r.index), prompt: charWho === 'opponent' ? 'WHO DO YOU WANT TO RACE ?' : 'WHO DO YOU WANT TO BE ?' })
+    if (phase === 'CHAR_SELECT') drawCharacterSelect(menuBuf, arena, { cursor: charCursor, taken: tournament.roster.filter((r) => r.taken).map((r) => r.index), prompt: charWho === 'opponent' ? 'WHO DO YOU WANT TO RACE ?' : 'WHO DO YOU WANT TO BE ?' })
     else if (phase === 'PRESS_ANY_KEY') drawPressAnyKey(menuBuf, arena)
     else if (phase === 'RACE_INTRO') drawRaceIntro(menuBuf, arena, currentRace(tournament))
     else if (phase === 'RESULTS') drawResults(menuBuf, arena, { standings: lastStandings, passed: lastPassed })
@@ -611,12 +697,17 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     paintMenu()
   }
 
-  /** Where the flow goes once a race's screens are done: the champion screen, the main menu (a
-   * finished run returns to "SELECT GAME", 02D7 -> 0220, not the title), or the next race. */
+  /** Where the flow goes once a race's screens are done: the champion screen, SELECT GAME (a
+   * finished run unwinds all the way back through 02e0/0220's own CLC;RET chain to 1000:008b --
+   * SELECT GAME redrawn directly, no tune restart, no title -- P2's second item), or the next
+   * race. */
   function nextAfterOutcome() {
     if (tournament.over) {
-      if (tournament.champion) { phase = 'CHAMPION'; championMusic(sound) } else { phase = 'MENU'; menuCursor = 0; titleMusic(sound) }
-    } else startNextRace()
+      if (tournament.champion) { phase = 'CHAMPION'; championMusic(sound); paintMenu(); return }
+      enterSelectGame()
+      return
+    }
+    startNextRace()
     paintMenu()
   }
 
@@ -630,14 +721,10 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
 
   function confirm() {
     if (phase === 'LOGO') return // a key never skips the intro -- see the P1 header comment above
-    // TITLE's own input (fire/ESC/other-release) is driven entirely by titleTick's dedicated
-    // reader + the shared menuReleaseTracker (enterTitle, above), not by this function.
-    if (phase === 'MENU') {
-      if (menuCursor === 2) { statusEl.textContent = 'Two-human head-to-head is not implemented in this port.'; return }
-      tournament = initTournament({ format: menuCursor === 1 ? 'twocar' : 'challenge' })
-      phase = 'CHAR_SELECT'; charWho = 'player'; charCursor = lastPick.player
-      subMenuMusic(sound) // docs/sound.md tune table: "2 all sub-menus" -- confirmed live on this screen
-    } else if (phase === 'CHAR_SELECT') {
+    // TITLE/SELECT_GAME/ONE_PLAYER_GAME's own input is driven entirely by their own dedicated
+    // reader(s) + the shared menuReleaseTracker (enterTitle/enterTwoItemMenu, above), not by this
+    // function -- entering ONE_PLAYER_GAME's own confirm already sets phase='CHAR_SELECT' itself.
+    if (phase === 'CHAR_SELECT') {
       if (tournament.roster[charCursor].taken) return // fire on a taken character is ignored (0AB5-0ABB)
       if (charWho === 'player') {
         pickPlayerCharacter(tournament, charCursor)
@@ -673,9 +760,8 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       nextAfterOutcome() // whether this is a regular race or the just-unlocked bonus race, currentRace() resolves it
       return
     } else if (phase === 'CHAMPION') {
-      phase = 'MENU' // 1AAD returns to the main menu (02D7 -> 0220), not the title
-      menuCursor = 0
-      titleMusic(sound)
+      enterSelectGame() // 1AAD returns to SELECT GAME (02D7 -> 0220's own CLC;RET chain), not the title -- no tune restart either
+      return
     }
     paintMenu()
   }
@@ -701,11 +787,12 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     if (phase === 'OPTIONS') { optionsKey(e); return }
     if (phase === 'QUIT') return // real DOS is gone at this point; nothing left to read
     if (phase === 'LOADING') return
+    if (phase === 'SELECT_GAME' || phase === 'ONE_PLAYER_GAME') return // twoItemTick's own readers + menuReleaseTracker own this phase's input entirely
     if (phase === 'PRESS_ANY_KEY') { confirm(); return } // 0C15: any key click
-    if (phase === 'CHAR_SELECT' && e.code === 'Escape') { phase = 'MENU'; menuCursor = 0; titleMusic(sound); paintMenu(); return } // ESC at a select -> main menu
+    if (phase === 'CHAR_SELECT' && e.code === 'Escape') { enterSelectGame(); return } // ESC at a select -> SELECT GAME (0220's own CLC;RET chain, no tune restart)
     if (phase === 'CHAR_SELECT' && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) { charCursor = (charCursor + (e.code === 'ArrowLeft' ? 10 : 1)) % 11; paintMenu(); return } // the carousel's own LEFT/RIGHT
-    if (e.code === 'ArrowUp') { if (phase === 'MENU') menuCursor = (menuCursor + 2) % 3; else if (phase === 'CHAR_SELECT') charCursor = (charCursor + 10) % 11; paintMenu() }
-    else if (e.code === 'ArrowDown') { if (phase === 'MENU') menuCursor = (menuCursor + 1) % 3; else if (phase === 'CHAR_SELECT') charCursor = (charCursor + 1) % 11; paintMenu() }
+    if (e.code === 'ArrowUp') { if (phase === 'CHAR_SELECT') charCursor = (charCursor + 10) % 11; paintMenu() }
+    else if (e.code === 'ArrowDown') { if (phase === 'CHAR_SELECT') charCursor = (charCursor + 1) % 11; paintMenu() }
     else if (e.code === 'Space' || e.code === 'Enter') confirm()
   }
   window.addEventListener('keydown', onKeydown)
@@ -737,7 +824,9 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       window.removeEventListener('mouseup', onMouseup)
       if (introRafId != null) cancelAnimationFrame(introRafId)
       if (titleRafId != null) cancelAnimationFrame(titleRafId)
+      if (twoItemRafId != null) cancelAnimationFrame(twoItemRafId)
       titleReader?.dispose()
+      twoItemReaders?.p1.dispose(); twoItemReaders?.p2.dispose()
       menuReleaseTracker.dispose()
     },
     // debugging/testing hooks: drive the flow without a real keyboard
@@ -769,6 +858,16 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
         if (r.exit) { leaveTitle(r.exit); return }
       }
       paintTitle()
+    },
+    // Same fast-forward precedent, for SELECT_GAME/ONE_PLAYER_GAME: `input` is
+    // `{ bits, escReleased }`. A no-op outside those two phases.
+    forceMenuSteps: (n, input) => {
+      if (phase !== 'SELECT_GAME' && phase !== 'ONE_PLAYER_GAME') return
+      for (let i = 0; i < n; i++) {
+        const r = twoItemMenuStep(twoItemState, input)
+        if (r.exit) { leaveTwoItemMenu(r.exit, r.selection); return }
+      }
+      twoItemPaint()
     },
   }
 }

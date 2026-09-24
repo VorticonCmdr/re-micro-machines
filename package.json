@@ -18,6 +18,7 @@
     "codecard": "node tools/check-codecard.mjs",
     "options": "node tools/check-options.mjs",
     "title": "node tools/check-title.mjs",
+    "mainmenu": "node tools/check-mainmenu.mjs",
     "step": "node tools/check-step.mjs",
     "trace": "node tools/check-trace.mjs",
     "ai": "node tools/check-ai.mjs",

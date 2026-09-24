@@ -37,9 +37,13 @@ build** (`npm run build && npm run preview`, or any static host) has no `game/` 
 page then offers "Open game folder…" (or a drag-and-drop zone) to read your own copy directly from
 disk via the File System Access API, without ever uploading it anywhere.
 
-Controls: arrow keys to steer/throttle, Space (or S) to fire — remappable only by editing your own
-copy's `SETTINGS.DAT` (there is no in-browser key-rebinding UI yet). During menus, arrows navigate
-and Space/Enter confirms.
+Controls: arrow keys to steer/throttle, Space (or S) to fire — remappable in `game.html`'s own
+GAME OPTIONS screen (F5), matching the original's real redefine-keys screen. The title screen and
+`game.html`'s own SELECT GAME / ONE PLAYER GAME menus read the same LEFT/RIGHT/FIRE keys your
+copy's `SETTINGS.DAT` configures (both players' own bindings work at every menu level, exactly as
+the original does — see `docs/engine.md` §9av/§9aw); the character-select screen and everything
+after it still use plain arrow keys and Space/Enter, until `GOAL-DOS-PARITY.md`'s remaining P2/P3
+items land.
 
 ## Setting up the game files for development
 

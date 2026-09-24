@@ -120,7 +120,7 @@ Don't read `docs/engine.md` from start to finish. It is 6,000 lines. Jump to sec
 ## Regression suite (run before every commit; all must pass)
 
 ```bash
-for s in catalog lz chrtable tables car intro codecard options title step trace ai play sound rounds finish twocar tournament \
+for s in catalog lz chrtable tables car intro codecard options title mainmenu step trace ai play sound rounds finish twocar tournament \
          menu screens opl-toggle smoothness si2 live smoke; do npm run -s $s || echo "FAIL $s"; done
 npm run build
 ```
@@ -204,14 +204,17 @@ docs, (6) commit.
   and 9 `INTRO.CHR` showcase frames, one every `0x118` ticks, with the class name. It has **no
   idle timeout**. Exits: fire → main menu, ESC release → OPTIONS, any other key release → main
   menu. Check each one against `flow.js`.
-- [ ] **Two-level menu.** Replace the flattened 3-item menu (`flow.js` top comment,
+- [x] **Two-level menu.** Replace the flattened 3-item menu (`flow.js` top comment,
   `screens.js:32`). The real structure: `RunMainMenuKeepTitleTune 1000:0220` (SELECT GAME: ONE
   PLAYER / TWO PLAYER) → `FUN_1000_02e0` ONE PLAYER GAME (Head to Head `0fbf` / Challenge `102b`, drawn
   as `WORDS.CHR` slot 11 frames 1/2 plus `SELGAM.CHR` slot 10 frames 2/3, §9t) or `FUN_1000_1e20` TWO
-  PLAYER. Both levels use the two-item helper `FUN_1000_0382`: THUMB highlight, nothing selected
-  at first, fire ignored until LEFT/RIGHT picks, wait for fire to be released after each pick,
-  and **cancel after ≥ `0x7D0` idle ticks (about 28.6 s) at `1000:03CE`**. Music: the main menu
-  keeps tune 1 (`0220-0237`); tune 2 starts at the select (`0A06-0A1D`), §9an 8.
+  PLAYER. Both levels use the two-item helper `FUN_1000_0382`: THUMB highlight, **a real persisted
+  selection at rest (`[130]`/`[132]` = `1`/`2`, NOT "nothing selected" -- corrected live, §9av/§9aw;
+  the earlier "nothing selected" reading here was itself a symptom of the same `input_key`-tap-drop
+  issue §9av's own correction names)**, fire ignored only while the selection is genuinely 0, wait
+  for fire to be released after each pick, and **cancel after ≥ `0x7D0` idle ticks (about 28.6 s) at
+  `1000:03CE`**. Music: the main menu keeps tune 1 (`0220-0237`); tune 2 starts at the select
+  (`0A06-0A1D`), §9an 8. Done, §9aw: `src/frontend/frontMenu.js`, `tools/check-mainmenu.mjs`.
 - [ ] **Character select as a carousel** (`1000:09e0`). It shows 11 `FCNORMAL` faces, names at
   `DS:0258`, skills at `DS:02B1`, and a 13-step eased scroll using `DS:0185`. It replaces the
   list layout at `screens.js:43`. The handicap question (`1000:0b51`, characters 0–2) appears

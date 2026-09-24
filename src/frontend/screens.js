@@ -10,7 +10,7 @@
 // INTRO.CHR showcase frame at plausible, centred positions for exactly that reason.
 import { CHR_TABLE } from '../formats/chr.js'
 import { drawString, drawStringCentred, blitChr, MENU_VIEW } from '../render/menuView.js'
-import { CHARACTER_NAMES, CHARACTER_SKILLS, trackName, OPTIONS_MENU_LINES, OPTIONS_FOOTER, OPTIONS_TITLE, SMOOTHNESS_LABELS, SOUND_LABELS, CREDITS_LINES, REDEFINE_GROUP_LABELS, REDEFINE_SLOT_LABELS, REDEFINE_DISPLAY_CHAR, REDEFINE_DISPLAY_CHAR_DEFAULT, TITLE_COPYRIGHT, TITLE_CLASS_NAMES } from '../data/frontend-tables.js'
+import { CHARACTER_NAMES, CHARACTER_SKILLS, trackName, OPTIONS_MENU_LINES, OPTIONS_FOOTER, OPTIONS_TITLE, SMOOTHNESS_LABELS, SOUND_LABELS, CREDITS_LINES, REDEFINE_GROUP_LABELS, REDEFINE_SLOT_LABELS, REDEFINE_DISPLAY_CHAR, REDEFINE_DISPLAY_CHAR_DEFAULT, TITLE_COPYRIGHT, TITLE_CLASS_NAMES, SELECT_GAME_TITLE, ONE_PLAYER_LABEL, TWO_PLAYER_LABEL, GAME_LABEL, ONE_PLAYER_ITEM_LABELS } from '../data/frontend-tables.js'
 import { CONTROL_NAME } from '../formats/globaldata.js'
 
 function rec(name) {
@@ -33,22 +33,37 @@ export function drawTitleScreen(buf, arena, { classIndex = 0 } = {}) {
   drawStringCentred(buf, arena, rec('FONT1.CHR'), TITLE_CLASS_NAMES[classIndex % TITLE_CLASS_NAMES.length], 164)
 }
 
-// The pre-P2 flattened main menu (M3.9) -- still used until P2's second item (the real two-level
-// SELECT GAME / ONE PLAYER GAME menu) replaces it.
-export function drawMainMenu(buf, arena, { cursor = 0 } = {}) {
+// P2's second item: RunMainMenuKeepTitleTune 1000:0220 (SELECT GAME) and RunOnePlayerGameMenu
+// 1000:02e0 (ONE PLAYER GAME), sharing the two-item menu helper `RunTwoItemMenu 1000:0382`
+// (src/frontend/frontMenu.js). Real string content re-read live 193C:0130-0156 and confirmed
+// against a DOSBox screenshot of each screen (frontend-tables.js's own header comment); the
+// THUMB.CHR highlight sprite (slot9) itself and the SELGAM/WORDS decorative icons are not ported
+// pixel-for-pixel (not measured, like every other screen in this file) -- `selection` draws a
+// plain marker next to whichever item is currently picked instead, matching the existing
+// character-select convention below. `selection` is 0 (nothing picked -- the marker is omitted),
+// 1 (LEFT) or 2 (RIGHT), `frontMenu.js`'s own convention.
+export function drawSelectGame(buf, arena, { selection = 0 } = {}) {
   const logo = rec('LOGO.CHR')
   blitChr(buf, arena, logo, 0, (MENU_VIEW.w - logo.width) >> 1, 10)
-  drawStringCentred(buf, arena, rec('FONT2.CHR'), 'SELECT GAME', 70)
-  // The real menu is two levels (MAIN: ONE PLAYER/TWO PLAYER -> a ONE PLAYER submenu: Head-to-
-  // Head-vs-CPU / Challenge, docs/engine.md §7's "0fbf"/"102b") -- flattened here into one list
-  // (flow.js's own header comment explains why; P2's own second item replaces this).
-  const items = ['CHALLENGE', 'HEAD TO HEAD (vs CPU)', 'TWO PLAYER']
+  drawStringCentred(buf, arena, rec('FONT2.CHR'), SELECT_GAME_TITLE, 0x5e)
+  const items = [ONE_PLAYER_LABEL, TWO_PLAYER_LABEL]
+  const xs = [0x18, 0x9c]
   items.forEach((label, i) => {
-    const y = 100 + i * 20
-    // See drawCharacterSelect's comment: the real font has no arrow/bullet glyph, so the cursor
-    // is a plain letter marker instead of a silently-invisible unsupported character.
-    drawStringCentred(buf, arena, rec('FONT1.CHR'), (i === cursor ? 'X ' : '  ') + label, y)
+    drawString(buf, arena, rec('FONT1.CHR'), (selection === i + 1 ? 'X ' : '  ') + label, xs[i], 0x6f)
   })
+}
+
+// RunOnePlayerGameMenu 1000:02e0: "ONE PLAYER"/"GAME" (two stacked header lines, both substrings
+// of the SAME DS:0134 "SELECT GAME" string -- frontend-tables.js's own header comment), then the
+// two items Left=Head to Head(0fbf)/Right=Challenge(102b), "SELECT GAME" again as a footer.
+export function drawOnePlayerGameMenu(buf, arena, { selection = 0 } = {}) {
+  drawString(buf, arena, rec('FONT2.CHR'), ONE_PLAYER_LABEL, 0x58, 0x32)
+  drawString(buf, arena, rec('FONT2.CHR'), GAME_LABEL, 0x70, 0x44)
+  const xs = [0x18, 0x9c]
+  ONE_PLAYER_ITEM_LABELS.forEach((label, i) => {
+    drawString(buf, arena, rec('FONT1.CHR'), (selection === i + 1 ? 'X ' : '  ') + label, xs[i], 0x99 + i * 0x0b)
+  })
+  drawStringCentred(buf, arena, rec('FONT2.CHR'), SELECT_GAME_TITLE, 0xb6)
 }
 
 /** 09E0's select screen, laid out as a list (the real one is a scrolling portrait carousel, not

@@ -6401,3 +6401,86 @@ frame 1 renders no visible highlight in a live capture, frame 2 clearly does; a 
 not a state-machine one); `UNKNOWN_title_pixel_diff` (LOGO's own exact y position wasn't re-read
 live -- `frontend-tables.js`'s own layout choice keeps the port's earlier reasonable placement --
 same shape as codecard/options's own pixel-diff items, left for Part F).
+
+## 9aw. P2's second item: the real two-level menu (2026-09-24)
+
+Full re-disassembly of `RunTwoItemMenu 1000:0382` (47 instructions, its own complete state
+machine), `RunMainMenuKeepTitleTune 1000:0220` (SELECT GAME, including its tail at `02c1-02df`,
+not previously disassembled -- the earlier decompile of this function silently dropped it) and
+`RunOnePlayerGameMenu 1000:02e0` (ONE PLAYER GAME). Ported into `src/frontend/flow.js`'s new
+`SELECT_GAME`/`ONE_PLAYER_GAME` phases (replacing the pre-P2 flattened 3-item `MENU` phase
+entirely), driven by one shared real-time driver (`enterTwoItemMenu`/`twoItemTick`
+/`leaveTwoItemMenu`) since both screens are the exact same `RunTwoItemMenu` state machine, ported
+pure in the new `src/frontend/frontMenu.js`; proven in `tools/check-mainmenu.mjs`
+(`npm run mainmenu`).
+
+**`0382`'s own exact state machine, disassembled in full.** Two phases: `AWAIT_RELEASE` (draws
+THUMB at the current selection, then waits for any already-held fire to be released, `0399-03A9`)
+and `POLL` (`03C2-03FF`, entered with the idle timer freshly reset). Every tick in `POLL`: the
+idle timer increments FIRST (`0382`'s own vsync wait increments `DS:0002` before any of the checks
+below read it, so the port's own `state.idleTicks++` happens before its exit checks too, not
+after -- an off-by-one a first draft of the port got wrong, caught by `check-mainmenu.mjs`'s own
+tick-1999-vs-2000 boundary test); then idle-timeout (`>=0x7D0`) and ESC-release (the SAME global
+`[0x107e]` latch `attract.js` reads) both cancel (`CX=0`); then fire, only accepted if the current
+selection is nonzero (`03F8`); then LEFT(`0x80`)/RIGHT(`0x40`), which set the selection and
+re-enter `AWAIT_RELEASE` -- **except a repeat of the SAME direction, which only resets the idle
+timer and does NOT redraw or re-wait for release** (`03F0-03F2`, a real, provable distinction,
+teeth-proven).
+
+**`[0x130]`/`[0x132]`, re-read live: `1`/`2` at rest, not `0`.** This directly corrects §9ao 7's
+own earlier claim (kept there, marked corrected, not deleted) that `SELECT GAME` "starts with
+nothing selected" -- a fresh `read_memory` of the live DS segment right after a freshly-drawn
+`SELECT GAME` screen (no LEFT/RIGHT ever pressed) showed `[0x130]=1`, and firing immediately
+entered `ONE PLAYER GAME` -- `[0x130]`'s own value, not "ignored". The genuine, previously
+undocumented finding underneath both corrections: **the two levels persist their own selection
+asymmetrically.** `0220`'s own write (`02CB: MOV [0x130],CX`) sits AFTER an `OR CX,CX; JZ`
+zero-check -- a cancelled `SELECT GAME` visit leaves `[0x130]` untouched. `02e0`'s own write
+(`0360: MOV [0x132],CX`) has no such guard -- it writes UNCONDITIONALLY, including `CX=0` on a
+cancel, resetting `ONE PLAYER GAME`'s own persisted pick to "nothing selected" for the next visit.
+Live-confirmed end to end in the browser (not just unit-tested): entering `ONE PLAYER GAME` with
+"Challenge" pre-selected (`X` marker shown), cancelling with ESC, then re-entering shows NEITHER
+item marked -- exactly matching this asymmetry, and NOT something a symmetric implementation would
+have produced by accident. `flow.js`'s own `lastSelectGameSelection`/`lastOnePlayerSelection`
+mirror this exactly (the latter reset to 0 on any non-`'confirm'` exit, the former left alone).
+
+**`real_entry`'s own master loop (already re-disassembled for §9av) is this item's own dispatch
+table.** `1000:0090: CALL 0220; JC 0069` (SELECT GAME's own top-level cancel -- idle or ESC --
+loops back to the tune-1 restart dance + `RunTitleScreenAttractLoop`, i.e. straight to the title
+screen, not some intermediate state) `else JMP 008b` (anything else -- a sub-level `ONE PLAYER
+GAME` cancel, choosing an item, OR a finished tournament all the way back from `RunTournamentLoop`
+-- redraws `SELECT GAME` directly, no tune restart, no title). `flow.js`'s `enterSelectGame`/
+`enterOnePlayerGame` port this precisely: `SELECT_GAME`'s own cancel calls `enterTitle()`;
+`ONE_PLAYER_GAME`'s own cancel calls `enterSelectGame()`; and three PRE-EXISTING call sites this
+session found were calling the wrong thing (all fixed as a direct consequence of tracing this
+dispatch table, same shape as the `TITLE`->`MENU` tune-2 bug §9av already fixed): the champion
+screen's own return to the menu, a finished (non-champion) tournament's own return, and `CHAR_
+SELECT`'s own ESC -- all three previously did `phase='MENU'; ...; titleMusic(sound)`, restarting
+tune 1 for no real reason; all three now call `enterSelectGame()`, which correctly does nothing to
+the sound driver.
+
+**Both players drive every level of this menu -- a real, live-confirmed asymmetry from the title
+screen's own P1-only fire test (`attract.js`, §9av).** `0382` itself sets `[0x1080]=0`
+unconditionally at entry (`0388`), which makes `[0x108b]` (the byte both the fire/LEFT/RIGHT tests
+read) equal `[0x137b]|[0x14df]` -- P1's own reader OR'd with P2's, at BOTH `SELECT GAME` and `ONE
+PLAYER GAME`. `flow.js`'s `enterTwoItemMenu` creates two `createKeyboardReader` instances
+(`p1Keys()`/`p2Keys()`) and ORs their `.read()` results every tick, exactly matching this bit
+layout (`input.js`'s own `0x80/0x40/0x08` convention already matches `[0x108b]`'s).
+
+**`WORDS.CHR`/`SELGAM.CHR`'s own frame semantics, resolved live (settling the §9av-listed puzzle,
+a DOSBox screenshot of `SELECT GAME` and `ONE PLAYER GAME` both taken this session).** `SELECT
+GAME` pairs "ONE PLAYER" with a car-and-pointing-hand icon captioned "Challenge", and "TWO PLAYER"
+with a dueling-drivers icon captioned "Head to Head" -- these are flavour-art previews of the
+DEFAULT choice at each branch, not literal labels for what each button leads to (`ONE PLAYER`
+itself leads to a submenu offering BOTH). `ONE PLAYER GAME` then shows the real two items: Left =
+"Head to Head" (`0fbf`, `RunOnePlayerHeadToHeadVsCpu`), Right = "Challenge" (`102b`,
+`RunOnePlayerChallenge`) -- confirmed both by descriptor-slot arithmetic (§9t, unchanged) and this
+session's own screenshot. Not pixel-ported (the icons themselves, THUMB's own highlight sprite --
+same convention as every other screen in `screens.js`); `drawSelectGame`/`drawOnePlayerGameMenu`
+use the real string content (re-read live, `frontend-tables.js`) with a plain `X ` marker instead
+(the font has no arrow/bullet glyph, same reason `drawCharacterSelect` already gives).
+
+New open items, not blocking: `UNKNOWN_0eba_0400_menu_calls` (`RunOnePlayerGameMenu`'s own calls to
+`0EBA`/`0400` right after the `[0x132]` write, before dispatching on the selection -- not traced,
+likely roster/tournament-state boilerplate `tournament.js`'s own `initTournament()` already covers
+functionally, but not confirmed byte-for-byte); `UNKNOWN_menu_pixel_diff` (same shape as every
+other screen's own pixel-diff item, left for Part F).
