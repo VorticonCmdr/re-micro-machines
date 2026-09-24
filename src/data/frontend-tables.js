@@ -1,12 +1,17 @@
 // Front-end constants that live inside MICROU.EXE's data segment (docs/engine.md §7/§8), read
-// live this session (M3.9) with `read_memory` at the address each export names, and checked
-// byte-for-byte against `game/MICROU.EXE` by `tools/check-tables.mjs` -- same discipline as
-// `src/data/engine-tables.js` (D1). Everything here is `[STATIC]` (CLAUDE.md).
+// with `read_memory` at the address each export names, and checked byte-for-byte against
+// `game/MICROU.EXE` by `tools/check-tables.mjs` -- same discipline as `src/data/engine-tables.js`
+// (D1). `[STATIC]` by default (CLAUDE.md) -- a Ghidra `read_memory`, not an executed trace; entries
+// with their own additional live DOSBox `mem_read` confirmation say so at their own definition.
 //
-// NOT here, deliberately: the two-human H2H track lists (DS:09BA/09D9) -- M3.9's own scoping cut
-// leaves two-human H2H unimplemented (its own track *selection* is `DS:0002 & 7`, the vsync tick
-// counter, so it isn't input-deterministic and can't be driven by this port's tape/replay model
-// either); the roster table (DS:0164) -- confirmed live to be zero at rest (an uninitialized
+// NOT here, deliberately: the SINGLE-RACE track list (DS:09D9, `SelectSingleRaceTrack 1000:2193`,
+// GOAL-DOS-PARITY.md P4's own 2nd item, not yet ported) -- the two-human H2H TOURNAMENT list
+// (DS:09BA) IS here now (`H2H_TRACK_TABLE`, §9bh); its own track *selection* is still `DS:0002 & 7`,
+// the vsync tick counter, so it isn't input-deterministic and can't be driven by this port's
+// tape/replay model either -- `twoHuman.js`'s own `nextTrack(state, v)` takes that sample as an
+// explicit parameter instead, matching this project's established pattern for other non-
+// deterministic real-game values; the roster table (DS:0164) -- confirmed live to be zero at rest
+// (an uninitialized
 // runtime array the game fills with `roster[i]=i` at startup, not baked static data, so there is
 // nothing here to check against the EXE -- `frontend/tournament.js` seeds it directly); and the
 // unidentified ~52-byte block between the skill strings and the easing-ramp-shaped bytes at
@@ -49,6 +54,24 @@ export const CHARACTER_NAMES = ['WALTER', 'MIKE', 'ANNE', 'JOEL', 'CHEN', 'DWAYN
 // block closes it at 0x2B0) --------------------------------------------------------------------
 export const CHARACTER_SKILLS_ADDR = 0x2b1
 export const CHARACTER_SKILLS = ['DIRE', 'RASH', 'FAIR', 'SMOOTH', 'ABLE', 'POOR', 'SLICK!', 'CRAZY!', 'WILD', 'FAB!', 'ACE!']
+
+// --- Two-human H2H's own track list, DS:09BA (8 bytes) -- `RunHeadToHeadTournament 1000:1FBE-1FF9`,
+// docs/engine.md §9bh. Packs round<<2|race-1 per slot, the SAME encoding DS:043C's own ORDER_TABLE
+// uses. `[PROVEN]` this session: a live DOSBox read (segment 0xB7A) matched the static Ghidra read
+// byte-for-byte. -------------------------------------------------------------------------------
+export const H2H_TRACK_TABLE_ADDR = 0x9ba
+export const H2H_TRACK_TABLE = [0x04, 0x0a, 0x11, 0x0d, 0x1c, 0x21, 0x14, 0x19]
+
+// --- Two-human H2H's own skill-rating tables, DS:08B0/DS:08CD -- `1000:2481`'s own formula
+// (index=clamp(wins-losses+10,0,20), docs/engine.md §9bh), re-derived from the function's own
+// PUSH/POP discipline. `[PROVEN]`: both read live (segment 0xB7A), byte-for-byte matching the
+// static Ghidra reads.
+// H2H_SKILL_LABELS keeps its own real leading-space padding verbatim (the game's own fixed-field
+// layout for these strings, needed byte-exact for the screens commit's own future draw call). ---
+export const H2H_SKILL_INDEX_TABLE_ADDR = 0x8b0
+export const H2H_SKILL_INDEX_TABLE = [0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 5, 5, 6, 6, 6, 7, 7]
+export const H2H_SKILL_LABELS_ADDR = 0x8cd
+export const H2H_SKILL_LABELS = ['  GRANNY', '   BAD', '   POOR', ' ORDINARY', '   GOOD', 'VERY GOOD', 'EXCELLENT', ' EXPERT']
 
 // --- Track names, DS:0460 (36 NUL-terminated strings, walked in order; docs/engine.md §7's
 // "one contiguous block... NUL-walked with index (round-1)*4 + (race-1)") -----------------------

@@ -30,6 +30,7 @@
     "rounds": "node tools/check-rounds.mjs",
     "finish": "node tools/check-finish.mjs",
     "twocar": "node tools/check-twocar.mjs",
+    "twohuman": "node tools/check-twohuman.mjs",
     "tournament": "node tools/check-tournament.mjs",
     "menu": "node tools/check-menu.mjs",
     "screens": "node tools/check-screens.mjs",
