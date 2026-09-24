@@ -175,3 +175,48 @@ export const OUTCOME_MESSAGES = [
   'NO BONUS',
   'QUALIFIED FOR HEAD TO HEAD!',
 ]
+
+// --- P2's title/menu strings (GOAL-DOS-PARITY.md), re-read live 193C:0010-0156 this session -----
+// The copyright line (RunTitleScreenAttractLoop 1000:0100, drawn once at boot, 16px font, y=0xB7).
+export const TITLE_COPYRIGHT_ADDR = 0x10
+export const TITLE_COPYRIGHT = 'COPYRIGHT CODEMASTERS SOFTWARE'
+
+// The 9 vehicle-class names the title's own INTRO.CHR showcase cycles through, one every 0x118
+// ticks ([0xbc5] wraps 0..8 -- DrawMenuStringByIndex walked 0-based from this exact base, SI=0x2F,
+// no base-minus-one adjustment, unlike the smoothness table). Round order (class index == round -
+// 1); "PRO FORMULA ONE"/"PRO SPORTSCARS" sit right after this block (indices 9/10) but the title
+// loop's own [0xbc5] never reaches them -- tournament-only substitutions, CLAUDE.md's Anchors.
+export const TITLE_CLASS_NAMES_ADDR = 0x2f
+export const TITLE_CLASS_NAMES = [
+  'SPORTSCARS', 'POWERBOATS', 'FORMULA ONE', 'TURBO WHEELS', 'FOUR BY FOUR',
+  'WARRIORS', 'TANKS', 'CHOPPERS', 'RUFFTRUX',
+]
+
+// SELECT GAME / ONE PLAYER GAME (RunMainMenuKeepTitleTune 1000:0220, RunOnePlayerGameMenu
+// 1000:02e0): one NUL-terminated "SELECT GAME\0" string at DS:0134 is reused at TWO start
+// offsets -- 0x134 for the full "SELECT GAME" (0220's title, 02e0's own footer) and 0x13b for
+// just its own tail "GAME" (02e0's second header line, "ONE PLAYER"/"GAME" stacked) -- confirmed
+// live (a DOSBox screenshot of each screen) and by byte-offset arithmetic (0x140-0x13b = 5 =
+// len("GAME")+1). "ONE PLAYER"/"TWO PLAYER" (DS:0140/0x14B) are likewise each used twice: as the
+// two SELECT GAME button labels AND (0x140 only) as 02e0's own first header line.
+export const SELECT_GAME_TITLE_ADDR = 0x134
+export const SELECT_GAME_TITLE = 'SELECT GAME'
+export const ONE_PLAYER_LABEL_ADDR = 0x140
+export const ONE_PLAYER_LABEL = 'ONE PLAYER'
+export const TWO_PLAYER_LABEL_ADDR = 0x14b
+export const TWO_PLAYER_LABEL = 'TWO PLAYER'
+export const GAME_LABEL = 'GAME' // DS:013B, the tail of SELECT_GAME_TITLE
+
+// RunOnePlayerGameMenu 1000:02e0's own two items -- SELGAM.CHR frame0/WORDS.CHR frame2 "Challenge"
+// (Left, RunOnePlayerChallenge 102b) and SELGAM frame1/WORDS frame1 "Head to Head" (Right,
+// RunOnePlayerHeadToHeadVsCpu 0fbf) -- read off WORDS.CHR's own 3 rendered frames (§9t:
+// 0="MicroMachines"/1="Head to Head"/2="Challenge") and confirmed live (a DOSBox screenshot of
+// ONE PLAYER GAME shows exactly this Left/Right pairing).
+export const ONE_PLAYER_ITEM_LABELS = ['Head to Head', 'Challenge'] // [LEFT, RIGHT] -- WORDS.CHR frames 1, 2
+
+// The carousel's own 13-step ease-in scroll (RunCharacterSelectMenuTune2 1000:09e0's helper
+// FUN_1000_0cd3, DS:0185): 4 steps of 2px + 4 of 4px + 5 of 8px, summing to exactly 64px (one
+// character slot) -- confirmed live-read (193C:0185) and by the sum itself (the stepping loop's
+// own exit test is `cumulative < 0x40`, so the 13th step lands exactly on the boundary).
+export const CAROUSEL_STEP_TABLE_ADDR = 0x185
+export const CAROUSEL_STEP_TABLE = [2, 2, 2, 2, 4, 4, 4, 4, 8, 8, 8, 8, 8]

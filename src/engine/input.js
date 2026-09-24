@@ -81,6 +81,45 @@ export function createPauseKeyReader(target = window) {
   }
 }
 
+/**
+ * The front end's global "which key was just released" latch (P2, GOAL-DOS-PARITY.md; the INT9
+ * handler's own single-key tracker, 1000:2f43-2f6c, re-disassembled for the title/menu work). Every
+ * menu screen that isn't reading a specific player's LEFT/RIGHT/FIRE bits (title's ESC-vs-other
+ * test, `attract.js`) reads THIS instead: exactly one key is tracked at a time -- whichever is
+ * pressed while nothing is already tracked -- and only THAT key's own release latches a result
+ * (`'esc'` if its scancode is 1, `'other'` for anything else); a key already held before `reset()`
+ * is never tracked (no fresh keydown fires for it), so its eventual release is correctly ignored,
+ * matching the real ISR's own `[107f]==0` gate. `reset()` mirrors the real code's many screen-entry
+ * `[107e]=0;[107f]=0` writes (title, both menu levels, character select).
+ */
+export function createMenuReleaseTracker(target = window) {
+  let trackedCode = null
+  let latch = null
+  const onDown = (e) => { if (trackedCode == null) trackedCode = e.code }
+  const onUp = (e) => {
+    if (e.code !== trackedCode) return
+    trackedCode = null
+    latch = e.code === 'Escape' ? 'esc' : 'other'
+  }
+  const onBlur = () => { trackedCode = null }
+  target.addEventListener('keydown', onDown)
+  target.addEventListener('keyup', onUp)
+  target.addEventListener('blur', onBlur)
+  return {
+    read() {
+      const result = { escReleased: latch === 'esc', otherReleased: latch === 'other' }
+      latch = null
+      return result
+    },
+    reset() { trackedCode = null; latch = null },
+    dispose() {
+      target.removeEventListener('keydown', onDown)
+      target.removeEventListener('keyup', onUp)
+      target.removeEventListener('blur', onBlur)
+    },
+  }
+}
+
 /** A reader over a pre-recorded control-byte-per-step array (determinism check / tape replay). */
 export function createTapeReader(bytes) {
   let i = 0

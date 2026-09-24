@@ -5481,6 +5481,16 @@ it always plays once a shot leaves.
   synthetic fire presses" was wrong; the menu never lost a press. Three causes:
   - `SELECT GAME`/`ONE PLAYER GAME` (`0382`) start with nothing selected (`[130]`=0). While nothing
     is selected, fire loops (`03F8 OR CX,CX` / `JZ 0392`), so LEFT/RIGHT must pick an option first.
+    **Corrected 2026-09-24 (P2, §9av): this specific claim is FALSE.** `[130]`/`[132]` are `1`/`2`
+    at rest (re-read live 193C:0130, and confirmed by CPU state: with no LEFT/RIGHT ever pressed,
+    firing on a freshly-drawn `SELECT GAME` immediately entered `ONE PLAYER GAME` -- `[130]`'s own
+    value, not 0). The mistake: an earlier session's first fire-press attempt used `input_key`'s
+    own press+release tap (already named as this same paragraph's OWN third cause below), read the
+    dropped input as "fire correctly ignored", and never re-tested with a proper held press once
+    the real cause (the tap) was found. `SELECT GAME`'s own THUMB highlight sprite renders nothing
+    visible at `[130]`'s own resting frame (`1`) though, which is a separate, still-unexplained
+    oddity -- `UNKNOWN_thumb_frame1_invisible`, left open since it doesn't affect the state
+    machine, only the sprite art (§9av).
   - Each selection change redraws and waits for fire to be released (`03B2-03BA`), which swallows a
     fire press that comes too soon.
   - The bridge's `input_key` with `pressed: true` schedules a press *and* a release, so it is a
@@ -6308,3 +6318,86 @@ New open items, not blocking: `UNKNOWN_f6a_reader` (`[0xF6A]`'s own effect at `1
 the shared race-intro wait helper -- found, not traced); `UNKNOWN_joystick_calibration_body`
 (`2B8B`/`2B8F`'s own real analog-port-timing reads, deferred to P6 with the rest of joystick
 input); `UNKNOWN_options_pixel_diff` (same shape as codecard's own, left for Part F).
+
+## 9av. P2's first item: the real title attract loop (2026-09-24)
+
+Full re-disassembly of `RunTitleScreenAttractLoop 1000:0100` (78 instructions, 1000:0100-01dd) --
+the DECOMPILER mis-resolved this function badly: every one of its real exit blocks was marked
+`/* WARNING: Removing unreachable block */` and the whole loop printed as `do {} while(true)`,
+because its exits are carry-flag-driven (`CLC`/`STC` before two different `RET`s the decompiler's
+own control-flow recovery couldn't connect back to a caller). Ported into `src/frontend/flow.js`'s
+new `TITLE` phase's own real-time loop (same `requestAnimationFrame` + tick-accumulator pattern as
+the LOGO intro, `INTRO_TICK_MS` reused directly -- both approximate the same real ~70Hz `DS:0002`
+tick); the pure state machine lives in the new `src/frontend/attract.js`; proven in
+`tools/check-title.mjs` (`npm run title`).
+
+**The exit test reads two completely different mechanisms, not one byte.** `1000:01be-01d8`:
+- **Fire is a LEVEL test on `[0x137b]` bit `0x08`** -- and `[0x137b]` is **P1's own reader slot**,
+  read directly. Unlike `RunTwoItemMenu` (P2's second item, `0382`), this function never sets
+  `[0x1080]=0` itself (it's left at whatever OPTIONS/boot last set it), so `[0x108b]`'s own
+  combined-both-players value is never consulted here -- **only P1's configured device can start
+  the game from the title screen.** `input.js`'s `createKeyboardReader` already returns exactly
+  this bit layout (`0x80/0x40/0x20/0x10/0x08`), so the port reuses it directly, `bits & 0x08`.
+- **ESC-vs-other is a single-shot RELEASE edge on `[0x107e]`**, the GLOBAL (whole-keyboard, not
+  per-player) "last released scancode" latch a fresh disassembly of the INT9 handler
+  (`HookKeyboardInt09 498A` installs the real handler at `2efd`) traced in full: exactly one key is
+  tracked at a time (`[0x107f]`, cleared at every screen entry, `[0x107e]=0;[0x107f]=0` -- title's
+  own copy at `1000:0148/014d`) -- a fresh keydown is only tracked if nothing is already tracked
+  (`2f65-2f6c`), and only THAT tracked key's own release records into `[0x107e]` (`2f43-2f55`,
+  which also clears `[0x107f]` first, ready for the next key) -- ESC's own scancode is 1
+  (`2f59: CMP AH,1`). This is a DIFFERENT mechanism from the 16-key LEFT/RIGHT/ACCEL/BRAKE/FIRE
+  bitmask (`[0x107c]/[0x107d]`, the SAME ISR, `2f70-2f8d`, matching a byte-index-reversed reading
+  of CLAUDE.md's own "16 keys to bits of DS:107C" -- index 0 (KEYS1 LEFT) is bit 15, not bit 0,
+  confirmed by FIRE (KEYS1 index 4) landing on bit 3 = `0x08` of `[0x107d]`, exactly matching the
+  `TEST AL,8` above), which is level-based and untouched by the single-key tracker.
+  `engine/input.js`'s new `createMenuReleaseTracker` ports this exactly: one instance for the
+  whole session (title, both menu levels and character select all read it), `.reset()` at each
+  screen's own entry.
+
+**No idle timeout, confirmed by absence.** Unlike `RunTwoItemMenu`'s own `0x7D0`-tick idle cancel
+(P2's second item), there is no `[0x2]`-vs-threshold compare anywhere in this function -- the
+showcase just cycles forever with no input. `check-title.mjs` proves a 100000-tick run with no
+input never exits.
+
+**The 9-class showcase, exact content re-read live (193C:002F, 110 bytes).** A NUL-walked string
+table starting exactly at `SI=0x2F` (the same base `DrawMenuStringByIndex` walks with `CX=[0xbc5]`,
+0-based, no off-by-one adjustment -- unlike the smoothness table's own base-minus-one convention,
+§9au): SPORTSCARS, POWERBOATS, FORMULA ONE, TURBO WHEELS, FOUR BY FOUR, WARRIORS, TANKS, CHOPPERS,
+RUFFTRUX (indices 0-8, exactly round order 1-9) -- then PRO FORMULA ONE (index 9) sits right after,
+confirming CLAUDE.md's Anchors list, but `[0xbc5]`'s own wrap (`CMP CX,9 / JL`) never reaches it.
+`frontend-tables.js`'s new `TITLE_CLASS_NAMES`/`TITLE_CLASS_NAMES_ADDR`, checked byte-for-byte by
+`check-tables.mjs`. The copyright line ("COPYRIGHT CODEMASTERS SOFTWARE", `DS:0010`, drawn once,
+16px font, `y=0xB7`) and INTRO.CHR's own fixed position (`x=0x50=80,y=100`, its descriptor's own
+`+2`/`+4` fields, explicitly written at `1000:01df/01ed` every frame -- NOT centred by width the
+way the port's own pre-P2 placeholder was) are likewise re-read live and exact. **There is no
+"PRESS FIRE" string anywhere in this function's own disassembly** -- the port's own earlier
+placeholder text (a UX nicety, not a real screen element) is dropped.
+
+**Live-confirmed end to end** (DOSBox, `game/` mounted read-only, boot recipe from CLAUDE.md):
+a title screen showing "FORMULA ONE" under the INTRO.CHR car frame and the exact copyright string;
+ESC released on the title returned straight to GAME OPTIONS (confirms the `CF=1` path and
+`real_entry`'s own `1000:0089: JC 0032` -- StopMusic, then `RunOptionsScreenWithSettingsDat`
+again, not some intermediate state); this same live session is also what caught and corrected the
+`[130]`=0 mistake in §9ao 7 above (a real fire-confirms-`SELECT GAME`'s-current-selection test,
+once `input_key`'s own tap-drop issue was worked around with `input_sequence`'s explicit
+press/delay/release).
+
+**`real_entry`'s own master loop, re-disassembled (`1000:0006-00cb`) to place this item in context**
+(also resolves `UNKNOWN_race_live_reverify`'s title-loop half, §9, for good): `0032`
+(StopMusic) -> `2770` (OPTIONS; `JC 0097` = the real DOS-exit sequence on ESC) -> `2be8`
+(SelectGameSetLvl) -> `321c` x2 (driver reload) -> tune-1 AH=9/AH=4 dance -> `0086: CALL 0100`
+(title) -> `JC 0032` (ESC: all the way back to OPTIONS, not a shortcut) -> `0090: CALL 0220`
+(`RunMainMenuKeepTitleTune`, P2's second item) -> `JC 0069` (0220's OWN top-level cancel/idle:
+back to the tune-1 dance + title, not OPTIONS) -> else `JMP 008b` (anything else -- a submenu
+cancel, or a finished tournament -- redraws `SELECT GAME` directly, no tune restart, no title).
+This is P2's second item's own evidence too (recorded here since this session derived it while
+tracing title's own caller), and already fixed one bug in the pre-P2 flattened menu: `confirm()`'s
+own `TITLE -> MENU` transition called `subMenuMusic` (tune 2); the real transition touches the
+sound driver not at all (tune 1 simply keeps playing) -- removed as part of this item's own
+`enterTitle()`/`leaveTitle()`, which now own the whole TITLE phase's transitions in and out.
+
+New open items, not blocking: `UNKNOWN_thumb_frame1_invisible` (§9ao 7's correction above -- THUMB
+frame 1 renders no visible highlight in a live capture, frame 2 clearly does; a sprite-art question,
+not a state-machine one); `UNKNOWN_title_pixel_diff` (LOGO's own exact y position wasn't re-read
+live -- `frontend-tables.js`'s own layout choice keeps the port's earlier reasonable placement --
+same shape as codecard/options's own pixel-diff items, left for Part F).

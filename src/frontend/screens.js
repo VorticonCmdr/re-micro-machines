@@ -10,28 +10,38 @@
 // INTRO.CHR showcase frame at plausible, centred positions for exactly that reason.
 import { CHR_TABLE } from '../formats/chr.js'
 import { drawString, drawStringCentred, blitChr, MENU_VIEW } from '../render/menuView.js'
-import { CHARACTER_NAMES, CHARACTER_SKILLS, trackName, OPTIONS_MENU_LINES, OPTIONS_FOOTER, OPTIONS_TITLE, SMOOTHNESS_LABELS, SOUND_LABELS, CREDITS_LINES, REDEFINE_GROUP_LABELS, REDEFINE_SLOT_LABELS, REDEFINE_DISPLAY_CHAR, REDEFINE_DISPLAY_CHAR_DEFAULT } from '../data/frontend-tables.js'
+import { CHARACTER_NAMES, CHARACTER_SKILLS, trackName, OPTIONS_MENU_LINES, OPTIONS_FOOTER, OPTIONS_TITLE, SMOOTHNESS_LABELS, SOUND_LABELS, CREDITS_LINES, REDEFINE_GROUP_LABELS, REDEFINE_SLOT_LABELS, REDEFINE_DISPLAY_CHAR, REDEFINE_DISPLAY_CHAR_DEFAULT, TITLE_COPYRIGHT, TITLE_CLASS_NAMES } from '../data/frontend-tables.js'
 import { CONTROL_NAME } from '../formats/globaldata.js'
 
 function rec(name) {
   return CHR_TABLE.find((r) => r.name === name)
 }
 
+// P2's first item (GOAL-DOS-PARITY.md, src/frontend/attract.js): RunTitleScreenAttractLoop
+// 1000:0100. LOGO (slot1) + the copyright line (16px font, y=0xB7=183, DS:0010) are drawn once;
+// INTRO.CHR's own showcase frame (slot2) is fixed at x=0x50=80,y=100 (its own descriptor's static
+// fields, re-read live -- NOT centred by width like the port's own earlier placeholder was), the
+// class name centred in 8px font at y=164 (100+0x40, `FUN_1000_01de`'s own BX=[0xbb6]+0x40). There
+// is no "PRESS FIRE" string anywhere in this function's own disassembly -- the port's earlier
+// placeholder text is dropped.
 export function drawTitleScreen(buf, arena, { classIndex = 0 } = {}) {
   const logo = rec('LOGO.CHR')
   blitChr(buf, arena, logo, 0, (MENU_VIEW.w - logo.width) >> 1, 20)
+  drawStringCentred(buf, arena, rec('FONT2.CHR'), TITLE_COPYRIGHT, 0xb7)
   const intro = rec('INTRO.CHR')
-  blitChr(buf, arena, intro, classIndex % intro.frames, (MENU_VIEW.w - intro.width) >> 1, 120)
-  drawStringCentred(buf, arena, rec('FONT1.CHR'), 'PRESS FIRE TO START', 190)
+  blitChr(buf, arena, intro, classIndex % intro.frames, 0x50, 100)
+  drawStringCentred(buf, arena, rec('FONT1.CHR'), TITLE_CLASS_NAMES[classIndex % TITLE_CLASS_NAMES.length], 164)
 }
 
+// The pre-P2 flattened main menu (M3.9) -- still used until P2's second item (the real two-level
+// SELECT GAME / ONE PLAYER GAME menu) replaces it.
 export function drawMainMenu(buf, arena, { cursor = 0 } = {}) {
   const logo = rec('LOGO.CHR')
   blitChr(buf, arena, logo, 0, (MENU_VIEW.w - logo.width) >> 1, 10)
   drawStringCentred(buf, arena, rec('FONT2.CHR'), 'SELECT GAME', 70)
   // The real menu is two levels (MAIN: ONE PLAYER/TWO PLAYER -> a ONE PLAYER submenu: Head-to-
   // Head-vs-CPU / Challenge, docs/engine.md §7's "0fbf"/"102b") -- flattened here into one list
-  // (flow.js's own header comment explains why).
+  // (flow.js's own header comment explains why; P2's own second item replaces this).
   const items = ['CHALLENGE', 'HEAD TO HEAD (vs CPU)', 'TWO PLAYER']
   items.forEach((label, i) => {
     const y = 100 + i * 20

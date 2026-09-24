@@ -120,7 +120,7 @@ Don't read `docs/engine.md` from start to finish. It is 6,000 lines. Jump to sec
 ## Regression suite (run before every commit; all must pass)
 
 ```bash
-for s in catalog lz chrtable tables car intro codecard options step trace ai play sound rounds finish twocar tournament \
+for s in catalog lz chrtable tables car intro codecard options title step trace ai play sound rounds finish twocar tournament \
          menu screens opl-toggle smoothness si2 live smoke; do npm run -s $s || echo "FAIL $s"; done
 npm run build
 ```
@@ -200,7 +200,7 @@ docs, (6) commit.
   (`npm run options`), `docs/engine.md` §9au (also corrects §9t's AUTO claim).
 
 ### P2: title and menus
-- [ ] **Title attract loop** (`RunTitleScreenAttractLoop 1000:0100`). It shows LOGO, the copyright,
+- [x] **Title attract loop** (`RunTitleScreenAttractLoop 1000:0100`). It shows LOGO, the copyright,
   and 9 `INTRO.CHR` showcase frames, one every `0x118` ticks, with the class name. It has **no
   idle timeout**. Exits: fire → main menu, ESC release → OPTIONS, any other key release → main
   menu. Check each one against `flow.js`.

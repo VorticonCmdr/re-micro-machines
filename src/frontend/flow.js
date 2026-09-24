@@ -29,7 +29,7 @@ import { runStep } from '../engine/step.js'
 import { advanceRotorFrame } from '../engine/states.js'
 import { droneControlByte } from '../engine/ai.js'
 import { initCameraState } from '../engine/camera.js'
-import { createKeyboardReader, createPauseKeyReader, recordingReader, SCANCODE_TO_KEY_CODE } from '../engine/input.js'
+import { createKeyboardReader, createPauseKeyReader, createMenuReleaseTracker, recordingReader, SCANCODE_TO_KEY_CODE } from '../engine/input.js'
 import { createPauseState, updatePause } from '../engine/pause.js'
 import { createRaceEndState, updateRaceEnd } from '../engine/raceEnd.js'
 import { createFadeState, updateFade, applyFade } from '../engine/fade.js'
@@ -42,6 +42,7 @@ import { CHARACTER_NAMES, OUTCOME_MESSAGES, resolveSmoothnessForPlay } from '../
 import { drawTitleScreen, drawMainMenu, drawCharacterSelect, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawOptionsScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
 import { createSmoothnessGate } from '../engine/smoothness.js'
 import { introInitialState, introStep, smPalette, SCREEN_W as LOGO_W, SCREEN_H as LOGO_H } from '../formats/gfx1.js'
+import { attractInitialState, attractStep } from './attract.js'
 import { composeCodeCardScreen, fontbinPalette, targetFromTickByte, moveCursor, CURSOR_X0, CURSOR_Y0, CODECARD_W, CODECARD_H } from '../formats/fontbin.js'
 import { cycleControl, cycleSound, cycleSmoothness, advanceCheatCursor, redefineKeyAccepted, redefineGroupOf, redefineSlotInGroup, REDEFINE_TOTAL_SLOTS, REDEFINE_SLOTS_PER_GROUP } from './options.js'
 
@@ -108,6 +109,16 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     settingsDirty = false
   }
   let keys2 = settings.keys2
+  // KEYS1(4) or KEYS2(5) -- the only two devices reachable yet (P6 adds JOY1/JOY2/MOUSE), shared
+  // by every P1-only input site (the race itself, the title screen's own fire test, the character
+  // select carousel).
+  const p1Keys = () => (settings.p1Control === 4 ? settings.keys1 : keys2)
+  const p2Keys = () => (settings.p2Control === 4 ? settings.keys1 : keys2)
+  // P2's global "which key was just released" latch (GOAL-DOS-PARITY.md, engine/input.js's own
+  // header comment): one instance for the whole session, `.reset()` at each menu screen's entry
+  // (mirroring the real ISR's many `[107e]=0;[107f]=0` writes), read once per tick by whichever
+  // screen is current.
+  const menuReleaseTracker = createMenuReleaseTracker(window)
 
   const sound = new Si2Player()
   await sound.start(driverBytes.buffer ?? driverBytes, { strictOpl2: !!oplStrictCheckbox?.checked }) // M3.10 OPL waveform toggle
@@ -259,9 +270,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     keys2 = settings.keys2
     persistSettingsIfDirty()
     options = null
-    phase = 'TITLE'
-    titleMusic(sound)
-    paintMenu()
+    enterTitle()
   }
   function optionsEscape() {
     // 1000:28BE-28C2: STC;RET -- the real game drops straight to DOS, no write (the dirty flag is
@@ -307,6 +316,60 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     paintOptions()
   }
 
+  // P2's first item (GOAL-DOS-PARITY.md, src/frontend/attract.js): RunTitleScreenAttractLoop
+  // 1000:0100, real-time paced the same way the LOGO intro is (an accumulator against
+  // INTRO_TICK_MS, the ~70Hz tick both `attract.js` and `gfx1.js` approximate DS:0002 with).
+  let titleState = null
+  let titleReader = null
+  let titleRafId = null
+  let titleLast = 0
+  let titleAcc = 0
+  function enterTitle() {
+    canvas.width = MENU_VIEW.w
+    canvas.height = MENU_VIEW.h
+    titleState = attractInitialState()
+    titleReader = createKeyboardReader(p1Keys(), window) // fire only -- title reads P1's OWN reader slot directly, never the combined-both-players byte the menu levels use
+    menuReleaseTracker.reset() // 1000:0081: [0x1096]=0 before every 0100 call
+    phase = 'TITLE'
+    titleMusic(sound) // 1000:0066-007B: tune 1 (re)started right before every real entry into the title
+    paintTitle()
+    titleLast = performance.now()
+    titleAcc = 0
+    titleRafId = requestAnimationFrame(titleTick)
+  }
+  function paintTitle() {
+    menuBuf.fill(0)
+    drawTitleScreen(menuBuf, arena, { classIndex: titleState.classIndex })
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
+    statusEl.textContent = 'MicroMachines'
+  }
+  function titleTick(now) {
+    if (phase !== 'TITLE') return
+    titleAcc += Math.min(now - titleLast, 250)
+    titleLast = now
+    while (titleAcc >= INTRO_TICK_MS) {
+      titleAcc -= INTRO_TICK_MS
+      const bits = titleReader.read()
+      const { escReleased, otherReleased } = menuReleaseTracker.read()
+      const r = attractStep(titleState, { p1Fire: (bits & 0x08) !== 0, escReleased, otherReleased })
+      if (r.exit) { leaveTitle(r.exit); return }
+    }
+    paintTitle()
+    titleRafId = requestAnimationFrame(titleTick)
+  }
+  /** real_entry's own master loop (1000:0086-0095, re-disassembled for this item): fire or any
+   * other key release (CF=0) falls into RunMainMenuKeepTitleTune (0220, P2's second item -- still
+   * the flattened MENU phase until that item lands); ESC release (CF=1) loops all the way back to
+   * StopMusic+OPTIONS, not some intermediate state. */
+  function leaveTitle(exit) {
+    if (titleRafId != null) { cancelAnimationFrame(titleRafId); titleRafId = null }
+    titleReader?.dispose(); titleReader = null
+    if (exit === 'options') { enterOptions(); return }
+    phase = 'MENU'
+    menuCursor = 0
+    paintMenu() // no music call: tune 1 just keeps playing (docs/engine.md §7's "the main menu keeps tune 1"), unlike this phase's own pre-P2 flattened transition
+  }
+
   let phase = introState ? 'LOGO' : fontbinBytes ? 'CODECARD' : 'OPTIONS'
   let menuCursor = 0
   let charCursor = 0
@@ -324,8 +387,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
 
   function paintMenu() {
     menuBuf.fill(0)
-    if (phase === 'TITLE') drawTitleScreen(menuBuf, arena, {})
-    else if (phase === 'MENU') drawMainMenu(menuBuf, arena, { cursor: menuCursor })
+    if (phase === 'MENU') drawMainMenu(menuBuf, arena, { cursor: menuCursor })
     else if (phase === 'CHAR_SELECT') drawCharacterSelect(menuBuf, arena, { cursor: charCursor, taken: tournament.roster.filter((r) => r.taken).map((r) => r.index), prompt: charWho === 'opponent' ? 'WHO DO YOU WANT TO RACE ?' : 'WHO DO YOU WANT TO BE ?' })
     else if (phase === 'PRESS_ANY_KEY') drawPressAnyKey(menuBuf, arena)
     else if (phase === 'RACE_INTRO') drawRaceIntro(menuBuf, arena, currentRace(tournament))
@@ -517,7 +579,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     const wasQualifier = !tournament.pendingBonusRace && tournament.raceIndex === 0
     phase = 'LOADING' // input is ignored until runOneRace switches to RACING (a second confirm would start a second race)
     const result = await runOneRace(race)
-    if (result.aborted) { phase = 'TITLE'; titleMusic(sound); paintMenu(); return } // ESC quit, see runOneRace
+    if (result.aborted) { enterTitle(); return } // ESC quit, see runOneRace
     if (race.round === 9) {
       reportRaceResult(tournament, { won: result.won })
       lastStandings = null
@@ -568,8 +630,9 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
 
   function confirm() {
     if (phase === 'LOGO') return // a key never skips the intro -- see the P1 header comment above
-    if (phase === 'TITLE') { phase = 'MENU'; menuCursor = 0; subMenuMusic(sound) }
-    else if (phase === 'MENU') {
+    // TITLE's own input (fire/ESC/other-release) is driven entirely by titleTick's dedicated
+    // reader + the shared menuReleaseTracker (enterTitle, above), not by this function.
+    if (phase === 'MENU') {
       if (menuCursor === 2) { statusEl.textContent = 'Two-human head-to-head is not implemented in this port.'; return }
       tournament = initTournament({ format: menuCursor === 1 ? 'twocar' : 'challenge' })
       phase = 'CHAR_SELECT'; charWho = 'player'; charCursor = lastPick.player
@@ -624,6 +687,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       return // the race's own createKeyboardReader owns the rest of a race's input
     }
     if (phase === 'LOGO') return // no key skips the intro -- see the P1 header comment above
+    if (phase === 'TITLE') return // titleTick's own reader + menuReleaseTracker own this phase's input entirely
     if (phase === 'CODECARD') {
       // 1000:01E9-02EE: only the 4 arrows move the cursor; only ENTER (AL=0xD) accepts -- Space
       // does nothing here, unlike every menu screen's own Space-or-Enter convention.
@@ -672,6 +736,9 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       window.removeEventListener('mousedown', onMousedown)
       window.removeEventListener('mouseup', onMouseup)
       if (introRafId != null) cancelAnimationFrame(introRafId)
+      if (titleRafId != null) cancelAnimationFrame(titleRafId)
+      titleReader?.dispose()
+      menuReleaseTracker.dispose()
     },
     // debugging/testing hooks: drive the flow without a real keyboard
     getPhase: () => phase,
@@ -691,6 +758,17 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
         if (introState.exited) { leaveLogo(); return }
       }
       paintIntroFrame()
+    },
+    // Same fast-forward precedent as forceIntroSteps, for the TITLE phase: `input` is
+    // `{ p1Fire, escReleased, otherReleased }`, bypassing titleReader/menuReleaseTracker entirely
+    // so a headless/automated test can drive attractStep directly. A no-op once past TITLE.
+    forceTitleSteps: (n, input) => {
+      if (phase !== 'TITLE') return
+      for (let i = 0; i < n; i++) {
+        const r = attractStep(titleState, input)
+        if (r.exit) { leaveTitle(r.exit); return }
+      }
+      paintTitle()
     },
   }
 }
