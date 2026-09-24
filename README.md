@@ -70,8 +70,8 @@ and stays local to your machine.
   entire boot chain from `game.html`'s own launch to the character picks, all cross-checked live
   against real DOSBox captures (`GOAL-DOS-PARITY.md` P1/P2, `docs/engine.md` §9as-§9ax), and the
   real tournament board screen between Challenge races (the `CASE.CHR` "vehicle display case" with
-  one `MINATURE.CHR` icon per race completed so far, at the real per-icon positions, the newest one
-  blinking) -- `GOAL-DOS-PARITY.md` P3, `docs/engine.md` §9ay.
+  one `MINATURE.CHR` icon per race, at the real per-icon positions, the newest one blinking as a
+  preview of the class of the race about to run) -- `GOAL-DOS-PARITY.md` P3, `docs/engine.md` §9ay.
 - **The race engine**: 35 Hz fixed-timestep physics (steering, velocity, collisions, terrain
   hazards per round, checkpoints/laps, airborne/ramps, the full car state machine), the drone AI,
   and per-round camera — all reproduced from the disassembly, not approximated.

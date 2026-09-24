@@ -134,16 +134,29 @@ export function drawChampion(buf, arena, { playerName }) {
 }
 
 /** P3's first item: DrawTournamentBoard 1000:18d8 (docs/engine.md §9ay, src/frontend/board.js).
- * `raceIndex`: tournament.js's own `state.raceIndex`, the race about to run -- one MINATURE.CHR
- * icon is drawn per race completed so far, `ORDER_TABLE[1..raceIndex]` (the qualifier, entry 0,
- * never gets one -- `FUN_1000_198e`'s own pre-increment). `blinkOn`: whether the NEWEST icon (the
- * one just unlocked, index `raceIndex`) is currently visible -- `board.js`'s own blink state; the
- * case background position (`BOARD_CASE_Y`) is hand-placed like every other screen in this file,
- * not measured against a DOSBox frame -- the icons themselves use the real `DS:0312` positions. */
+ * `raceIndex`: `tournament.js`'s own `boardRaceIndex(state)` -- NOT `state.raceIndex` directly, see
+ * its own header for why a pending bonus race needs `-1`. One MINATURE.CHR icon is drawn per entry
+ * in `ORDER_TABLE[1..raceIndex]` (the qualifier, entry 0, never gets one -- `FUN_1000_198e`'s own
+ * pre-increment); for a REGULAR race `raceIndex` is the one about to run, so the newest icon is a
+ * PREVIEW of what's coming up next, not a trophy for the last one -- `board.js`'s own header has
+ * the full account, including the one case (a pending bonus race) where it genuinely is the
+ * just-completed race instead. `blinkOn`: whether that newest icon is currently visible --
+ * `board.js`'s own blink state. `FUN_1000_0400` (the shared header every front-end screen but
+ * SELECT GAME/TITLE/CHAR_SELECT calls) also draws BADGE.CHR (slot 0, opaque, at its own permanently
+ * unwritten (0,0) default -- confirmed by reading the live descriptor bytes, all zero past the
+ * `.CHR` pointer) before WORDS.CHR; BADGE is not ported here, matching every OTHER 0400-calling
+ * screen in this file (none of which draw it either -- a pre-existing simplification this item's
+ * own research surfaced, not unique to the board, deliberately not retrofitted across 8+ screens in
+ * this commit). The divider bar `FillRowsFrontView` draws is ALSO gated on `[0x156]` (not just the
+ * second WORDS frame, as an earlier draft of this comment wrongly said) -- `[0x156]` is provably 0
+ * whenever `18d8` runs (its only writer sits in `FUN_1000_1E20`, two-human Head to Head's own entry
+ * point, a code path that never calls `RunTournamentLoop`/`115c`/`18d8` at all, under any format),
+ * so the board never draws a divider; this file draws none either. The case background position
+ * (`BOARD_CASE_Y`) is hand-placed like every other screen in this file, not measured against a
+ * DOSBox frame -- the icons themselves, and WORDS' own real (0x48, 8) position, use the real bytes. */
 const BOARD_CASE_Y = 24
 export function drawTournamentBoard(buf, arena, { raceIndex, blinkOn = true } = {}) {
-  const words = rec('WORDS.CHR')
-  blitChr(buf, arena, words, 0, (MENU_VIEW.w - words.width) >> 1, 8)
+  blitChr(buf, arena, rec('WORDS.CHR'), 0, 0x48, 8)
   blitTransparent(buf, MENU_VIEW.w, MENU_VIEW.h, 0, BOARD_CASE_Y, caseImage(arena), { colorKey: -1 })
   const miniature = rec('MINATURE.CHR')
   for (let i = 1; i <= raceIndex; i++) {

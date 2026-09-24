@@ -228,11 +228,15 @@ docs, (6) commit.
   in `RunTournamentLoop 1000:10a0`.
   **Done, §9ay: shown from `SetupTournamentRace 1000:115c`, not `10a0` directly -- gated on
   Challenge format only (`[3F8]!=1`, `115c`'s own call-site check, before `18d8`'s own internal
-  `[28C1]==0`/`[43A]` gates), never before the very last race. Icon positions/frames confirm §9t's
-  own formula byte-checked against the live table; the newest icon blinks (`FUN_1000_17ff`,
-  simplified to the existing `AWAIT_RELEASE` idiom). `src/frontend/board.js`,
-  `tools/check-board.mjs`. Not ported: the round-9 "reveal" branch, which reads past
-  `MINATURE.CHR`'s own real frame table in the original (a benign OOB read, not pixel-replicated).**
+  `[28C1]==0`/`[43A]` gates), never before the very last race, and -- caught by advisor review
+  before commit -- a pending bonus race's own board call happens BEFORE `[28C1]` advances
+  (`tournament.js`'s `boardRaceIndex`). Icon positions/frames confirm §9t's own formula
+  byte-checked against the live table; for a regular race the newest icon PREVIEWS the upcoming
+  race, not a trophy for one just finished. The newest icon blinks (`FUN_1000_17ff`, simplified to
+  the existing `AWAIT_RELEASE` idiom; the real tick constants are 36/720, not 35/700).
+  `src/frontend/board.js`, `tools/check-board.mjs`. Not ported: the round-9 "reveal" branch (the
+  NORMAL path for every bonus race, not a rare one), which reads past `MINATURE.CHR`'s own real
+  frame table in the original (a benign OOB read, not pixel-replicated).**
 - [ ] **Interactive opponent picker** (`FUN_1000_1a4a`, pick 3 after passing the Challenge
   qualifier). This replaces the auto-pick in `tournament.js:131`. Note the known trap in §9k: the
   qualifier itself is a 4-car race and needs 3 opponents *before* the picker exists. Find out

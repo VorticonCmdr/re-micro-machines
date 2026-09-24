@@ -37,7 +37,7 @@ import { raceStart, updateEngines, createRaceJitter, raceOverSequence, raceOverS
 import { lapLineSegments, nearestPaletteIndex } from '../engine/lapLine.js'
 import { Si2Player } from '../audio/si2Player.js'
 import { RUFF_TRUCK_TIMES } from '../data/engine-tables.js'
-import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, currentRace, reportRaceResult, shouldShowBoard, OUTCOME } from './tournament.js'
+import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, currentRace, reportRaceResult, shouldShowBoard, boardRaceIndex, OUTCOME } from './tournament.js'
 import { CHARACTER_NAMES, OUTCOME_MESSAGES, resolveSmoothnessForPlay } from '../data/frontend-tables.js'
 import { drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
 import { createSmoothnessGate } from '../engine/smoothness.js'
@@ -545,7 +545,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   let boardAcc = 0
   function paintBoard() {
     menuBuf.fill(0)
-    drawTournamentBoard(menuBuf, arena, { raceIndex: tournament.raceIndex, blinkOn: boardState.blinkOn })
+    drawTournamentBoard(menuBuf, arena, { raceIndex: boardRaceIndex(tournament), blinkOn: boardState.blinkOn })
     paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
     statusEl.textContent = 'BOARD'
   }

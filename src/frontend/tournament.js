@@ -120,16 +120,35 @@ export function currentRace(state) {
 }
 
 /**
+ * The effective `[28C1]` at the moment `SetupTournamentRace 1000:115c`/`DrawTournamentBoard
+ * 1000:18d8` actually run for the race about to be set up -- NOT always `state.raceIndex` itself.
+ * For a regular race this IS `state.raceIndex`: DOS's own `[28C1]` was already incremented by the
+ * PRIOR race's own `RunTournamentLoop 1000:10a0` loop tail (`1000:10f9`) before `115c` runs again.
+ * For a PENDING bonus race it is `state.raceIndex - 1`: `TriggerBonusRace 1000:1a82` calls `115c`
+ * (`1000:1a87`) BEFORE `10a0`'s own `INC [28C1]` (`1000:10f9`) -- `1a82` is called FROM inside the
+ * SAME loop iteration that is about to fall through to that `INC`, so at the exact moment `115c`/
+ * `18d8` run for a bonus race, `[28C1]` still holds the JUST-WON race's own index, one less than
+ * this port's own `state.raceIndex` (which `reportRaceResult`'s `advance()` call already
+ * incremented unconditionally, in the SAME synchronous call that set `pendingBonusRace` -- matching
+ * DOS's own EVENTUAL net effect once the triggering race and its bonus race both resolve, but not
+ * DOS's own INTERMEDIATE value while the bonus race is still pending). Both `shouldShowBoard` and
+ * the icon count `screens.js`'s `drawTournamentBoard` draws must use this SAME effective value.
+ */
+export function boardRaceIndex(state) {
+  return state.pendingBonusRace ? state.raceIndex - 1 : state.raceIndex
+}
+
+/**
  * Whether the tournament board screen shows before the NEXT race (`SetupTournamentRace 1000:115c`,
  * docs/engine.md §9ay): Challenge format only (`[3f8]==1`, two-car/H2H, skips the `CALL 18d8`
- * entirely), never before the qualifier (`state.raceIndex===0`, `18d8`'s own internal early RET),
- * never before the very last race (`state.raceIndex===ORDER_TABLE_LAST_INDEX`, the champion
- * decider). Applies equally to a pending bonus race: `115c` computes round/race from `[343]`
- * first but still gates the `CALL 18d8` on the SAME (already-advanced) `[28c1]`, so a bonus race
- * triggered one race before the end skips the board too, exactly like a regular one would.
+ * entirely), never before the qualifier (`boardRaceIndex===0`, `18d8`'s own internal early RET),
+ * never before the very last race (`boardRaceIndex===ORDER_TABLE_LAST_INDEX`, the champion
+ * decider) -- all three checked against `boardRaceIndex`, not `state.raceIndex` directly (see its
+ * own header for the pending-bonus-race distinction).
  */
 export function shouldShowBoard(state) {
-  return state.format !== 'twocar' && state.raceIndex !== 0 && state.raceIndex !== ORDER_TABLE_LAST_INDEX
+  const i = boardRaceIndex(state)
+  return state.format !== 'twocar' && i !== 0 && i !== ORDER_TABLE_LAST_INDEX
 }
 
 function firstUntaken(state, n) {
