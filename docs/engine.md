@@ -6404,6 +6404,30 @@ covers only the `131F` slide loop, not the `32CE` palette fade-up that runs befo
 derivable tick duration at all (already established elsewhere as CPU-speed-bound, not tick-paced),
 so this port's own hold understates the real DOS delay by that fade's own duration.
 
+**Added 2026-09-24 (§9bf).** GOAL-DOS-PARITY.md P4's first item, step 1 of an explicit 4-commit
+plan: `race.js`'s `spawnCars` now derives `car.isDrone` from controller type (`controllerTypes[i]
+===6`, the real `[BX+0x12EB]`), not car index, proven against every reachable runtime reader
+(fire-preempt, round-7 TANKS steer-mod, `collide.js`'s wall-stuck counter). While tracing an
+adjacent, already-ported mechanism (`tuningFieldsFor`'s own `4070`/`40A0`, the late-tournament
+two-car `accel` reduction, §9y), the actual gate on the WHOLE `3FBE-4134` region those sit in was
+found to be a per-RACE mode fork at `1000:3F30` (`CS:[0x9C62]`/`DS:[0x8A2]`), not anything car-index
+or raceFormat related directly -- and two-human H2H's own entry (`1F80`'s own `JZ 1FA9` rejecting
+`CX==0` before `[0x8A2]` is ever stored nonzero) means that mode ALWAYS takes the OTHER branch,
+`3F3B-3FBD`: a fully separate, entirely UNPORTED per-car loop computing all seven of
+`tuningFieldsFor`'s own fields (all already named in `car.js`, checked directly) for every car from
+each car's own roster byte, symmetrically, with no car-0 exception at all. So a human P2 in
+two-human H2H does NOT inherit car slot 1's usual drone tuning, as an earlier draft of this section
+concluded -- porting `3F3B`'s own alternate formulas (derived instruction-by-instruction, written
+into §9bf) is now a PREREQUISITE for that mode's first playable race -- new open item
+`UNKNOWN_alt_tuning_path`. What `[0x8A2]` itself MEANS is a separate, still-open item,
+`UNKNOWN_8a2_meaning`: NOT confirmed to be the handicap question's own Y/N answer (a value with
+`0B51`'s own separate, confirmed toggle screen was traced to `DS:[0x1D6+character]` instead,
+exactly the bit `3F3B`'s own roster-byte test reads) -- more likely a two-player-mode selector,
+but unconfirmed, deferred to the start of the `3F3B`-porting commit. Two smaller open items:
+`UNKNOWN_0400_mode` (`[0x156]`'s own H2H-specific second box in the shared UI helper
+`FUN_1000_0400`); `UNKNOWN_f61_p2_control_word` (whether `[0xF61]` is genuinely SETTINGS.DAT's P2
+control word).
+
 ## 9as. P1's first item: the logo intro's real per-frame animation (2026-09-24)
 
 Full account, and every cited address, in `docs/intro-and-codecard.md`'s own "The real per-frame
@@ -8449,3 +8473,192 @@ directly (above). NOT exercised in-browser this pass: the `flow.js` wiring itsel
 `participants` plumbing) -- reaching a real race-1 intro needs completing the qualifier race
 first, which this pass didn't attempt. `mmGame.confirm()`/`getPhase()` (the existing debug hooks)
 can drive and check this once a session reaches `RACE_INTRO`, if that becomes cheap to set up.
+
+## 9bf. P4 engine refactor: two-human Head to Head's own `isDrone` (2026-09-24)
+
+**Added 2026-09-24 (§9bf), P4 engine refactor: two-human Head to Head's own `isDrone`.** The race
+engine had exactly one runtime concept named `isDrone`, and it conflated two genuinely different
+real-bytes mechanisms. `tuningFieldsFor`'s internal `isDrone` (init-time grip/
+`DRONE_MAX_VEL_HANDICAP` math at `1000:4070`, `CMP BX,0`) is car-INDEX based -- but, see below,
+`4070` itself only ever runs when `CS:[0x9C62]`/`DS:[0x8A2]` (a per-RACE mode selector, not a
+per-car one) is `0`. The SEPARATE runtime flag consumed by `applySteerAndThrottle`/`collide.js` is
+`[BX+0x12EB]`, written once per car slot at `InitRaceCarsFromTables 41D0-421A` from that slot's own
+controller-type word (`[0x2658]`/`[0x265A]`/`[0x265C]`/`[0x265E]` compared against `6`, the CPU
+sentinel) -- genuinely controller-TYPE based, independent of slot index. `race.js`'s `spawnCars`
+now takes an explicit, optional `controllerTypes` param (`car.isDrone = controllerTypes[i] === 6`)
+and defaults to `[1, 6, 6, 6]`, behaviour-neutral for every existing one-player caller (proven: the
+full 29-script suite passes unchanged with the default). `tuningFieldsFor`'s own index-based block
+was correctly left UNCHANGED -- it is a different mechanism entirely, not a second copy of the same
+bug, though (see below) it is also not the whole story for two-human H2H specifically.
+
+Four real `[BX+0x12EB]` readers were checked, cross-referenced against `DS:09BA`'s own H2H track
+list (`04 0A 11 0D 1C 21 14 19`, `[STATIC]` -- read from the Ghidra image this session, no DOSBox
+capture: decodes with the SAME `round<<2|race-1`
+packing `DS:043C` uses, to rounds **1, 2, 4, 3, 7, 8, 5, 6** in H2H's own race order -- rounds 1-8,
+NOT round 9 (RUFFTRUX never appears in H2H at all), so "is this reader ever reached in H2H" had to
+be checked per round, not assumed):
+- `4D3D` (the keyboard fire-preempt, `applySteerAndThrottle`'s own `exempt` test): reachable, and
+  is the mechanism directly proven in `check-twocar.mjs` -- a human KEYS car holding fire alone is
+  frozen; the same control byte on a `[BX+0x12EB]`-flagged CPU car falls through to the ground-
+  gated coast instead.
+- `4EE7` (round 7 TANKS's own steer-step modifier, gated ONLY by `CMP byte ptr [0x28bf],0x7` at
+  `4ee0` -- re-disassembled `4ed0-4f00` this session, confirmed no raceFormat check anywhere in
+  this block): reachable, since round 7 is H2H track index 4 (`DS:09BA` byte `0x1C` = round 7,
+  race 1). A human car at speed >= 0x320 halves its steer step (`SAR CX,1`); a drone always adds 1
+  (`INC CX`) regardless of speed. Proven directly in `check-twocar.mjs` with `ctx.round=7`.
+- `collide.js`'s own `5C84` wall-stuck counter (`bounceAndCommit`): re-disassembled `5c70-5c94`
+  this session -- tests only `[BX+12a8]` (a per-car state gate) and `[BX+0x12eb]`, no raceFormat
+  or round check anywhere. Reachable in every race, one-car and two-car alike; already correctly
+  gated on `car.isDrone` before this session, needed no change.
+- `4D2F` (the four-car finished-drone-coasts rule): confirmed NOT reachable in two-human H2H --
+  `applySteerAndThrottle`'s own `fourCar = ctx.raceFormat !== 2` gates it off for every car
+  regardless of drone status, and two-human H2H is always raceFormat 2.
+
+The rubber band (`step.js`'s `rubberBand` array, the real x6-throttle/x1.5-grip mechanism at
+`4B1C`/`528D`) was checked and left index-based, not controller-type-based (`get_xrefs_to` on
+`4B1C` shows one jump source, `4AF7`, inside `RunCarPhysicsStep`'s own unconditional per-car entry
+`4AEE`, with the same `CMP BX,0` shape as `tuningFieldsFor`'s own block). It CANNOT be gated by the
+`[0x8A2]` mode fork below -- that fork is read only twice in the whole binary (`3F33`, `40AF`),
+both inside `InitRaceCarsFromTables`'s own INIT-time tuning, nowhere near the per-STEP physics code
+`4B1C`/`528D` live in. Whether `4B1C-4B41` has its own, separate `[2656]` raceFormat test is the
+real open question (the `[2656]` sweep's own `4B51` hit sits just past this block and wasn't
+followed up) -- recorded as not yet checked, not as a confirmed-reachable consequence.
+
+**`4070`'s own real gate is bigger than the instruction it names.** `tuningFieldsFor`'s init-time
+tuning (`DRONE_MAX_VEL_HANDICAP`, the `40A0` `accel` cut, the `4116` race-23 nerf -- all three
+already ported, all three already correct for every EXISTING caller, see below) sits inside
+`3FBE-4134`, and that whole block is reached ONLY when `CS:[0x9C62]`/`DS:[0x8A2]` is `0` at the
+fork `1000:3F30` (`CMP CS:[0x9C62],0 / JNZ 3F3B / JMP 3FBE`) -- confirmed by `get_xrefs_to 3FBE`
+(exactly 3 references, all `UNCONDITIONAL_JUMP` from inside `InitRaceCarsFromTables` itself: `3F38`
+the `==0` fork, `4124`/`4131` its own internal per-car loop-back -- no entry from the `3F3B` side).
+The `3F3B` branch (below) never rejoins `3FBE`; it has its own exit straight to `4134`. So it is not
+enough to say `4070` is "unconditional on raceFormat": no `[2656]`/`[265A]` test sits directly
+inside `3FBE-4134`, but the FORK that decides whether that whole region runs at all is upstream of
+it, at `3F30`.
+
+**That fork is what two-human H2H actually takes, and it is the OTHER side.** `[0x8A2]`'s own
+real writer at H2H entry, `1000:1F8E` (`MOV [0x8A2],CL`, right where `[2656]` is set to `2` at
+`1F88`), stores a `CX` returned by `CALL 0382([0x8A0])` at `1F7D` -- and `1F80: OR CX,CX / JZ 1FA9`
+REJECTS `CX==0` before that store ever happens, resetting `[0x8A2]` to `0` and bailing out instead.
+So every time this flow actually proceeds into a race, `CX` (and therefore `[0x8A2]`) is nonzero --
+meaning two-human H2H ALWAYS takes the `3F3B` branch, NEVER `3FBE`. `[STATIC]`: a human P2 in
+two-human H2H does NOT get car slot 1's usual `DRONE_MAX_VEL_HANDICAP`/grip/`40A0`/`4116` tuning at
+all -- `4070` and everything inside `3FBE-4134` never execute for that race. DOS distinguishes this
+by MODE (the `[0x8A2]` fork, decided once per race), not by re-testing car index inside the tuning
+code itself.
+
+**What `3F3B` actually computes instead (re-disassembled `3F3B-3FBD` in full).** It is its own
+complete per-car loop (own advance step `3FB4-3FBB`, own
+exit test `3FAB: CMP BX,0x42C` before jumping straight to `4134`, no `CMP BX,0` anywhere in it) that
+computes ALL SEVEN of `tuningFieldsFor`'s own fields for EVERY car, symmetrically -- not one field,
+not a prelude, an outright replacement, still reading the SAME `CarTypeInfo` table (`SI` set up once
+at `3F19-3F28`, before the fork) but applying a DIFFERENT modifier. `n = (w & 0x7F) + 1` when bit 7
+of `w = [DI+0x2668]` (that car SLOT's own roster byte) is set. ONLY TWO of the seven fields are
+actually gated on that bit (`OR DX,DX / JZ`, `3F52`/`3F7A`) -- the other five apply their own term
+unconditionally, bit 7 or not. Traced instruction-by-instruction against the actual bytes (all
+seven fields, all already named in `car.js`'s own table, offsets relative to `CAR_RECORD_BASE=0x124A`):
+- `[BX+0x129C]` = `maxSpeedCur` (`0x52`): bit7 ? `info[0] - 0xC0 + 64*(n-1)` : `info[0]`
+- `[BX+0x12A0]` = `reverseLimit` (`0x56`): `info[1] + 0x32` (unconditional, no `n`/bit7 term at all)
+- `[BX+0x12A2]` = `accel` (`0x58`): bit7 ? `info[2] - 0xC + 4*(n-1)` : `info[2]`
+- `[BX+0x12A4]` = `brakeDecel` (`0x5A`): `info[3]` (raw, unconditional)
+- `[BX+0x12A6]` = `coastDecel` (`0x5C`): `info[4]` (raw, unconditional -- same as the normal path, `race.js:144`)
+- `[BX+0x127C]` = `slipThreshold` (`0x32`): `info[5] + [0x24E0]` (unconditional)
+- `[BX+0x127E]` = `gripStep` (`0x34`): `info[6] + [0x24E0]` (unconditional)
+
+`[0x24E0]` reads `0x14` (20, `GripAdjust`, `[STATIC]` read this session) -- the SAME grip constant
+the normal path's own `!isDrone` branch uses, applied here to every car regardless of slot. None of
+this is ported (`race.js` has no reference to it; `tuningFieldsFor` always takes the normal ramp),
+and since it is what two-human H2H ACTUALLY uses for every car's tuning, porting it is now a
+PREREQUISITE for that mode's own first playable race, not an optional refinement -- without it, a
+two-human race would silently fall back to the normal (wrong-for-this-mode) ramp. New open item
+`UNKNOWN_alt_tuning_path` (docs/engine.md §10): port this alternate computation, verify it against
+these seven formulas directly. `UNKNOWN_8a2_accel_gate_relevance` (a prior draft's own open item,
+asking whether the ALREADY-ported `40A0` `accel` cut needs an explicit `[0x8A2]` gate) is now
+CLOSED as moot: `40A0` sits inside `3FBE-4134`, which two-human H2H never reaches at all, so no
+gate is needed there -- the real gap is the missing `3F3B` path itself, tracked above instead. The
+stale-`[0x28C1]` question (P4 item 2's own open note) leaves the tuning discussion entirely: `3F3B`
+never reads `[0x28C1]`.
+
+**What `[0x8A2]` itself means is still open, and evidence points away from "the handicap Y/N
+answer."** `CS:[0x9C62]` and `DS:[0x8A2]` are the SAME physical byte (`CS`/`DS`'s own segment bases
+both resolve to linear `0x19C62`, `[STATIC]` confirmed by an identical static read, both `0`) -- it
+is NOT confirmed to be the handicap question's own Y/N answer. `[0x8A2]`'s own value comes from
+`CALL 0382([0x8A0])` (`1F7D`), and
+`CX==2` specifically skips the following `CALL 1FAF` (`RunHeadToHeadTournament`) -- at least 3
+distinct effects (`0`, `2`, and "anything else"), more menu-choice-shaped than boolean. Separately,
+`0B51` (re-disassembled `0B40-0C10`) IS a real, interactive Y/N toggle screen matching
+`handicapQuestionApplies`'s own already-ported gate (`CMP [2656],1`/`CMP [265A],6`, both skip to
+`0C12` exactly as `raceFormat===1`/`otherDeviceType===6` already do), and its own final answer is
+traceable: `0B68`/`0B73`/`0B7E` set `BX=0x1D6/0x1D7/0x1D8` per character (0/1/2), that `BX` survives
+`PUSHA`/`POPA` and a stack round-trip (`0BA2` push, `0C09` pop), and `0C0D` stores the toggle's own
+final value (`0x00` or `0x80`, `0BF7`/`0BFD`) through it -- i.e. the real per-character handicap
+answer lives at `DS:[0x1D6+character]`, exactly the bit `3F43` tests when reading each slot's own
+`[DI+0x2668]` roster word. `[0x8A2]` is therefore more likely a two-player-MODE selector (whether to
+apply this whole alternate-tuning mechanism at all) separate from the per-character answer bit, not
+the answer itself -- but this is a HYPOTHESIS, not yet confirmed: `1000:0382`'s own identity
+(possibly `RunTwoItemMenu`, unconfirmed), what `1F97`'s own `CMP CX,2` branch actually reaches, and
+where `DS:[0x1D6+c]` gets merged into `[0x2668]` are all unchecked. New open item
+`UNKNOWN_8a2_meaning` (docs/engine.md §10), to be settled at the start of the `3F3B`-porting commit,
+not here. (One false positive caught the same way as `4e79`/`5270`: the `A2 08` sweep's own
+`1000:0ED8` hit is `MOV [0x0408],AL`, an unrelated buffer init, not a `[0x8A2]` reference.)
+
+`[0x156]` and `[0x3F3]` (open since an earlier round this session, when `4e79`'s own `[0x156]` hit
+was found to be a false positive -- `JMP rel16` displacement bytes that happen to equal `0x0156`,
+not a real reference) are now substantially resolved by an exhaustive sweep of every real ModRM/
+direct-address encoding, not just the one pattern that produced the false positive: `5270`'s own
+`[0x156]` hit is the SAME false-positive shape (`e9 56 01`, a `JMP` at `526f` targeting `53c8`).
+`[0x156]` has exactly one real reader in the whole binary, `1000:0420` (`MOV AL,[0x156]; OR AL,AL;
+JZ 0x45a`) -- NOT early boot code (a first-pass misreading from the low address alone, corrected
+here): `0420` is 0x20 bytes into `FUN_1000_0400` (`0400-045A`, fully re-disassembled this session),
+a shared UI helper called from 15 sites across the whole front end (menus, race-intro, results,
+champion screen, options, redefine-keys, joystick config, the portrait draw `19F2`). With `[0x156]
+==0` it draws one string plus one text-box record and returns; nonzero, it draws a SECOND box (the
+same field-2 offset `+0x5A`) and stores `[0x156]`'s own value into a field of that record before
+three more glyph/icon draws -- "draws a second box," not "shifts the first one down"; which axis or
+what those three glyphs are is unestablished. `[0x156]` is written as `1` uniquely at H2H entry
+(`1E4A`) and as a computed register value `CL` at one other site (`0364`, inside
+`RunOnePlayerGameMenu` -- possibly that menu's own selection index, unconfirmed); `0` everywhere
+else. This does NOT reach the race engine or gate anything `step.js` reads -- irrelevant to the
+`isDrone` distinction -- but it IS a real, H2H-specific second-box variant of a shared UI helper
+that this port's own `screens.js` does not model at all; exactly what it draws is
+`UNKNOWN_0400_mode` (docs/engine.md §10), flagged for the later screens/flow-wiring commit, not
+this one. `[0x3F3]` has no direct-address (ModRM or short-form) reader anywhere in the 83662-byte
+image in this same exhaustive sweep -- write-only by every encoding this method can see; a
+computed/indexed reader can't be fully ruled out (the SAME caveat `CS:[0x9C62]`'s own search
+initially missed, resolved above only because a second, differently-prefixed search was tried), so
+this is softened from "zero readers" to "no direct reader found." Both `[0x156]` and `[0x3F3]` are
+written together at `1000:1E45`/`1E4A`, inside the SAME H2H-mode-entry block (`GOAL-DOS-PARITY.md`'s
+own `FUN_1000_1e20`) that also writes `[0x265A] = AX` (from `[0xF61]`, `[STATIC]` -- `1E42`/`1E4F`
+copy it into P2's own controller-type slot) and `word ptr [0x2656] = 2` (raceFormat). Whether
+`[0xF61]` is genuinely SETTINGS.DAT's own P2 control word is a narrower, separate open question --
+`UNKNOWN_f61_p2_control_word` (docs/engine.md §10), NOT the same as `UNKNOWN_2p_p2_record` (which
+is already resolved, and was about the win-tally scoreboard, not this word).
+
+**Tests.** `tools/check-twocar.mjs` gained a new section (behind the two-humans-on-KEYS fixture
+`controllerTypes: [5, 4, 6, 6]` -- P1 on KEYS2, P2 on KEYS1, the real H2H assignment per
+`GOAL-DOS-PARITY.md` P4 and CLAUDE.md's own "fire is P1's KEYS2 key S", not an arbitrary pick):
+`spawnCars` behaviour-neutrality (the unchanged default still gives car 1 `isDrone===1`; explicit
+`controllerTypes` makes both car 0 and car 1 `isDrone===0`), the fire-preempt distinguishing a
+human car 1 (frozen) from an AI one (decays via the ground-gated coast), and the TANKS steer-mod
+distinguishing a human car 1 (halved steer step at speed) from a drone (always +1). Confirmed by
+reintroducing the old `i !== 0` line and re-running the suite: exactly the 3 index-dependent new
+checks fail (the two `spawnCars`/fire-preempt checks plus the TANKS human-halving check), all
+others unaffected; reverting restores all 89 distinct assertions (243 executed). Full 29-script
+regression suite (`catalog` through `smoke`) re-run clean after this change, twice (once after the
+`race.js` edit alone, once after the `check-twocar.mjs` additions).
+
+**Verification status.** Engine-level only -- `race.js`/`check-twocar.mjs`, unit-tested directly
+against the disassembly, no live DOSBox H2H capture (none exists yet; nothing plays two-human H2H
+end to end at this point in the port). The `isDrone`/`[BX+0x12EB]` findings above (fire-preempt,
+TANKS steer-mod, wall-stuck) are `[STATIC]`, flagged for live confirmation once the flow wiring
+lands; the tuning findings (`3F3B`'s own alternate path, `[0x8A2]`'s own meaning) are `[STATIC]`
+and additionally INCOMPLETE -- not yet ported at all. Not yet done, and now including a real
+prerequisite discovered this session: porting `3F3B`'s own alternate tuning computation (the
+formulas above) BEFORE `twoHuman.js`/screens/flow wiring can give a two-human race correct tuning,
+since without it car 1 would silently fall back to the normal, wrong-for-this-mode ramp; settling
+`UNKNOWN_8a2_meaning` belongs at the start of that same commit. After that: `twoHuman.js` itself
+(win tally, used-track bitmap via `DS:0002&7`, per-character lifetime stats, the handicap question
+screen), the CHOOSE GAME/results screens, and `flow.js` wiring (a real P2 keyboard reader,
+`enterSelectGame`'s TWO PLAYER branch, one shared `controllerTypes` array feeding both `spawnCars`
+and `raceCtx.controllerTypes` instead of the two independently-built arrays that exist today) --
+each its own subsequent commit toward closing P4's first checklist item.

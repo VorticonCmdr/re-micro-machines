@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseStrtPos } from '../src/formats/globaldata.js'
 import { loadWorld, loadBrk, roundCtx, spawnCars } from '../src/engine/race.js'
-import { runStep } from '../src/engine/step.js'
+import { runStep, applySteerAndThrottle } from '../src/engine/step.js'
 import { droneControlByte } from '../src/engine/ai.js'
 import { initCameraState, updateCamera } from '../src/engine/camera.js'
 import { initTwoCarMatch, resetCarsAfterKnockout, lineUpBothCars, stepExchange, twoCarFinishedCar, twoCarBanners, twoCarFinalOrder, applyScoreSlotGarbage } from '../src/engine/twocar.js'
@@ -498,5 +498,74 @@ async function settled(round, race) {
   check('ctx.drawnTick===true: the hidden-car write (7d74) runs, forces 0', r.cars[0].drawnThisFrame === 0)
 }
 
-console.log(bad ? `${bad} of ${asserted} executed check(s) failed` : `check-twocar: ${distinct.size} distinct assertions (${asserted} executed) pass -- the two-car match matches the disassembly -- camera trigger, knockout reset (both branches), 64-step blink and commit, finish block and Play Off, banners, double death, and the exit fix-up; real races end at 8, at 0, on a finish while ahead or behind, and in sudden death after a tied finish`)
+// Two-human Head to Head (GOAL-DOS-PARITY.md P4, docs/engine.md §9bf): `spawnCars`'s own
+// `car.isDrone` field now reflects `controllerTypes[i]===6` (the real `[BX+0x12EB]` flag,
+// `InitRaceCarsFromTables 41D0-421A`), not car index. FOUR real readers were checked against
+// `DS:09BA`'s own H2H track list (`04 0A 11 0D 1C 21 14 19` decodes, `round<<2|race-1` like
+// `DS:043C`, to rounds 1,2,4,3,7,8,5,6 -- rounds 1-8, NOT round 9, so round 7 IS reachable in H2H):
+//  - `4D3D` fire-preempt: reachable and REAL (a human car 1 is not exempt; proven below).
+//  - `4EE7` TANKS steer-mod ([28BF]==7 only, no format gate at 4ee0): reachable, since round 7
+//    is H2H track index 4 (byte 0x1C). A human car 1 at speed>=0x320 halves its steer step; a
+//    drone always adds 1. Proven below with ctx.round=7.
+//  - `collide.js`'s own `5C84` wall-stuck counter: checked, no format gate at all (5c70-5c89
+//    tests only [BX+12a8]/[BX+12eb]) -- reachable in every race, one and two-car alike.
+//  - `4D2F` finished-coast: NOT reachable in H2H -- `applySteerAndThrottle`'s own
+//    `fourCar = ctx.raceFormat!==2` gates it off for every car regardless of drone status, and
+//    two-human H2H is always raceFormat 2.
+// All four test `[BX+0x12EB]`, none test car index -- confirming the fix is the right one for
+// every REACHABLE consumer, not just the fire-preempt.
+//
+// Separately (docs/engine.md §9bf, left UNCHANGED, recorded not fixed): `tuningFieldsFor`'s own
+// `CMP BX,0` block at `4070` (and everything else in `3FBE-4134`: the already-ported `40A0` accel
+// cut, the `4116` race-23 nerf) IS car-INDEX based with no `[2656]` raceFormat check inside it --
+// but the WHOLE `3FBE-4134` region only runs when a per-RACE mode fork (`1000:3F30`,
+// `CS:[0x9C62]`==`DS:[0x8A2]`) is 0, and two-human H2H's own entry (`1F80`'s `JZ 1FA9` rejecting
+// `CX==0` before `[0x8A2]` is ever stored) means that mode ALWAYS takes the fork's OTHER branch,
+// `3F3B-3FBD` -- never `4070` at all. So a human P2 does NOT get car slot 1's usual drone tuning
+// in two-human H2H; instead every car gets a symmetric, entirely UNPORTED alternate tuning
+// (`3F3B`'s own per-character-roster-byte formulas) -- porting it is a PREREQUISITE for that
+// mode's first playable race, tracked as `UNKNOWN_alt_tuning_path`, not this commit's own scope.
+// The rubber band (`4B1C`/`528D`) was checked and is ALSO car-INDEX based, matching `tuningFieldsFor`'s
+// own shape; it CANNOT be gated by `[0x8A2]` (that cell's only 2 readers, 3F33/40AF, are both
+// inside init-time tuning, nowhere near this per-step physics code) -- whether `4B1C-4B41` has its
+// own separate `[2656]` test is the real open question, not checked here.
+{
+  // [5,4,6,6]: P1 on KEYS2 (fire is P1's own KEYS2 key S, CLAUDE.md), P2 on KEYS1 (GOAL-DOS-
+  // PARITY.md P4: "P2 input is KEYS 1") -- the real H2H control assignment, not an arbitrary pick.
+  const cars = spawnCars(strt, 1, 1, { raceFormat: 2, controllerTypes: [5, 4, 6, 6] })
+  check('spawnCars: two humans on KEYS2/KEYS1 (5,4,6,6) -- car 0 is not a drone', cars[0].isDrone === 0)
+  check('spawnCars: two humans on KEYS2/KEYS1 (5,4,6,6) -- car 1 is ALSO not a drone (the real fix)', cars[1].isDrone === 0)
+  const defaultCars = spawnCars(strt, 1, 1, { raceFormat: 2 }) // no controllerTypes -- the default (1,6,6,6)
+  check('spawnCars: unchanged default (no controllerTypes passed) -- car 1 is still a drone, behaviour-neutral for every existing caller', defaultCars[1].isDrone === 1)
+
+  // applySteerAndThrottle's own `exempt` test (4D4B-4D69/4D3D): a human KEYS car (isDrone=0,
+  // controllerType 4 or 5) is NOT exempt from the keyboard fire-preempt -- holding fire alone
+  // (0x08, no accelerate) freezes it (4D70, speed/steering untouched this step). A CPU car
+  // (isDrone=1) IS exempt -- the SAME control byte falls through to ordinary throttle handling
+  // (0x00 = no throttle = ground-gated coast, 4E2E) instead.
+  const human = spawnCars(strt, 1, 1, { raceFormat: 2, controllerTypes: [5, 4, 6, 6] })[1]
+  const ai = spawnCars(strt, 1, 1, { raceFormat: 2 })[1] // isDrone=1 by default
+  const ctx = { raceFormat: 2, round: 1 }
+  human.speed = 100; human.height = 0
+  applySteerAndThrottle(human, 0x08, ctx, false, 0, 4) // fire held alone, KEYS1 (4)
+  check('a human P2 (isDrone=0, KEYS1) holding fire alone gets the real keyboard fire-preempt: speed frozen', human.speed === 100)
+  ai.speed = 100; ai.height = 0; ai.coastDecel = 10
+  applySteerAndThrottle(ai, 0x08, ctx, false, 0, 6) // fire held alone, CPU (6) -- but isDrone is what actually gates `exempt`
+  check('the SAME control byte on an AI car 1 (isDrone=1) is exempt from the fire-preempt: falls through to the ground-gated coast instead (decays, not frozen)', ai.speed === 90)
+
+  // 4EE7's own TANKS ([28BF]==7) steer-mod: no raceFormat gate, and round 7 is H2H track index 4
+  // (DS:09BA byte 0x1C) -- reachable in two-human H2H. A human car 1 at speed>=0x320 halves its
+  // steer step (SAR CX,1); a drone always adds 1 (INC CX) regardless of speed.
+  const tanksCtx = { raceFormat: 2, round: 7 }
+  const humanTanks = spawnCars(strt, 7, 1, { raceFormat: 2, controllerTypes: [5, 4, 6, 6] })[1]
+  humanTanks.heading = 0; humanTanks.steerStep = 0x10; humanTanks.speed = 0x320; humanTanks.height = 1
+  applySteerAndThrottle(humanTanks, 0x80, tanksCtx, false, 0, 4) // LEFT only, KEYS1, no fire
+  check('TANKS (round 7): a human car 1 at speed>=0x320 halves its steer step (cx 0x10->8)', humanTanks.heading === ((0 - 8) & 0xff))
+  const aiTanks = spawnCars(strt, 7, 1, { raceFormat: 2 })[1] // isDrone=1 by default
+  aiTanks.heading = 0; aiTanks.steerStep = 0x10; aiTanks.speed = 0; aiTanks.height = 1
+  applySteerAndThrottle(aiTanks, 0x80, tanksCtx, false, 0, 6) // LEFT only, CPU
+  check('TANKS (round 7): a drone car always adds 1 to its steer step regardless of speed (cx 0x10->0x11), NOT the human halving rule', aiTanks.heading === ((0 - 0x11) & 0xff))
+}
+
+console.log(bad ? `${bad} of ${asserted} executed check(s) failed` : `check-twocar: ${distinct.size} distinct assertions (${asserted} executed) pass -- the two-car match matches the disassembly -- camera trigger, knockout reset (both branches), 64-step blink and commit, finish block and Play Off, banners, double death, and the exit fix-up; real races end at 8, at 0, on a finish while ahead or behind, and in sudden death after a tied finish; car.isDrone now reflects controllerType, not car index, proven against the real keyboard fire-preempt (GOAL-DOS-PARITY.md P4, docs/engine.md §9bf)`)
 process.exitCode = bad ? 1 : 0

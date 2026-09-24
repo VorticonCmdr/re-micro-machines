@@ -171,22 +171,51 @@ const INIT_CAM_HALF_W = [0x80, 0xa0, 0xc0, 0xe0]
  * condition holds, regardless of `raceFormat`; folded here into one flat `*3` application rather
  * than three identical loop iterations, verified against the loop's own exit structure (`4110`
  * exits BEFORE this check on the 4th car, so it is genuinely 3x, not 4x or 1x).
+ *
+ * **Two DIFFERENT "isDrone" concepts, confirmed genuinely separate in the real bytes (GOAL-
+ * DOS-PARITY.md P4's two-human item, docs/engine.md §9bf).** `tuningFieldsFor`'s own internal
+ * `isDrone` (init-time grip/`DRONE_MAX_VEL_HANDICAP`/accel-penalty math, above) is confirmed
+ * car-INDEX-based in the real bytes (`4070: CMP BX,0`, the same `BX==0` test `computeTuningOffset`
+ * already cites) -- unconditional on controller type, unchanged here. The RUNTIME `car.isDrone`
+ * field set below is a SEPARATE flag, `[BX+0x12EB]` in the real bytes, confirmed by disassembling
+ * its own writer (`InitRaceCarsFromTables 41D0-421A`: `CMP word[0x2658+2*slot],6 / JNZ skip /
+ * MOV [BX+0x12EB],1` -- one check per car SLOT's own controller-type word) and cross-checking FOUR
+ * of its readers (the fire-preempt gate `4D3D`, the finished-car-coasts gate `4D2F`, the TANKS
+ * steer-mod `4EE7`, and `collide.js`'s own wall-stuck knockout counter `5C84`) -- all four test
+ * `[BX+0x12EB]==1`, none test car index. So a human-controlled car 1 (two-human H2H, GOAL P4)
+ * needs `car.isDrone=0` for these four RUNTIME mechanics. Its own INIT-time tuning is a THIRD,
+ * still-separate question this function does NOT yet answer for two-human H2H specifically: the
+ * whole `4070`/`CMP BX,0` block this function implements only runs in the real bytes when a
+ * per-RACE mode fork (`1000:3F30`, `CS:[0x9C62]`≡`DS:[0x8A2]`) is `0` -- and two-human H2H's own
+ * entry always sets that fork nonzero, taking a SEPARATE, entirely unported per-car computation
+ * (`3F3B-3FBD`) instead, symmetric across every car slot. So this function's own tuning is correct
+ * for every CURRENT caller (all one-player, all take the `CS:[0x9C62]==0` branch) but is NOT what
+ * a two-human H2H race actually uses -- porting `3F3B`'s own formulas is a prerequisite for that
+ * mode, tracked as `UNKNOWN_alt_tuning_path` (docs/engine.md §9bf/§10), not yet done here.
  * @param {{x:number,y:number}[]} strtPosEntries  `parseStrtPos`'s output
- * @param {{raceFormat?: number, tournamentIndex?: number, opponentCharacters?: number[]}} opts
+ * @param {{raceFormat?: number, tournamentIndex?: number, opponentCharacters?: number[], controllerTypes?: number[]}} opts
  *   `raceFormat: 2` (M3.8): cars 2/3 are absent (docs/engine.md §1 "cars 2,3 = 0 in a two-car
  *   race"). `tournamentIndex` ([28C1], the `ORDER_TABLE` position, 0-25) defaults to 0 -- matching
  *   this port's other established `[28C1]`-approximations (`ai.js`) -- which selects the real
  *   game's own `tournamentIndex<=0` flat-ramp branch, not a KidModifier lookup, so a caller with no
  *   tournament context (this port's own `play.js`) never needs `opponentCharacters` either.
  *   `opponentCharacters`: the 3 drones' selected character indices (`tournament.js`'s own
- *   `state.opponents`), consulted only when `tournamentIndex>0`.
+ *   `state.opponents`), consulted only when `tournamentIndex>0`. `controllerTypes`: one word per
+ *   slot (`[0x2658..265E]`, 1/2 joystick, 3 mouse, 4/5 keys, 6 CPU), defaults to `[1,6,6,6]` --
+ *   every CURRENTLY-reachable caller (flow.js, play.js, every `tools/check-*.mjs`) never passes
+ *   this, and car 0's own controller type is never 6 / cars 1-3's are always 6 in every one of
+ *   those flows, so this default reproduces the exact same `car.isDrone` values the old
+ *   `i !== 0` computation gave -- confirmed behaviour-neutral, not just assumed (the full existing
+ *   suite, `tools/check-*.mjs`, passes unchanged with this default).
  */
-export function spawnCars(strtPosEntries, round, race, { raceFormat = 1, tournamentIndex = 0, opponentCharacters = [] } = {}) {
+export function spawnCars(strtPosEntries, round, race, { raceFormat = 1, tournamentIndex = 0, opponentCharacters = [], controllerTypes = [1, 6, 6, 6] } = {}) {
   const start = strtPosEntries.find((s) => s.round === round && s.race === race)
   if (!start) throw new Error(`no STRT_POS entry for round ${round} race ${race}`)
 
   return Array.from({ length: 4 }, (_, i) => {
-    const isDrone = i !== 0
+    // `[BX+0x12EB]`'s own real writer (`InitRaceCarsFromTables 41D0-421A`) -- see this function's
+    // own header for the four confirmed runtime readers this feeds.
+    const isDrone = controllerTypes[i] === 6
     // `InitRaceCarsFromTables 1000:41bd-41d2` deactivates cars 1-3 for round 9 (RUFFTRUX) -- NOT
     // `3b50`'s own earlier round-9 zeroing, which this same load sequence's own unconditional
     // 4-car `present=1` init (`4160-4172`) clobbers a few instructions later, making it dead on
