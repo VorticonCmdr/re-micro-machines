@@ -76,9 +76,11 @@ and stays local to your machine.
   hazards per round, checkpoints/laps, airborne/ramps, the full car state machine), the drone AI,
   and per-round camera — all reproduced from the disassembly, not approximated.
 - **A full one-player tournament**: the Challenge (4-car) and Head-to-Head-vs-CPU (2-car) formats,
-  win-streak bonus races (round 9, "RUFFTRUX"), lives, and driver elimination/replacement — see
-  `docs/engine.md`'s front-end section for exactly which parts are simplified (auto-picked
-  opponents rather than an interactive picker, for instance) and why.
+  win-streak bonus races (round 9, "RUFFTRUX"), lives, and driver elimination/replacement, including
+  the real interactive opponent picker (pick your 3 Challenge opponents yourself, right after
+  passing the qualifier — the qualifier's own drones are a hardcoded trio in the original itself,
+  not a real pick) — see `docs/engine.md`'s front-end section for exactly which parts are still
+  simplified (the elimination-replacement picker still auto-picks, for instance) and why.
 - **Sound**: real OPL2 synthesis running in an `AudioWorklet`, ticked off the audio clock the way
   the original driver was, with an optional strict-YM3812 mode (see below).
 - **The real GAME OPTIONS screen** (`game.html`, shown after the code card, before the title): F1/
@@ -107,10 +109,10 @@ and stays local to your machine.
 
 ## What's not implemented
 
-- Two-human head-to-head and the interactive tournament-opponent/replacement pickers — both named
-  explicitly in `docs/engine.md`'s front-end sections, with the reason each was cut (the
-  tournament board screen itself is now implemented — see above). Palette fades exist (the README
-  previously said otherwise); see
+- Two-human head-to-head and the Challenge elimination-replacement picker — both named explicitly
+  in `docs/engine.md`'s front-end sections, with the reason each was cut (the tournament board
+  screen and the interactive opponent picker are now both implemented — see above). Palette fades
+  exist (the README previously said otherwise); see
   `docs/engine.md` §9an for the one real difference (the port fades in at race start, the original
   doesn't).
 - Gamepad/mouse input during a race (keyboard only) -- mouse input elsewhere (the logo intro's

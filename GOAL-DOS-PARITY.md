@@ -237,10 +237,24 @@ docs, (6) commit.
   `src/frontend/board.js`, `tools/check-board.mjs`. Not ported: the round-9 "reveal" branch (the
   NORMAL path for every bonus race, not a rare one), which reads past `MINATURE.CHR`'s own real
   frame table in the original (a benign OOB read, not pixel-replicated).**
-- [ ] **Interactive opponent picker** (`FUN_1000_1a4a`, pick 3 after passing the Challenge
+- [x] **Interactive opponent picker** (`FUN_1000_1a4a`, pick 3 after passing the Challenge
   qualifier). This replaces the auto-pick in `tournament.js:131`. Note the known trap in §9k: the
   qualifier itself is a 4-car race and needs 3 opponents *before* the picker exists. Find out
   from the disassembly who the real qualifier drones are.
+  **Done, §9az: the qualifier's own drones are a hardcoded JETHRO trio (`102b`/`10a0`'s own raw
+  writes to `[266A]`/`[266C]`/`[266E]`, no roster `taken` flag, no tuning effect --
+  `tournamentIndex<=0` always discards the character-based `KID_MODIFIER` lookup for the
+  qualifier). `ResetTournamentState 0eba` resets all 4 face-preview slots to an "unpicked"
+  sentinel the qualifier's own raw writes never clear, so `1a4a`'s own scan, run once right after
+  a Challenge PASS, reliably finds exactly 3 unfilled slots. Reuses `tournament.js`'s existing
+  `pickOpponentCharacter` (now appending, not replacing) and the existing character-select
+  carousel (`charWho='challenge-opponent'`); ESC never exits the picker, it just re-prompts the
+  same slot, matching `1a4a`'s own loop. `[0x404]` confirmed write-only/dead -- item 3 should not
+  assume it names "which slot to replace". `tools/check-tournament.mjs` rewritten. A second
+  advisor review caught a real regression before commit: `confirm()`'s `PRESS_ANY_KEY` branch
+  skipped `nextAfterOutcome()`, so the just-shipped tournament board never actually showed before
+  race 1 -- fixed and live-tested end to end (screenshots of both the picker and, for the first
+  time, a live board render).**
 - [ ] **Elimination screen plus replacement picker** (`ShowCharacterEliminatedTune6 1000:16de`,
   "IS OUT!!", the wobble curve at `DS:034B`). The player picks the replacement. Verify the
   round-robin victim rule against the bytes: §9k says "roster position modulo opponent count" is

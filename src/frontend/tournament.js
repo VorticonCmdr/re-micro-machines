@@ -26,9 +26,11 @@
 //
 // Deliberately not modelled: two-HUMAN head-to-head (`RunHeadToHeadTournament 1faf`) -- its track
 // selection is `DS:0002 & 7`, the vsync tick counter, so it is not input-deterministic and this
-// port's tape/replay model has nothing to drive it with; the interactive "pick your 3 opponents"
-// (`FUN_1a4a`) and "pick your replacement" (after an elimination) screens -- both auto-pick the
-// first untaken roster slot(s) instead, flagged at their call site; the tournament board screen.
+// port's tape/replay model has nothing to drive it with; the "pick your replacement" screen after
+// an elimination (GOAL-DOS-PARITY.md P3's third item, not yet done -- still auto-picks the first
+// untaken roster slot, flagged at `checkElimination` below). The interactive "pick your 3
+// opponents" screen (`FUN_1a4a`, GOAL-DOS-PARITY.md P3's second item) IS modelled now -- see
+// `needsOpponentPick`/`QUALIFIER_OPPONENTS` below, docs/engine.md §9az.
 
 import { ORDER_TABLE, ORDER_TABLE_LAST_INDEX, MAX_BONUS_RACES, CHARACTER_NAMES, trackName } from '../data/frontend-tables.js'
 
@@ -62,32 +64,33 @@ export function initTournament({ format = 'challenge' } = {}) {
   }
 }
 
+/** Head-to-Head vs CPU picks its own opponent on a SECOND select screen right after this
+ * (`pickOpponentCharacter`, `0FBF`'s second `09E0` call, docs/engine.md §9an) -- unchanged here.
+ * Challenge no longer auto-picks anything: the qualifier's own 3 opponents are the fixed
+ * `QUALIFIER_OPPONENTS` (JETHRO x3, `102b`/`10a0`'s own hardcoded writes, not a real pick at all),
+ * and races 1+ get whatever the real interactive picker (`needsOpponentPick`, `1A4A`) fills
+ * `state.opponents` with, once, right after the qualifier passes. */
 export function pickPlayerCharacter(state, charIndex) {
   state.playerCharacter = charIndex
   state.roster[charIndex].taken = true
-  // Head-to-Head vs CPU: the player picks the CPU opponent on a second select screen instead
-  // (`pickOpponentCharacter`, 0FBF's second 09E0 call, docs/engine.md §9an).
-  if (state.format === 'twocar') return
-  // The qualifier itself is a 4-car race, so *some* 3 opponents must exist before it can even be
-  // run -- the real game's `FUN_1a4a` picker only runs after a Challenge PASS (docs/engine.md
-  // §7), which would leave this port's qualifier racing against nameless opponents (a real bug an
-  // advisor review caught: the results screen showed "UNDEFINED" for cars 1-3 on a qualifier
-  // failure, since `state.opponents` was empty until a pass). Simplified here: opponents are
-  // auto-picked once, at character-select time, and reused as-is for the qualifier and every race
-  // after -- not re-picked on a pass, unlike the real game's per-Challenge-entry picker.
-  pickOpponents(state)
 }
 
 /**
- * Head-to-Head vs CPU's second select screen, "WHO DO YOU WANT TO RACE ?" (0FBF -> 09E0 with slot
+ * "WHO DO YOU WANT TO RACE ?" -- Head-to-Head vs CPU's second select screen (0FBF -> 09E0 with slot
  * 0C1E; the pick lands in [266A], which InitRaceCarsFromTables reads for car 1's KidModifier
- * handicap). Fire on an already-taken character is ignored (0AB5-0ABB) -- returns false then.
+ * handicap) AND the Challenge format's real interactive opponent picker (`FUN_1A4A`, the SAME
+ * prompt string, `DS:0227`, and the SAME underlying carousel, `09E0`, just called once per each of
+ * 3 empty slots -- `1000:0afa-0b50`'s own commit block services all 4 car slots identically). Fire
+ * on an already-taken character is ignored (0AB5-0ABB, `charSelectStep`'s own IDLE case already
+ * enforces this before this is ever called) -- returns false then. APPENDS to `state.opponents`
+ * (not replace): H2H only ever calls this once, so the two are equivalent there, but Challenge
+ * calls it 3 times, once per opponent slot.
  */
 export function pickOpponentCharacter(state, charIndex) {
   const slot = state.roster[charIndex]
   if (!slot || slot.taken) return false
   slot.taken = true
-  state.opponents = [charIndex]
+  state.opponents = [...state.opponents, charIndex]
   return true
 }
 
@@ -157,19 +160,51 @@ export function shouldShowBoard(state) {
   return state.format !== 'twocar' && i !== 0 && i !== ORDER_TABLE_LAST_INDEX
 }
 
-function firstUntaken(state, n) {
-  const picks = []
-  for (const slot of state.roster) {
-    if (picks.length >= n) break
-    if (!slot.taken && !slot.eliminated) { slot.taken = true; picks.push(slot.index) }
-  }
-  return picks
+/**
+ * The Challenge qualifier's own fixed 3 opponents -- NOT auto-picked or player-chosen, hardcoded
+ * directly: `RunOnePlayerChallenge 1000:102b`'s own `[266A]=6` (right after PRESS ANY KEY) and
+ * `RunTournamentLoop 1000:10a0`'s own tournament-init `[266C]=6`/`[266E]=6` (`1000:10b9/10bf`).
+ * All three are JETHRO (character index 6), unconditionally, every Challenge qualifier. This has
+ * NO effect on tuning: `tuningFieldsFor`'s own `character` parameter is only consulted when
+ * `tournamentIndex>0` (`InitRaceCarsFromTables`'s own branch at `1000:3fd9`), and the qualifier is
+ * always `tournamentIndex<=0` -- confirmed by a full re-disassembly of that branch structure (the
+ * qualifier uses a flat per-car-slot ramp, 0/12/6, regardless of which character is nominally
+ * assigned). JETHRO's own roster slot is NOT marked taken by this: the roster's own `|0x40` bit is
+ * set at `1000:0AC2` (`OR byte ptr [SI],0x40`, `SI` pointing at `DS:0164+character`), reached only
+ * from INSIDE `09E0`'s own fire-confirm gate (`1000:0AB5-0AC2`, right where a valid pick enters the
+ * 5-blink commit sequence -- the SAME "fire on a taken character is ignored" gate docs/engine.md
+ * §9ax already names) -- and `102B`'s/`10A0`'s own `[266A]=6`/`[266C]=6`/`[266E]=6` writes are raw
+ * `MOV`s with no `CALL 09E0` anywhere near them (confirmed by re-reading `102B`'s own full
+ * disassembly), so they never reach `0AC2` at all. So the player can still pick JETHRO for
+ * themselves, and the real interactive picker (`needsOpponentPick` below) can still offer JETHRO as
+ * a choice for races 1+.
+ */
+export const QUALIFIER_OPPONENTS = [6, 6, 6]
+
+/**
+ * The 3 opponent character indices to pass to `spawnCars`/`tuningFieldsFor` for the CURRENT race:
+ * the qualifier's own fixed JETHRO trio (Challenge format only -- H2H's own qualifier already uses
+ * the real picked opponent, via `pickOpponentCharacter`, before its own qualifier ever runs), or
+ * the player's own interactively-picked opponents (`state.opponents`) for every race after.
+ */
+export function opponentCharactersFor(state) {
+  if (state.format === 'challenge' && state.raceIndex === 0 && !state.pendingBonusRace) return QUALIFIER_OPPONENTS
+  return state.opponents
 }
 
-/** `FUN_1a4a`, simplified (file header): auto-picks the first `n` untaken roster slots rather
- * than letting the player choose. */
-function pickOpponents(state) {
-  state.opponents = firstUntaken(state, 3)
+/**
+ * Whether the interactive opponent picker (`FUN_1000_1A4A`, GOAL-DOS-PARITY.md P3's second item)
+ * needs to run before the next race: only once, right after a Challenge qualifier PASS -- DOS's own
+ * `RunTournamentLoop 1000:10a0`, `10EF: CMP [3F8],0/JNZ 10F9` then `10F6: CALL 1A4A`, BEFORE the
+ * `[28C1]` INC. This port's own `advance()` (inside `reportRaceResult`, below) already ran by the
+ * time a caller checks this -- unlike DOS's own pre-INC timing, this is a documented, harmless
+ * reordering: `1A4A` never reads `[28C1]` at all (see `effectiveRaceIndex`'s own header for the
+ * DIFFERENT class of bug where the pre/post-INC distinction DOES matter -- this isn't one of them),
+ * so the trigger condition here is "we just landed on race 1 with nobody picked yet", not "we are
+ * about to increment".
+ */
+export function needsOpponentPick(state) {
+  return state.format === 'challenge' && state.raceIndex === 1 && state.opponents.length === 0
 }
 
 /**

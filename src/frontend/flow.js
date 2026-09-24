@@ -37,7 +37,7 @@ import { raceStart, updateEngines, createRaceJitter, raceOverSequence, raceOverS
 import { lapLineSegments, nearestPaletteIndex } from '../engine/lapLine.js'
 import { Si2Player } from '../audio/si2Player.js'
 import { RUFF_TRUCK_TIMES } from '../data/engine-tables.js'
-import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, currentRace, reportRaceResult, shouldShowBoard, effectiveRaceIndex, OUTCOME } from './tournament.js'
+import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, screenAfterRace, currentRace, reportRaceResult, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, QUALIFIER_OPPONENTS, OUTCOME } from './tournament.js'
 import { CHARACTER_NAMES, OUTCOME_MESSAGES, resolveSmoothnessForPlay } from '../data/frontend-tables.js'
 import { drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
 import { createSmoothnessGate } from '../engine/smoothness.js'
@@ -473,7 +473,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
   function paintCharSelect() {
     menuBuf.fill(0)
-    drawCharacterSelect(menuBuf, arena, { scroll: charSelectState.scroll, cursor: charSelectState.cursor, roster: rosterBytes(), blinkOn: charSelectState.blinkOn, prompt: charWho === 'opponent' ? 'WHO DO YOU WANT TO RACE ?' : 'WHO DO YOU WANT TO BE ?' })
+    drawCharacterSelect(menuBuf, arena, { scroll: charSelectState.scroll, cursor: charSelectState.cursor, roster: rosterBytes(), blinkOn: charSelectState.blinkOn, prompt: charWho !== 'player' ? 'WHO DO YOU WANT TO RACE ?' : 'WHO DO YOU WANT TO BE ?' })
     paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
     statusEl.textContent = 'CHAR_SELECT'
   }
@@ -504,17 +504,26 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     paintCharSelect()
     charSelectRafId = requestAnimationFrame(charSelectTick)
   }
-  /** 09e0's own STC (ESC) returns straight to its caller (0fbf/102b), which -- per their own
-   * `if (!CF) {...}` guard -- falls straight through to RET without drawing anything else,
-   * landing back at 0220's own CLC;RET chain: SELECT GAME, same as every other cancel this
-   * session traced (§9aw). A confirm reuses tournament.js's own existing pick functions. */
+  /** 09e0's own STC (ESC) returns straight to its caller, which for `player`/`opponent` (0fbf/102b's
+   * OWN single character picks) falls straight through to RET without drawing anything else -- per
+   * their own `if (!CF) {...}` guard -- landing back at 0220's own CLC;RET chain: SELECT GAME, same
+   * as every other cancel this session traced (§9aw). `challenge-opponent` is different: `1A4A`'s
+   * own caller loop (`1000:1A78: JNC 1A7C / JMP 1A69`) re-enters the SAME slot on ESC instead of
+   * ever returning -- there is no way to cancel out of the Challenge opponent picker once the
+   * qualifier has passed (docs/engine.md §9az). A confirm reuses tournament.js's own existing pick
+   * functions. */
   function leaveCharSelect(exit, character) {
     if (charSelectRafId != null) { cancelAnimationFrame(charSelectRafId); charSelectRafId = null }
     charSelectReader?.dispose(); charSelectReader = null
-    if (exit === 'cancel') { enterSelectGame(); return }
+    if (exit === 'cancel') {
+      if (charWho === 'challenge-opponent') { enterOpponentPick(); return } // 1A4A: ESC just re-prompts, never exits
+      enterSelectGame()
+      return
+    }
     if (charWho === 'player') {
       pickPlayerCharacter(tournament, character)
       lastPick.player = character
+      lastPick.challengeOpponent = null // a fresh tournament: 1A4A's own AX=0xFFFF should carry from THIS pick, not a previous run's last opponent
       if (tournament.format === 'twocar') {
         // 0FBF's second 09E0: "WHO DO YOU WANT TO RACE ?", starting on the last opponent pick and
         // stepping on (the carousel's remembered direction, LEFT by default) past a taken entry.
@@ -523,6 +532,12 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
         enterCharSelect(opp, 'opponent')
         return
       }
+    } else if (charWho === 'challenge-opponent') {
+      pickOpponentCharacter(tournament, character) // defensive check inside -- charSelectStep's own taken-guard already makes a taken confirm unreachable
+      lastPick.challengeOpponent = character
+      if (tournament.opponents.length < 3) { enterOpponentPick(); return } // 1A4A's own re-scan loop: the next of the 3 empty slots
+      // all 3 picked: 1A4A's own trailing CALL 0C15 -- the SAME "PRESS ANY KEY TO START" the
+      // qualifier's own character select already led to once; falls through to the shared tail below.
     } else {
       if (!pickOpponentCharacter(tournament, character)) { enterCharSelect(character, 'opponent'); return } // defensive -- charSelectStep's own taken-guard should make this unreachable
       lastPick.opponent = character
@@ -532,6 +547,26 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     clearTimeout(pressAnyKeyTimer)
     pressAnyKeyTimer = setTimeout(() => { if (phase === 'PRESS_ANY_KEY') confirm() }, (0x2bc * 1000) / 70)
     paintMenu()
+  }
+
+  /** P3's second item (GOAL-DOS-PARITY.md, docs/engine.md §9az): the real interactive opponent
+   * picker (`FUN_1000_1A4A`), triggered once from `nextAfterOutcome` right after a Challenge
+   * qualifier PASS (`tournament.js`'s own `needsOpponentPick`). Reuses the SAME character-select
+   * carousel as every other pick (`enterCharSelect`), just with `charWho='challenge-opponent'` so
+   * `leaveCharSelect` knows to loop back here (not to SELECT GAME) on both a cancel and a
+   * not-yet-all-3-picked confirm. Start index: `1A4A`'s own real AX=0xFFFF entry to `09E0` means
+   * "keep the previous scroll position" (not ported byte-for-byte, see charSelect.js's own header
+   * for this project's established `AWAIT_RELEASE`-class-of-simplification precedent) --
+   * approximated as "start from the last pick" (the player's own, for the first of the 3; each
+   * opponent's own, for the next), which lands on the SAME visual neighbourhood without needing a
+   * separate raw-scroll-pixel carry mechanism. `09E0` re-asserts tune 2 on EVERY entry
+   * (`1000:0A06-0A1D`, "is it already playing? if not, start it") -- by the time this runs, the
+   * qualifier's own race music and then `raceOutcomeMusic` have already played, so this needs its
+   * own `subMenuMusic` call too, not just the ONE already at the player's own first `enterCharSelect`
+   * (an advisor review caught this was missing from the first draft). */
+  function enterOpponentPick() {
+    subMenuMusic(sound)
+    enterCharSelect(lastPick.challengeOpponent ?? lastPick.player, 'challenge-opponent')
   }
 
   // P3's first item (GOAL-DOS-PARITY.md, src/frontend/board.js): DrawTournamentBoard 1000:18d8,
@@ -583,10 +618,16 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
 
   let phase = introState ? 'LOGO' : fontbinBytes ? 'CODECARD' : 'OPTIONS'
-  let charWho = 'player' // 'player' ("WHO DO YOU WANT TO BE ?") or 'opponent' (H2H: "WHO DO YOU WANT TO RACE ?")
+  // 'player' ("WHO DO YOU WANT TO BE ?"), 'opponent' (H2H: "WHO DO YOU WANT TO RACE ?") or
+  // 'challenge-opponent' (Challenge's own real 3-opponent picker, GOAL-DOS-PARITY.md P3's second
+  // item, docs/engine.md §9az -- the SAME "WHO DO YOU WANT TO RACE ?" prompt as H2H's, `FUN_1A4A`).
+  let charWho = 'player'
   // The select screens start on the session's last picks: statics [3F4]=10 / [3F6]=9 (SPIDER/BONNIE),
-  // rewritten by each pick (1001/1018/1087) -- docs/engine.md §9an.
-  const lastPick = { player: 10, opponent: 9 }
+  // rewritten by each pick (1001/1018/1087) -- docs/engine.md §9an. `challengeOpponent`: null until
+  // the first Challenge opponent pick, `1A4A`'s own real "keep the previous scroll position" (its
+  // AX=0xFFFF entry to 09E0) approximated here as "start from the last pick" -- the player's own,
+  // for the first of the 3, then each opponent's own for the next.
+  const lastPick = { player: 10, opponent: 9, challengeOpponent: null }
   let pressAnyKeyTimer = null
   let tournament = null
   let lastStandings = null
@@ -655,7 +696,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     // `tournament.js`'s own `effectiveRaceIndex` header for the full account -- found alongside the
     // tournament board item, but not board-specific).
     const tIndex = effectiveRaceIndex(tournament)
-    const cars = spawnCars(strtList, round, race, { raceFormat, tournamentIndex: tIndex, opponentCharacters: tournament.opponents })
+    const cars = spawnCars(strtList, round, race, { raceFormat, tournamentIndex: tIndex, opponentCharacters: opponentCharactersFor(tournament) })
     currentCars = cars
     const camera = initCameraState(strt)
     // controllerTypes [2658..265E]: P1's real chosen device (settings.p1Control, 1000:2D00's own
@@ -804,7 +845,11 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       // race, docs/engine.md §7's own "cheat [F69] -> 10 after every race" (re-confirmed this
       // session against the fresh OPTIONS disassembly).
       if (cheatActive) tournament.lives = 10
-      const names = [CHARACTER_NAMES[tournament.playerCharacter], ...tournament.opponents.map((i) => CHARACTER_NAMES[i])]
+      // `wasQualifier`, not `opponentCharactersFor(tournament)` here -- `reportRaceResult` above
+      // already advanced `raceIndex` past 0, so evaluating it NOW would wrongly see `state.opponents`
+      // (still empty pre-picker) instead of the JETHRO trio the qualifier that just ran actually used.
+      const raceOpponents = wasQualifier ? QUALIFIER_OPPONENTS : tournament.opponents
+      const names = [CHARACTER_NAMES[tournament.playerCharacter], ...raceOpponents.map((i) => CHARACTER_NAMES[i])]
       // Two-car: racePosition can be stale for car 1 (car 2 can hold a slot, docs/engine.md §9am), so
       // the two places come from the result itself.
       const twoCarPlaces = tournament.format === 'twocar' ? [result.finishPosition, 3 - result.finishPosition] : null
@@ -835,6 +880,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       enterSelectGame()
       return
     }
+    if (needsOpponentPick(tournament)) { enterOpponentPick(); return } // 10a0's own CALL 1A4A, right after a Challenge qualifier PASS, before the [28C1] INC (P3's second item)
     if (shouldShowBoard(tournament)) { enterBoard(); return } // 115c's own CALL 18d8, before the next race's own intro
     startNextRace()
     paintMenu()
@@ -855,8 +901,17 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     // enterCharSelect, above), not by this function.
     if (phase === 'PRESS_ANY_KEY') {
       clearTimeout(pressAnyKeyTimer)
-      startNextRace()
-      if (phase !== 'RACE_INTRO') return // the H2H qualifier went straight into the race
+      // NOT startNextRace() directly (a bug an advisor review caught): this PRESS_ANY_KEY is
+      // reached twice now -- before the qualifier (where nextAfterOutcome's own needsOpponentPick/
+      // shouldShowBoard checks are both false, so behaviour is unchanged) AND after the P3-second-
+      // item opponent picker, right before race 1 (where shouldShowBoard is TRUE and the board,
+      // P3's first item, must show -- calling startNextRace() directly skipped it entirely). The
+      // one cosmetic cost: for the H2H qualifier specifically (no intro, hasRaceIntro()===false),
+      // nextAfterOutcome's own unconditional trailing paintMenu() now briefly overwrites
+      // runOneRace's own "Loading…" status text with a blank LOADING-phase frame before the race's
+      // own render loop takes over -- harmless, self-correcting, not worth a special case for.
+      nextAfterOutcome()
+      return
     } else if (phase === 'RACE_INTRO') {
       advanceRace()
       return

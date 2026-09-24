@@ -6166,6 +6166,29 @@ item: the round-9 "reveal" branch (`1000:192b-198d`) -- the NORMAL path for ever
 rare one -- draws past `MINATURE.CHR`'s own real 38-frame table (a genuine benign OOB read in the
 original), not pixel-replicated.
 
+**Added 2026-09-24 (§9az).** GOAL-DOS-PARITY.md P3's second item resolved and ported: the real
+interactive opponent picker (`FUN_1000_1A4A`), replacing the port's own old first-3-untaken-roster
+auto-pick. The item's own "before the picker exists" trap resolved directly from the bytes: the
+Challenge qualifier's own 3 opponents are a hardcoded JETHRO trio (`102B`/`10A0`'s own raw writes,
+not a real pick, no roster `taken` flag, no tuning effect since `tournamentIndex<=0` always
+discards the character-based `KID_MODIFIER` lookup for the qualifier specifically), and
+`ResetTournamentState 0EBA` resets all 4 face-preview slots to an "unpicked" sentinel that the
+qualifier's own raw writes never clear -- so the real picker, run once right after a Challenge
+PASS, reliably finds exactly 3 unfilled slots every time. `tournament.js`'s `pickOpponentCharacter`
+(already used for H2H) is reused, not replaced, for all 3 Challenge picks; `09E0`'s own commit
+block, fully disassembled for this item, confirmed it services all 4 car slots identically.
+`[0x404]` is confirmed write-only/dead (a `search_byte_patterns` sweep found only its own 2
+writers), so item 3's own design should not assume it names "which slot to replace". A second
+advisor review caught a real regression in the first working draft before commit: `confirm()`'s
+`PRESS_ANY_KEY` branch skipped `nextAfterOutcome()`, so the just-shipped tournament board (P3's
+first item) never actually showed before race 1 -- fixed, and live-tested end to end afterward
+(the same live pass gave P3's first item its own first live board render too, closing that item's
+own "not obtained" gap as a side effect). Also fixed: a wrong citation for the roster's own `|0x40`
+taken-bit write site (the real one is `1000:0AC2`, not the commit block first suspected), a missing
+`subMenuMusic` call, and `lastPick.challengeOpponent` never resetting between tournament runs. New,
+deliberately unported finding: `FUN_1000_19F2` (`1A4A`'s own first call) draws a real 4-face status
+panel this port does not reproduce.
+
 ## 9as. P1's first item: the logo intro's real per-frame animation (2026-09-24)
 
 Full account, and every cited address, in `docs/intro-and-codecard.md`'s own "The real per-frame
@@ -6829,3 +6852,280 @@ constants against the disassembly, including the pending-bonus-race gate) and `c
 (`enterBoard`/`boardTick`/`leaveBoard`) is structurally identical to `enterTwoItemMenu`/
 `enterCharSelect`, both already live-proven this project (§9av/§9aw/§9ax) under the exact same
 backgrounded-tab constraint.
+
+## 9az. P3's second item: the real interactive opponent picker, and the qualifier's fixed trio (2026-09-24)
+
+**Scope.** GOAL-DOS-PARITY.md P3's second checklist item: `FUN_1000_1A4A`, "pick 3 [opponents]
+after passing the Challenge qualifier", replacing the port's own auto-pick
+(`tournament.js:pickPlayerCharacter`'s old `pickOpponents` call, first-3-untaken-roster-slots).
+The item's own known trap (§9k): "the qualifier itself is a 4-car race and needs 3 opponents
+*before* the picker exists. Find out from the disassembly who the real qualifier drones are." Full
+re-disassembly of `FUN_1000_1A4A` (20 instructions) AND `FUN_1000_19F2` (23 instructions, `1A4A`'s
+own first call, not skipped this time), `RunOnePlayerChallenge 1000:102b` (30 instructions, the
+Challenge entry point), `RunTournamentLoop 1000:10a0`'s own tournament-init prologue (already
+re-disassembled for §9ay, re-read here for its `[266C]`/`[266E]` writes), `ResetTournamentState
+1000:0EBA` (31 instructions), `RunCharacterSelectMenuTune2 1000:09E0`'s own commit block
+(`1000:0AFA-0B50`, 37 instructions) AND its fire-confirm gate one block earlier (`1000:0AB5-0AC2`,
+the roster's own `|0x40` write site -- neither previously disassembled by §9ax's own pass, which
+stopped at the blink sequence), and `FUN_1000_0B51`'s own gate-fail return value (already named in
+§9ax, its own `AX` value on failure re-checked here since this item's own commit path `OR`s it into
+a live KidModifier slot). A `search_byte_patterns` sweep (per CLAUDE.md rule 2) on the per-car
+character-slot array's own disp16 bytes (`68 26`/`6A 26`/`6C 26`/`6E 26`) found every read/write
+site across the whole binary, not just the ones already cited; a further sweep for the roster's own
+`|0x40`/`|0x20` flag-set patterns (`64 01 40`/`64 01 20`) found none, which is WHY the taken-bit
+write below needed the slower `search_instructions` (mnemonic+operand, not raw bytes) approach --
+the real instruction addresses a register-relative `[SI]`, not a literal `DS:0164`-plus-immediate
+sequence a disp16 byte sweep can see.
+
+**Corrected before commit (a second advisor review, after this item's own first working draft).**
+Two real defects and three documentation gaps, all fixed below: (1) `confirm()`'s own
+`PRESS_ANY_KEY` branch called `startNextRace()` directly, skipping `nextAfterOutcome()` entirely --
+harmless for the screen's ORIGINAL, pre-qualifier use, but this item adds a SECOND use of that same
+phase (right after the picker's 3rd pick) where skipping `nextAfterOutcome()` meant P3's first item
+(the tournament board) never showed before race 1 at all, a real, player-visible regression this
+item's own first draft introduced without noticing; (2) the claim "the qualifier's raw writes
+bypass the `09E0` commit path that sets the roster's `|0x40` bit" cited the WRONG block (`0AFA-
+0B50`, which does not set it) as evidence -- the real write is `1000:0AC2`, one block earlier,
+found only after the advisor asked for the actual write site rather than accepting "not found in
+the block I checked" as proof of absence; (3) `enterOpponentPick` was missing its own
+`subMenuMusic` call (the picker would have inherited whatever tune the qualifier's OUTCOME screen
+left playing); (4) `lastPick.challengeOpponent` was never reset between separate tournament runs;
+(5) `FUN_1000_19F2` (`1A4A`'s own first instruction) was left undisassembled while the section
+still claimed "`1A4A` itself, fully disassembled" -- it turns out to be a real, previously-
+undocumented 4-face status panel, now recorded (and explicitly left unported) below. Live-tested
+end to end after all five fixes -- see "Live check" at the end of this section, which also closes
+P3's first item's own "not obtained" live-board gap as a side effect.
+
+**The qualifier's drones are answered directly: all three are JETHRO (character index 6), a
+hardcoded constant, not a real pick at all.** `RunOnePlayerChallenge 1000:102B`, right after PRESS
+ANY KEY and right before `CALL 10A0`: `1000:108D: MOV [266A],6`. `RunTournamentLoop`'s own
+tournament-init prologue, before the qualifier even runs: `1000:10B9: MOV [266C],6` /
+`1000:10BF: MOV [266E],6`. `[2668/266A/266C/266E]` is a 4-word array, one slot per car (car0's own
+slot feeds car0, DI+=2 per car in `InitRaceCarsFromTables`'s own KidModifier read, confirming §9an's
+prior citation that `[266A]` is "car 1's own character slot" generalises to all 4 cars, not just
+car 1) -- so cars 1/2/3 (the qualifier's 3 drones) all get JETHRO, every Challenge qualifier,
+unconditionally. **This has NO effect on tuning.** Re-disassembling `InitRaceCarsFromTables`'s own
+branch structure at the point it reads this array (`1000:3FBE-4009`) settles it directly: `CMP BX,0`
+forces car0(player) to `CX=0` always; for a drone, `CMP [28C1],0 / JG 3FF5` -- **only when
+`tournamentIndex>0`** does the code fall through to `3FF5` keeping whatever it read from the
+`KID_MODIFIER` table lookup moments earlier (`1000:3FBF-3FCB`, confirming `race.js`'s own
+`computeTuningOffset`'s existing `KID_MODIFIER[character]` branch is correct, not something this
+item needed to change); when `tournamentIndex<=0` (the qualifier, always), the code instead
+OVERWRITES that value with a flat per-car-slot ramp (`0/12/6` by which car-record offset `BX` holds,
+already `race.js`'s existing, correct `computeTuningOffset` `else` branch) -- so WHICH character is
+nominally assigned during the qualifier is read into a register and then unconditionally discarded.
+(An intermediate finding during this trace briefly looked like the WHOLE `KID_MODIFIER` mechanism
+was dead code, gated behind a permanently-zero `CS:[9C62]` flag both `102B` and `0FBF` explicitly
+zero at entry -- caught as incomplete BEFORE it was written down as a finding or raised with the
+advisor: re-tracing past that gate's own skip target (`JMP 3FBE`) all the way through, rather than
+stopping at the jump itself, showed the SKIPPED block (`3F3B-3FBD`) is a separate, genuinely-unused
+alternate car-init path with its own bit-shifted scaling math writing to different fields entirely
+(`+0x129C` etc via a raw `LODSW` stream, not `CarTypeInfo`); the REAL, always-reached `KID_MODIFIER`
+read sits at `3FBE` itself, past that jump, not inside it. The advisor's own review, consulted
+afterward with this already-corrected reading in hand, confirmed it and flagged five OTHER, real
+gaps in this item's own first draft instead -- see the corrections recorded throughout this
+section.)
+
+**JETHRO's own roster slot is NOT marked taken by the qualifier's fixed trio.** The normal "taken"
+write happens in `09E0`'s own commit block (`1000:0AFA-0B50`, disassembled fresh for this item,
+fully quoted below) via the FACE-PREVIEW SLOT's own frame field (`[BX+0x13]=AX`), which the
+qualifier's raw `[266A]=6`/`[266C]=6`/`[266E]=6` writes bypass entirely -- they write directly to
+the KidModifier array, never touching a face-preview slot or the roster (`DS:0164`) at all. So the
+player CAN still pick JETHRO for themselves at character-select, and the real opponent picker below
+can still offer JETHRO as a choice for races 1+, exactly as if the qualifier's own hardcoded trio
+never happened.
+
+**`09E0`'s own commit block (`1000:0AFA-0B50`), the single mechanism behind EVERY pick in the game
+-- and the roster's own `|0x40` "taken" bit, found ONE BLOCK EARLIER, not in it.** Re-disassembled
+fresh (not previously covered by §9AX's own pass, which stopped at the 5-blink sequence one block
+earlier): once the picked character's index is masked (`AX = [BX+0x13] & 0xF`, `BX` = whichever
+FACE-PREVIEW descriptor slot the caller is currently filling), FOUR parallel `CMP BX,<slot>`
+branches -- `0xC03`(car0/player) writes `[2668]`, `0xC1E`(car1) writes `[266A]`, `0xC39`(car2)
+writes `[266C]`, `0xC54`(car3) writes `[266E]` -- THEN, common to all four, `[BX+0x13]=AX` (the
+face-preview slot's OWN frame is set to the picked character -- THIS is what marks a slot
+"filled", not a separate flag), a face-frame recompute (`CALL 0DB0`) and a partial screen flip.
+**The roster's own `DS:0164` `|0x40` taken bit is NOT set anywhere in this block** (an early
+version of this section claimed the qualifier's raw writes "bypass the normal `09E0` commit path
+that sets the roster's own `|0x40` bit", citing THIS block as that path -- wrong citation, caught
+by an advisor review asking for the actual write site). The real write is one block earlier,
+`1000:0AC2` (`OR byte ptr [SI],0x40`, `SI = 0x164+character`), inside `09E0`'s own fire-confirm
+gate (`1000:0AB5-0AC2`: `CMP [0x160],0xA / JA <away>` -- exactly the "fire on a taken character is
+ignored" test §9AX already names -- then, only for a valid pick, the roster bit is set right as the
+5-blink commit sequence begins). The qualifier's own raw `[266A]=6`/`[266C]=6`/`[266E]=6` writes
+(`102B`/`10A0`) still never reach `0AC2` either way, since they never `CALL 09E0` at all -- the
+qualifier's fixed trio is not a "pick" in any sense the game's own code recognises, at either the
+KidModifier-array level or the roster level. **Only the car0/car1 branches also call the
+handicap-question gate (`CALL 0B51`, item 3's own `FUN_1000_0B51`, already documented in §9AX) --
+car2/car3 do not.** This is not a format-dependent branch in HOW the array is filled (an early
+hypothesis this session floated and then dropped once the bytes were read): `0B51` itself already
+gates on race format (`CMP [2656],1/JNZ`, returning `AX=0` on ANY gate failure, `1000:0C12`) --
+checked directly (not just inferred from the gate's own existence) because `0B1D: OR [266A],AX`
+means a nonzero return WOULD corrupt car1's own KidModifier index -- confirming the gate returns 0
+for Challenge (and for one-player H2H-vs-CPU, whose own `[265A]==6` also fails the SAME gate), so
+`OR [266A],0` is a true no-op in both cases this port actually reaches. Calling `0B51` for
+car2/car3 (which can only ever exist in 4-car Challenge, never H2H) would ALSO be a guaranteed
+no-op -- the asymmetry is dead-code avoidance in the original, not a real behavioural difference
+this port needs to reproduce. The SAME commit block services car0's own pick (from `102B`/`0FBF`'s
+own first `09E0` call), H2H's own single opponent pick (`0FBF`'s second call), AND every one of the
+Challenge picker's 3 calls below -- confirming `tournament.js`'s existing `pickOpponentCharacter`
+(already used for H2H) is the right function to reuse for Challenge too, not a new one.
+
+**`FUN_1000_1A4A` itself, fully disassembled.** A tight loop: `BX` walks the 4 face-preview
+descriptor slots (`0xC03,0xC1E,0xC39,0xC54`, stride `0x1B`=27, the SAME 27-byte sprite-descriptor
+stride §7 already documents), looking for one whose OWN frame field still reads the "unpicked"
+sentinel `0xB`(11) -- found: run `09E0` with `SI=0x227` ("WHO DO YOU WANT TO RACE ?", the identical
+prompt H2H's own opponent pick uses) and `AX=0xFFFF` (see below), THEN, on a cancel (`STC`), loop
+right back to the SAME slot (`1000:1A78: JNC 1A7C / JMP 1A69`) -- **there is no way to ESC out of
+this picker once the qualifier has passed**; on a confirm, record the slot in `[0x404]` and restart
+the ENTIRE scan from `0xC03` (`1000:1A80: JMP 1A53`), so each successive pick still finds the NEXT
+unfilled slot, in the SAME fixed order (car1, then car2, then car3 -- car0's own slot is already
+filled from the player's own earlier pick and never re-matches the sentinel test). Once a full scan
+finds no unfilled slot left, `CALL 0C15` ("PRESS ANY KEY TO START", the SAME screen the qualifier's
+own character select already led to once) and return. `[0x404]` (`1000:1A4F`/`1A7E`'s own writes,
+the ONLY two references to that address anywhere in the binary, `search_byte_patterns` swept and
+confirmed) is therefore **write-only, dead for reads** -- nothing in the shipped game ever consults
+it; a stray development-time bookkeeping variable, not wired to anything (including, notably, the
+elimination-replacement screen, `1000:16DE`, which does NOT read it either -- item 3's own future
+design should not assume `[0x404]` names "which slot to replace").
+
+**What resets the 4 face-preview slots to the "unpicked" sentinel, settling the item's own "before
+the picker exists" trap precisely.** `ResetTournamentState 1000:0EBA` (fully disassembled): resets
+lives (`[406..409]=3`), the carousel's own "centred" value (`[0x160]=6`), the roster (`DS:0164[0..10]
+= 0..10`, plain indices, no `taken`/`eliminated` flags -- confirms CLAUDE.md's own roster
+description exactly), the per-car KidModifier array (`[2668/266A/266C/266E]=0xB`(11), an
+OUT-OF-RANGE sentinel distinct from any real character 0-10, matching the face-slot frame sentinel
+in spirit), and -- the key fact -- ALL FOUR face-preview descriptor frames
+(`[0xC16]/[0xC31]/[0xC4C]/[0xC67]`, `= [slot]+0x13`) to `0xB` too. `ResetTournamentState` is called
+from `RunOnePlayerGameMenu 1000:02E0` (`1000:0369`, EVERY visit to ONE PLAYER GAME, before the
+player even commits to Challenge or Head-to-Head-vs-CPU) and from `RunTwoPlayerHeadToHeadSetup
+1000:1E66`. So by the time `102B`'s own player-pick `09E0` call runs, all 4 slots (including the
+player's own) already read the sentinel; the player's own pick fills slot `0xC03` via the commit
+block above; the qualifier's own `[266A]=6`/`[266C]=6`/`[266E]=6` writes are RAW, bypassing the
+commit block entirely, so slots `0xC1E`/`0xC39`/`0xC54` are STILL sentinel-`0xB` when the qualifier
+finishes -- meaning `1A4A`'s own scan, run right after a PASS, reliably finds exactly the 3
+opponent slots unfilled, in order, every time. This is the disassembly-derived answer to the
+item's own trap: DOS does not need the picker to exist before the qualifier because it never asks
+the qualifier's own opponents to be "picked" at all.
+
+**`AX=0xFFFF` at `09E0`'s own entry: "keep the previous scroll position", not a fresh start.**
+`09E0`'s own first 3 instructions: `CMP AX,0xFFFF / JZ 09F1` -- when `AX==0xFFFF` (every call `1A4A`
+itself makes), the block that would otherwise look up a starting scroll offset for a SPECIFIC
+character index and write it to `[0x192]` (the carousel's own scroll position) is skipped entirely,
+so `[0x192]` simply retains whatever the LAST carousel visit left it at. **Not ported
+byte-for-byte**: `charSelect.js`'s own `charSelectInitialState` always computes a fresh
+`startScroll(startIndex)`; there is no raw-scroll-pixel-carry state threaded through this port's
+own menu-to-menu transitions. Approximated instead as "start the next pick from the LAST pick's own
+index" (`flow.js`'s `enterOpponentPick`: the first opponent pick starts from the player's own final
+pick, `lastPick.player`; each subsequent one starts from the PREVIOUS opponent's own pick,
+`lastPick.challengeOpponent`) -- since the just-picked character is now `taken`, this correctly
+re-triggers the SAME `ENTRY_SKIP` auto-scroll-past-taken animation `charSelect.js` already has
+(P2's own item 3), landing on the same visual neighbourhood as "don't reset the scroll" without a
+second, parallel scroll-state mechanism. A documented simplification, in the same spirit as every
+other `AWAIT_RELEASE`-class approximation this project already uses for a screen with no
+`[PROVEN]` live capture and no numeric rule riding on the exact sub-pixel scroll position.
+
+**`FUN_1000_19F2`, `1A4A`'s own first instruction, disassembled -- not left unread as "probably
+just a header draw", as a first pass through this item assumed.** An advisor review pointed out
+that citing "full disassembly of `1A4A`" while leaving a function it calls first-thing
+undisassembled was overstated; `19F2` turns out to be its own real, previously-undocumented UI
+element: a 4-face STATUS PANEL (`CALL 0400` for the shared header, then a loop over 4 -- or, when
+`[0x3F8]==1`, 2, for H2H -- face-preview slots, drawn in a horizontal row at a fixed `Y=0x24`(36)
+with `X` stepping by `0x40`(64) each, `CALL 0DB0` recomputing each one's current frame from the
+SAME per-slot state `09E0`'s own commit block writes). Drawn ONCE, at the very start of the picker
+(not called again inside `1A4A`'s own pick loop), so it shows a snapshot of "who's picked so far"
+-- the player's own face plus 3 still-sentinel blanks -- at the moment the picker opens, not
+continuously refreshed as each of the 3 opponents is subsequently confirmed. **Not ported**: this
+port's own `enterOpponentPick` reuses the plain character-select carousel with no persistent status
+row above it, a real, visible simplification (the player sees ONLY the current pick's own carousel,
+not a running summary of all 4 cars), left this way for the same reason every other
+`screens.js`-scoped visual gap in this file is -- hand-drawn menu screens are this project's own
+established, documented bar, not pixel parity, and adding a second persistent sprite panel is a
+real new feature, not a bug fix, for an item whose own text asked "pick 3 opponents", not "draw the
+roster status panel".
+
+**Port.** `tournament.js`: `pickPlayerCharacter` no longer auto-picks opponents (the old
+`pickOpponents`/`firstUntaken` helpers are deleted, not just unused); `QUALIFIER_OPPONENTS` (the
+fixed JETHRO trio); `opponentCharactersFor(state)` (the qualifier's fixed trio for `raceIndex===0`
+Challenge races, `state.opponents` otherwise -- threaded into `spawnCars`'s own `opponentCharacters`
+in `flow.js`'s `runOneRace`, replacing the old direct `tournament.opponents` reference);
+`needsOpponentPick(state)` (true exactly once, right after a Challenge qualifier PASS);
+`pickOpponentCharacter` now APPENDS to `state.opponents` instead of replacing it (H2H's own single
+call is unaffected -- append and replace are equivalent for a length-0-then-1 sequence -- but
+Challenge's 3 sequential calls need accumulation). `flow.js`: `enterOpponentPick` (reuses
+`enterCharSelect` with a new `charWho='challenge-opponent'`), wired into `nextAfterOutcome` right
+before the (P3 first item's) board check -- DOS's own order is OUTCOME -> `1A4A` -> `[28C1]` INC ->
+board -> intro, and `needsOpponentPick`'s own trigger (checked AFTER this port's `advance()` already
+ran) reproduces that order without needing pre/post-increment timing to match exactly, since `1A4A`
+itself never reads `[28C1]` (documented distinction from `effectiveRaceIndex`'s own class of bug,
+where the pre/post-increment distinction DOES matter); `leaveCharSelect`'s own cancel branch now
+loops back into `enterOpponentPick` for `charWho==='challenge-opponent'` instead of going to SELECT
+GAME, matching `1A4A`'s own "ESC never exits" loop exactly. `advanceRace`'s own post-race `names`
+array (RESULTS table car labels) now picks `QUALIFIER_OPPONENTS` vs `tournament.opponents`
+by `wasQualifier` directly (not `opponentCharactersFor`, since `reportRaceResult`'s own `advance()`
+call has already moved `raceIndex` past the point that function's own `===0` check needs, by the
+time `names` is built) -- a correctness fix for a path that was already dead (the qualifier never
+shows RESULTS), not a user-visible change. `enterOpponentPick` also calls `subMenuMusic(sound)`
+(`09E0`'s own `1000:0A06-0A1D` re-asserts tune 2 on EVERY entry -- by the time the picker runs, the
+qualifier's race music and then `raceOutcomeMusic` have already played over it, so the ONE existing
+`subMenuMusic` call at the player's own first `enterCharSelect` is not enough, a gap an advisor
+review caught); `lastPick.challengeOpponent` is reset to `null` in the player-pick branch of
+`leaveCharSelect` (so a SECOND tournament's own first opponent pick starts from the NEW player pick,
+not a stale index left over from a previous run -- DOS's own equivalent, `[0x192]`, is zeroed by
+`ResetTournamentState` and then set fresh by the player's own `09E0` call every time).
+
+**A real bug an advisor review caught and this fix closes: the board (P3's first item) never
+showed before race 1 at all, until now.** `confirm()`'s own `PRESS_ANY_KEY` branch called
+`startNextRace()` directly, bypassing `nextAfterOutcome()` -- harmless for the ORIGINAL, pre-
+qualifier use of that phase (`needsOpponentPick`/`shouldShowBoard` are both false at `raceIndex 0`,
+so behaviour is unchanged there), but this item adds a SECOND `PRESS_ANY_KEY` right after the
+picker's 3rd pick (`1A4A`'s own trailing `CALL 0C15`), and calling `startNextRace()` directly from
+THAT one skipped `shouldShowBoard`'s own check entirely -- race 1's board, the FIRST board screen
+any Challenge player would ever see, never appeared. Fixed by calling `nextAfterOutcome()` instead
+(matching the OUTCOME branch's own existing style), which re-runs the SAME `needsOpponentPick` ->
+`shouldShowBoard` -> `startNextRace` chain regardless of which `PRESS_ANY_KEY` triggered it. One
+documented, accepted cosmetic cost: for the H2H qualifier specifically (`hasRaceIntro()===false`),
+`nextAfterOutcome`'s own unconditional trailing `paintMenu()` now briefly repaints a blank
+`LOADING`-phase frame over `runOneRace`'s own "Loading…" status text before the race's real render
+loop takes over -- self-correcting within one frame, not worth special-casing.
+
+**Tests.** `tools/check-tournament.mjs` rewritten substantially: the qualifier now races the fixed
+`QUALIFIER_OPPONENTS` and `state.opponents` starts empty; `needsOpponentPick` becomes true exactly
+once, right after a Challenge PASS, and false again once satisfied; picking the player's own
+character as an opponent fails; a qualifier FAILURE leaves the picker permanently unneeded (the
+tournament is over, `1A4A` never ran in the real game either); every test that continues past the
+qualifier now explicitly drives a `pickFirstUntakenOpponents` harness helper (the SAME
+first-3-untaken selection the OLD auto-pick made, now called explicitly by the TEST rather than
+implicitly by `tournament.js` itself, so every downstream numeric assertion -- eviction victims,
+streak counts -- is unchanged from before this item). `git stash push -u -- src/` fails the
+rewritten `check-tournament.mjs` with a missing export (`QUALIFIER_OPPONENTS`), confirming the fix
+is load-bearing. Full regression suite (including `finish`/`rounds`/`twocar`, which never went
+through `tournament.js`'s own opponent auto-pick at all -- they call `spawnCars` directly with
+explicit `opponentCharacters`) re-ran clean with no results moving, confirming this item's own
+scope (the front-end picker, and the qualifier's own fixed-trio fact) does not touch any
+already-tested physics path.
+
+**Live check -- the picker AND the board (P3's first item) both confirmed live, end to end, once
+the PRESS_ANY_KEY bug above was found and fixed.** The boot-chain drive-through (title -> SELECT
+GAME -> ONE PLAYER GAME (Challenge) -> character select -> PRESS ANY KEY) first confirmed
+`tournament.opponents` is genuinely empty (`[]`) right after the player's own pick -- the
+directly observable confirmation the auto-pick is gone. Reaching the picker itself live does not
+need a completed qualifier race: the advisor's own suggestion was to poke `tournament.raceIndex`
+directly to simulate "the qualifier just passed" (a synthetic STATE jump, but every SCREEN
+transition and render from that point on is the real code, not simulated) --
+`g.getTournament().raceIndex = 1; g.confirm()` from the pre-qualifier `PRESS_ANY_KEY` screen landed
+straight in `CHAR_SELECT` showing "WHO DO YOU WANT TO RACE ?" with the carousel auto-skipped past
+the player's own already-taken pick (screenshotted). Driving all 3 picks with `forceCharSelectSteps`
+(including one deliberate `escReleased` mid-sequence, confirming `opponents` did not change and the
+SAME slot re-prompted, matching `1A4A`'s own "ESC never exits" loop) reached `PRESS_ANY_KEY` again
+with `opponents=[9,8,7]`. Confirming THAT is exactly where the bug above was caught: before the
+fix, this landed straight in `RACE_INTRO` with the board never shown; after the fix, `g.confirm()`
+correctly landed in `BOARD` -- **the first live render of the tournament board screen, item 1's own
+"Not obtained" gap, closed as a side effect of item 2's own live testing** -- showing the real
+"MicroMachines" header, the CASE.CHR display case, and one blinking MINATURE icon previewing race
+1's own vehicle class (screenshotted). `forceBoardSteps` then correctly exited to `RACE_INTRO`. No
+console errors from the point the console-message tool was attached (the same standing caveat
+§9AY's own live-check paragraph names: this does not cover errors before that attachment point).
+The picker's own rule logic remains additionally proven by `check-tournament.mjs`'s 11 test blocks
+against the fresh disassembly above; this live pass confirms the UI WIRING specifically
+(`enterOpponentPick`, the `leaveCharSelect` cancel-loops-back branch, the `PRESS_ANY_KEY` ->
+`nextAfterOutcome` fix) end to end, something no synthetic state poke alone can show.
