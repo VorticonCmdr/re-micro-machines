@@ -12,6 +12,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createMenuBuffer, MENU_VIEW } from '../src/render/menuView.js'
 import { drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawOpponentPanel, drawEliminatedScreen, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, faceFrame, eliminatedPanelSlots } from '../src/frontend/screens.js'
+import { WOBBLE_TABLE } from '../src/frontend/elimination.js'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const GAME = join(ROOT, 'game')
@@ -48,10 +49,11 @@ check('eliminatedPanelSlots leaves every other slot untouched', eliminatedPanelS
 {
   // End-to-end through drawEliminatedScreen itself, not just eliminatedPanelSlots in isolation (a
   // caller could still forget to use it). At step=15 (the bounce's own last position, offset 47) the
-  // FCSAD icon lands at Y=PANEL_Y+47, empirically confirmed to fall entirely BELOW every panel row
-  // that a frame-13-vs-frame-11 choice actually differs in (rows 13-47 of the 48-tall sprite; rows
-  // 0-12 are blank/transparent in both frames regardless), so a pixel diff against an icon-less
-  // reference over just that row range isolates the panel's own frame choice from the icon.
+  // squash crop (below) draws only 1 row of the FCSAD icon, at Y=PANEL_Y+47 (panel row 47) -- which
+  // happens to render as entirely transparent on this sprite -- so it draws nothing at all in rows
+  // 13-46, the ones a frame-13-vs-frame-11 choice actually differs in (rows 0-12 are blank in both
+  // frames regardless). A pixel diff against an icon-less reference over just that row range
+  // isolates the panel's own frame choice from the icon.
   const PANEL_Y = 0x24, PANEL_X0 = 8, PANEL_STEP_X = 0x40
   const eliminated = createMenuBuffer()
   drawEliminatedScreen(eliminated, arena, { victim: 1, playerCharacter: 10, opponents: [null, 2, 3], slot: 0, step: 15, frameOn: true })
@@ -71,14 +73,65 @@ check('eliminatedPanelSlots leaves every other slot untouched', eliminatedPanelS
 // `done` -- it disappears the instant the bounce finishes (`1000:1776: CALL 05B4`, re-disassembled,
 // erases it from the work buffer every iteration including the last; nothing redraws it before the
 // real game's next full-screen present, `1000:1790: CALL 08BC`), not frozen at its own last bounced
-// position as a first fix attempt wrongly assumed.
+// position as a first fix attempt wrongly assumed. Deliberately at step=0 (offset 2, cropRows=46 of
+// 48 -- nearly the whole sprite), not step=15: the SAME `1767`-driven squash crop (below) shrinks the
+// icon to just 1 row by step=15/47, which happens to render as ALL-transparent pixels on this
+// particular sprite -- a real, separate effect, but one that would make this specific test vacuous
+// (an un-fixed `done` skip and the squash's own near-invisibility would look identical) if step=15
+// were used here instead.
 {
   const notDone = createMenuBuffer()
-  drawEliminatedScreen(notDone, arena, { victim: 1, playerCharacter: 10, opponents: [null, 2, 3], slot: 0, step: 15, frameOn: true, done: false })
+  drawEliminatedScreen(notDone, arena, { victim: 1, playerCharacter: 10, opponents: [null, 2, 3], slot: 0, step: 0, frameOn: true, done: false })
   const done = createMenuBuffer()
-  drawEliminatedScreen(done, arena, { victim: 1, playerCharacter: 10, opponents: [null, 2, 3], slot: 0, step: 15, frameOn: true, done: true })
+  drawEliminatedScreen(done, arena, { victim: 1, playerCharacter: 10, opponents: [null, 2, 3], slot: 0, step: 0, frameOn: true, done: true })
   check('the icon draws when not done', nonEmpty(notDone))
   check('drawEliminatedScreen with done=true draws no icon at all (differs from the not-done render)', !notDone.every((v, i) => v === done[i]))
+}
+
+// Regression for the squash crop itself (docs/engine.md §9ba, 1000:1767): the icon must draw FEWER
+// visible rows as the offset grows, with its own visible bottom edge staying pinned (not simply
+// translating downward as one whole sprite) -- at the deepest point of the table (offset 47 of a
+// 48-tall sprite, step 5 or 15), only 1 row survives the crop, rendering as entirely transparent on
+// this sprite (confirmed above) -- i.e. visually indistinguishable from no icon at all, even though
+// `done` is still false. A near-full step (offset 2, step 0) must still show real, non-transparent
+// icon pixels.
+{
+  const nearlyFull = createMenuBuffer()
+  drawEliminatedScreen(nearlyFull, arena, { victim: 1, playerCharacter: 10, opponents: [null, 2, 3], slot: 0, step: 0, frameOn: true, done: false })
+  const deepestDip = createMenuBuffer()
+  drawEliminatedScreen(deepestDip, arena, { victim: 1, playerCharacter: 10, opponents: [null, 2, 3], slot: 0, step: 5, frameOn: true, done: false })
+  const noIconAtAll = createMenuBuffer()
+  drawEliminatedScreen(noIconAtAll, arena, { victim: 1, playerCharacter: 10, opponents: [null, 2, 3], slot: 0, step: 5, frameOn: true, done: true })
+  check('a near-full step (offset 2) still shows real icon pixels', !nearlyFull.every((v, i) => v === noIconAtAll[i]))
+  check('the deepest dip (offset 47, step 5) squashes to the SAME render as no icon at all (1 row, entirely transparent on this sprite)', deepestDip.every((v, i) => v === noIconAtAll[i]))
+}
+
+// Bounding-box invariant, every step (docs/engine.md §9ba): the icon's own visible bottom edge must
+// stay pinned at PANEL_Y+48 (the sprite's own full height) while its visible top sinks toward it --
+// NOT translate as one whole sprite (a first draft that kept Y fixed at PANEL_Y and only applied the
+// crop would still pass every check above, since both variants agree at the two steps already
+// tested; this is the one check that tells the two apart at every step in between). Diffing each
+// step's render against its OWN `done: true` reference isolates exactly the pixels the icon itself
+// contributes (panel/text are identical either way); every one of them must fall inside
+// [PANEL_Y+offset, PANEL_Y+48) -- never above the icon's own current top (proves Y moves down, not
+// fixed) and never at or below the floor (proves the crop removes BOTTOM rows, not top ones).
+{
+  const PANEL_Y = 0x24
+  const face = { height: 48 } // FCSAD.CHR, confirmed via arena lookup elsewhere in this file
+  for (let step = 0; step < WOBBLE_TABLE.length; step++) {
+    const offset = WOBBLE_TABLE[step]
+    const withIcon = createMenuBuffer()
+    drawEliminatedScreen(withIcon, arena, { victim: 1, playerCharacter: 10, opponents: [null, 2, 3], slot: 0, step, frameOn: true, done: false })
+    const withoutIcon = createMenuBuffer()
+    drawEliminatedScreen(withoutIcon, arena, { victim: 1, playerCharacter: 10, opponents: [null, 2, 3], slot: 0, step, frameOn: true, done: true })
+    let ok = true
+    for (let i = 0; i < withIcon.length; i++) {
+      if (withIcon[i] === withoutIcon[i]) continue
+      const y = Math.floor(i / MENU_VIEW.w)
+      if (y < PANEL_Y + offset || y >= PANEL_Y + face.height) ok = false
+    }
+    check(`step ${step} (offset ${offset}): every icon-only pixel falls in [${PANEL_Y + offset}, ${PANEL_Y + face.height})`, ok)
+  }
 }
 
 const cases = [

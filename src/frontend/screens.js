@@ -230,21 +230,28 @@ export function drawOpponentPanel(buf, arena, { slots, header = true }) {
  * every frame (a documented, harmless port-side simplification EXCEPT at the victim's own slot,
  * where redrawing from the ALREADY-vacated `tournament.opponents` would show the wrong pose; fixed
  * below by substituting the SAME `0x40`-only sentinel the real `170A` OR produces). The victim's
- * OWN icon then bounces IN that same panel row (its own slot's X, `PANEL_Y + WOBBLE_TABLE[step]`),
- * using `FCSAD.CHR` (confirmed live this session, see `elimination.js`'s own header for the full
- * derivation), NOT `FCNORMAL` -- frame `victim*2 + (frameOn?1:0)`. **The icon disappears entirely
- * once the bounce finishes**, not a beat later and not frozen at its own last position (a first fix
- * attempt's own wrong assumption, caught by re-disassembling the loop's own draw sequence): its last
- * draw is immediately followed, same iteration, by `1000:1776: CALL 05B4`
- * (`RestoreSpriteBackground`, re-disassembled -- copies the pixels the blit overwrote back over it,
- * i.e. erases the sprite from the work buffer), and nothing between the loop's own exit
- * (`1000:1759`) and the real game's next full-screen present (`1000:1790: CALL 08BC`, distinct from
- * the loop's own partial-band `089C`) draws anything new -- so `done` (`elimination.js`'s own
- * latched flag, not merely `step===WOBBLE_TABLE.length-1`) must suppress the icon draw entirely, not
- * just clamp its position. `opponents`: the CURRENT 3-slot array (`tournament.opponents`, already
- * `null` at `slot`). `slot`: 0-2, which of the 3 opponent columns (panel column `slot+1`, column 0
- * is always the player) the victim occupied. `step`/`frameOn`/`done`: `elimination.js`'s own step
- * state. */
+ * OWN icon then bounces IN that same panel row (its own slot's X, Y `PANEL_Y + WOBBLE_TABLE[step]`,
+ * moving DOWN each step), using `FCSAD.CHR` (confirmed live this session, see `elimination.js`'s own
+ * header for the full derivation), NOT `FCNORMAL` -- frame `victim*2 + (frameOn?1:0)`. **It also
+ * SQUASHES**: `1000:1767: SUB byte [BX+0x19],AL` shrinks the sprite's own drawn row count by the
+ * CURRENT offset every step (re-disassembled, confirmed against `04BD`'s own outer row-loop count
+ * and `0630`'s own fresh reset of that field to the sprite's full height first) -- so fewer of the
+ * icon's own bottom rows draw the deeper it sinks, down to just 1 visible row at the deepest point
+ * of each dip (offset 47 of 48), with its own visible BOTTOM edge staying pinned at
+ * `PANEL_Y + face.height` (the panel's own "floor") throughout, rather than the icon simply moving
+ * as one whole sprite. **It also disappears entirely once the bounce finishes**, not a beat later
+ * and not frozen at its own last position (a first fix attempt's own wrong assumption, caught by
+ * re-disassembling the loop's own draw sequence): its last draw is immediately followed, same
+ * iteration, by `1000:1776: CALL 05B4` (`RestoreSpriteBackground`, re-disassembled -- copies the
+ * pixels the blit overwrote back over it, i.e. erases the sprite from the work buffer), and nothing
+ * between the loop's own exit (`1000:1759`) and the real game's next full-screen present
+ * (`1000:1790: CALL 08BC`, distinct from the loop's own partial-band `089C` -- that band turned out
+ * to be a red herring for this specific effect, see `elimination.js`'s own header) draws anything new
+ * -- so `done` (`elimination.js`'s own latched flag) must suppress the icon draw entirely,  not just
+ * clamp its position or crop it away. `opponents`: the CURRENT 3-slot array (`tournament.opponents`,
+ * already `null` at `slot`). `slot`: 0-2, which of the 3 opponent columns (panel column `slot+1`,
+ * column 0 is always the player) the victim occupied. `step`/`frameOn`/`done`: `elimination.js`'s
+ * own step state. */
 /** 1000:170A's own OR (`[BX+0x13] |= 0x40`), the victim's slot only: extracted as its own pure,
  * directly-testable function (`tools/check-screens.mjs`) since the render-level effect is hard to
  * observe reliably -- the bouncing FCSAD icon drawn on top covers most of the same sprite rows the
@@ -258,8 +265,18 @@ export function drawEliminatedScreen(buf, arena, { victim, playerCharacter, oppo
   drawString(buf, arena, rec('FONT2.CHR'), CHARACTER_NAMES[victim] ?? '', 0x48, 0x64)
   drawString(buf, arena, rec('FONT2.CHR'), 'IS OUT!!', 0x80, 0x64)
   if (!done) {
-    const y = PANEL_Y + (WOBBLE_TABLE[step] ?? 0)
-    blitChr(buf, arena, rec('FCSAD.CHR'), victim * 2 + (frameOn ? 1 : 0), PANEL_X0 + (slot + 1) * PANEL_STEP_X, y)
+    const offset = WOBBLE_TABLE[step] ?? 0
+    const face = rec('FCSAD.CHR')
+    // 1000:1767: SUB byte [BX+0x19],AL -- the sprite's own row count (reset to its full height by
+    // 0630 every step, since Y=baseline+offset never nears the real screen's own 200-row bound) is
+    // shrunk by the CURRENT offset before the draw (04BD's own outer row-loop count, counted from
+    // the sprite's own TOP row, per its own SI/DI addressing) -- while the draw's own Y position
+    // (baseline+offset, unchanged) still moves DOWN each step. Net effect: the icon's own VISIBLE
+    // bottom edge stays pinned at baseline+fullHeight (the panel's own "floor"), and its top sinks
+    // toward it -- a "squash" effect, down to just 1 visible row at the deepest point of each dip
+    // (offset 47 of 48) -- NOT a screen-bounds clip (see `blit.js`'s own `blitTransparent` header).
+    const y = PANEL_Y + offset
+    blitChr(buf, arena, face, victim * 2 + (frameOn ? 1 : 0), PANEL_X0 + (slot + 1) * PANEL_STEP_X, y, { cropRows: face.height - offset })
   }
 }
 

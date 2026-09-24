@@ -25,11 +25,20 @@ export function clipRect(x, y, w, h, dstW, dstH) {
 /**
  * Draw `src` (indexed, {width,height,indexed}) into `dst` at (x,y), colour 0 transparent.
  * This is the game's ordinary sprite blit (car bodies already colour-remapped, HUD icons, etc).
+ *
+ * `cropRows`: draw only the sprite's own first N rows (from its top), the rest left untouched --
+ * `ClipSpriteDescToFrontView 1000:0630`'s own `[BX+0x19]` row count, which the elimination screen's
+ * own bounce loop (`1000:1767: SUB byte [BX+0x19],AL`) shrinks by the CURRENT wobble offset every
+ * step, AFTER `0630` has reset it to the sprite's full height -- not a screen-bounds clip (the
+ * sprite is always fully on-screen here), a deliberate per-step "squash" effect: the icon draws
+ * fewer and fewer of its own bottom rows as it sinks toward its max offset, down to just 1 row at
+ * the deepest point of each dip (docs/engine.md §9ba, `elimination.js`'s own header).
  */
-export function blitTransparent(dst, dstW, dstH, x, y, src, { colorKey = 0, flip = false } = {}) {
+export function blitTransparent(dst, dstW, dstH, x, y, src, { colorKey = 0, flip = false, cropRows = Infinity } = {}) {
   const c = clipRect(x, y, src.width, src.height, dstW, dstH)
   if (!c) return
-  for (let sy = c.sy0; sy < c.sy1; sy++) {
+  const sy1 = Math.min(c.sy1, cropRows)
+  for (let sy = c.sy0; sy < sy1; sy++) {
     const srow = sy * src.width
     const drow = (c.dy0 + (sy - c.sy0)) * dstW + c.dx0
     for (let sx = c.sx0; sx < c.sx1; sx++) {

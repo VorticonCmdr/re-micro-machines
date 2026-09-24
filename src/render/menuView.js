@@ -16,9 +16,11 @@ export function createMenuBuffer() {
 }
 
 /** Draw one frame of a CHR member at (x,y). `flip` mirrors horizontally (the descriptor's `+0xA`
- * flip flag); colour 0 is transparent (`BlitSpriteTransparentFlipSaveUnder`, confirmed live). */
-export function blitChr(buf, arena, rec, frame, x, y, { flip = false } = {}) {
-  blitTransparent(buf, MENU_VIEW.w, MENU_VIEW.h, x, y, chrFrame(arena, rec, frame), { flip })
+ * flip flag); colour 0 is transparent (`BlitSpriteTransparentFlipSaveUnder`, confirmed live).
+ * `cropRows`: draw only the sprite's own first N rows (see `blit.js`'s own `blitTransparent`
+ * header -- the elimination screen's own bounce "squash" effect, docs/engine.md §9ba). */
+export function blitChr(buf, arena, rec, frame, x, y, { flip = false, cropRows = Infinity } = {}) {
+  blitTransparent(buf, MENU_VIEW.w, MENU_VIEW.h, x, y, chrFrame(arena, rec, frame), { flip, cropRows })
 }
 
 // BlitGlyph8xH (1000:0999), already [PROVEN] in this project's own Ghidra comments (by rendering

@@ -276,12 +276,13 @@ docs, (6) commit.
   bug class as §9ay/§9az); a `!bonusTriggered` gate would have wrongly skipped eviction on a race
   that also triggers a bonus; and the RESULTS table would have snapshotted `opponents` after
   eviction had already nulled the just-raced victim's own slot. All three written correctly from
-  the start. A second advisor review, of the committed code and tests, found the proof-of-failure
-  work so far didn't hold up: a whole-`src/` `git stash` only proves missing exports exist, not that
-  any assertion catches its own bug; test 7's own round-robin check was actually vacuous (the test
-  harness always replaces in ascending order, so "the cursor advances" and "always evict the lowest
-  index" predicted the same victim every time); and test 7c exercised `tournament.js`'s raw
-  functions directly rather than the code `advanceRace` actually calls. It also raised a concrete
+  the start. Further advisor review (two separate passes, docs/engine.md §9ba has the exact split)
+  found the proof-of-failure work so far didn't hold up: a whole-`src/` `git stash` only proves
+  missing exports exist, not that any assertion catches its own bug; test 7's own round-robin check
+  was actually vacuous (the test harness always replaces in ascending order, so "the cursor advances"
+  and "always evict the lowest index" predicted the same victim every time); and test 7c exercised
+  `tournament.js`'s raw functions directly rather than the code `advanceRace` actually calls. It also
+  raised a concrete
   double-eviction question -- could `[0x310]` and `[28C1]` disagree across a bonus race -- settled
   by fresh re-disassembly: they're provably always equal (written together at every site), and
   `TriggerBonusRace`'s own full body never reaches the elimination gate at all, so not a bug either
@@ -313,13 +314,19 @@ docs, (6) commit.
   CALL 08BC` (the real game's own next full-screen present, distinct from the loop's own partial-band
   refresh) settled it: the icon vanishes ENTIRELY the instant the bounce finishes, not a beat later
   and not frozen at offset 47. Fixed properly: `drawEliminatedScreen` now takes an explicit `done`
-  flag and skips the icon draw entirely. Every fix confirmed by reintroducing its own bug and
-  re-running the suite, and the final behaviour confirmed visually by rendering both the mid-bounce
-  and done states to PNG and looking. Still open, deliberately not modelled
-  (`UNKNOWN_elimination_bounce_clip_band`): whether the bouncing icon's own lower rows are actually
-  clipped from the visible screen mid-bounce too (a narrower, ~60-row VGA-refresh band the loop's own
-  `089C` calls with fixed parameters might imply) -- rests on an unconfirmed stride reading, not
-  applied without a live capture or a cleaner static re-derivation. `src/frontend/elimination.js`
+  flag and skips the icon draw entirely. A further pass then settled what had briefly been left as
+  `UNKNOWN_elimination_bounce_clip_band`: the icon doesn't get clipped by a narrow VGA-refresh band
+  (`089C`'s own partial-band present turned out to be an unrelated, harmless optimization, a red
+  herring) -- it SQUASHES. `1000:1767: SUB byte [BX+0x19],AL` shrinks the sprite's own drawn-row
+  count (reset to its full height by `0630` every step) by the current offset before each draw, and
+  `04BD`'s own row-loop counts down from the sprite's own top, so fewer of the icon's own bottom rows
+  draw the deeper it sinks -- down to just 1 (entirely transparent, on this sprite) visible row at
+  the deepest point of each dip -- with its own visible bottom edge pinned at the panel row's own
+  "floor" throughout, rather than moving as one whole sprite. Ported via a new `cropRows` option on
+  `blitChr`/`blitTransparent` (`src/render/menuView.js`/`blit.js`). Every fix confirmed by
+  reintroducing its own bug and re-running the suite, and the final behaviour confirmed visually by
+  rendering several steps to PNG and looking (the face visibly sinks to a sliver, then resurfaces,
+  matching the wobble table's own double-dip shape). `src/frontend/elimination.js`
   (new), `tools/check-elimination.mjs` (new, `npm run elimination`). Also ports item 2's own
   deliberately-deferred `FUN_1000_19F2` 4-face status panel (`drawOpponentPanel`), needed for this
   screen's own row layout and shown for both the initial pick and a replacement. Live-tested end to

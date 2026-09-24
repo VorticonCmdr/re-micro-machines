@@ -24,17 +24,24 @@
 // (`ClipSpriteDescToFrontView`/`BlitSpriteTransparentFlipSaveUnder`/`CopyFrontViewRowsToVga`/
 // `RestoreSpriteBackground`) is a graphics routine. Each step is silent.
 //
-// `UNKNOWN_elimination_bounce_clip_band`, genuinely open, not modelled: `CopyFrontViewRowsToVga`
-// (`1000:089C`) is called every step with LITERAL params (`176D`/`1770`: row-count 0x3C(60),
-// start-row 0x20(32)) distinct from its own sibling full-screen present `08BC` (a plain,
-// unambiguous 200-row copy re-disassembled this session). If those two literals really mean "only
-// rows 32-91 (view-relative) reach the real screen each step" -- plausible, but resting on a stride
-// arithmetic reading (SI/DI advance amounts inside `089C`'s own copy loop) not independently
-// verified against a live capture -- the bouncing icon's own lower rows would be invisible on-screen
-// whenever its Y offset pushes it below that band (i.e. for the larger table values, 32/47), an
-// additional visual effect this port does not reproduce (the icon draws fully, unclipped, at every
-// step). NOT applied speculatively; needs either a cleaner static re-derivation of `089C`'s own
-// addressing or a live DOSBox capture before it should change any code.
+// **The icon also SQUASHES, resolved (an earlier `UNKNOWN_elimination_bounce_clip_band` wrongly
+// blamed `CopyFrontViewRowsToVga 1000:089C`'s own partial-band present for this -- that function's
+// literal params, re-disassembled fully this pass, turned out to be a plain "only present rows
+// 32-91 of the WHOLE screen per refresh, for speed" optimization with no visible clipping effect at
+// all, since the bounce never reaches row 92 -- a genuine red herring, not the mechanism).** The
+// REAL mechanism, independently re-disassembled and cross-checked against three separate functions:
+// `1000:1763: CALL 0630` (`ClipSpriteDescToFrontView`) resets the sprite's own drawn-row count
+// (`[BX+0x19]`) to its full height (48) every step, since baseline+offset never nears the real
+// screen's own 200-row bound; `1000:1767: SUB byte [BX+0x19],AL` (AL = the JUST-READ wobble offset)
+// immediately shrinks that count by the current step's own offset, BEFORE the draw; `1000:176A:
+// CALL 04BD` (`BlitSpriteTransparentFlipSaveUnder`) then draws exactly `[BX+0x19]` rows counted
+// from the sprite's own TOP (`04D2: MOV CH,byte ptr [BX+0x19]`, the draw loop's own outer counter).
+// Net effect: the icon's own Y position still moves DOWN each step (baseline+offset, unchanged from
+// the original reading), but its VISIBLE bottom edge stays pinned at baseline+48 (the panel row's
+// own "floor") throughout -- the icon appears to SINK INTO that floor, squashing down to just 1
+// visible row at the deepest point of each dip (offset 47 of 48), rather than moving as one whole
+// sprite. Ported in `screens.js`'s `drawEliminatedScreen` via a new `cropRows` option on
+// `blitChr`/`blitTransparent` (`src/render/menuView.js`/`blit.js`).
 export const WOBBLE_TABLE = [2, 4, 8, 16, 32, 47, 32, 16, 8, 4, 2, 4, 8, 16, 32, 47] // DS:034B's own 16 real steps (the 17th byte is the 0 terminator, never itself drawn)
 export const WOBBLE_STEP_TICKS = 9 // 1000:177F/1784, literal, not approximate
 

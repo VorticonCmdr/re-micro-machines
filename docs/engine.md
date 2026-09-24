@@ -6233,10 +6233,11 @@ initial 3-pick and a replacement pick, closing that item's own deferred gap as a
 further render-only bugs, caught only once this item was actually rendered rather than just unit
 tested (a red "?" placeholder shown at the victim's own panel slot; the bounce's own final frame
 snapping to the wrong Y-offset, then -- once clamped -- wrongly assumed to freeze there rather than
-vanish) are both fixed; new open item, deliberately not applied without a live capture:
-`UNKNOWN_elimination_bounce_clip_band` (whether the icon's own lower rows are additionally clipped
-from the visible screen mid-bounce by a narrower VGA-refresh band, rests on an unconfirmed stride
-reading of `1000:089C`'s own copy loop).
+vanish), are both fixed. A briefly-open item from that same pass, `UNKNOWN_elimination_bounce_clip_band`
+(a possible clip from `089C`'s own partial-band VGA present), is now resolved and closed: that band
+turned out to be an unrelated, harmless refresh optimization (a red herring); the icon actually
+SQUASHES instead, via a per-step row-count shrink (`1000:1767`) independently confirmed against three
+functions and ported with a new `cropRows` blit option -- see §9ba's own dedicated paragraph.
 
 ## 9as. P1's first item: the logo intro's real per-frame animation (2026-09-24)
 
@@ -7348,8 +7349,8 @@ well, redrawn fresh from `tournament.opponents` on every repaint rather than the
 "drawn once, left on screen" approach -- a documented, low-risk port-side layering choice, not a
 real-bytes citation).
 
-**Corrected post-implementation (a second advisor review, of the committed code and tests).** Three
-findings, none requiring a behaviour change:
+**Corrected post-implementation (a second advisor review, of the code and tests as written so far --
+nothing was committed yet at this point).** Three findings, none requiring a behaviour change:
 1. **The `git stash push -u -- src/` proof-of-failure was too broad to be meaningful.** Stashing the
    whole `src/` tree against the brand-new `elimination.js`/rewritten `tournament.js`/`screens.js`
    only proved the new EXPORTS didn't exist yet (`SyntaxError: ... does not provide an export named
@@ -7411,8 +7412,8 @@ three findings above were themselves incomplete:
    before the picker, not after).
 
 **Corrected after a fourth advisor review (of the render this item had never actually looked at).**
-Two real, independently confirmed bugs, neither previously caught because no prior pass had rendered
-the elimination screen mid-bounce or at the moment it finishes:
+Three real, independently confirmed bugs, neither previously caught because no prior pass had
+rendered the elimination screen mid-bounce or at the moment it finishes:
 1. **The panel showed the real "unpicked" placeholder (a red "?", frame 11) at the victim's own
    slot, throughout the whole bounce.** `paintEliminated` (`flow.js`) passes `tournament.opponents`
    straight to `drawEliminatedScreen`, and `checkElimination` has ALREADY set that slot to `null`
@@ -7457,17 +7458,33 @@ the elimination screen mid-bounce or at the moment it finishes:
    derivation exactly. A second latent bug the first fix attempt's own `state.step` clamp surfaced:
    calling `eliminationStep` again after done would have waited another full 9 ticks before
    re-signalling done (the tick-counting logic ran unconditionally); fixed with an explicit
-   `state.done` latch, checked first. **Deliberately NOT modelled, still open**
-   (`UNKNOWN_elimination_bounce_clip_band`, `elimination.js`'s own header): `089C`
-   (`CopyFrontViewRowsToVga`, the loop's own PARTIAL per-step present, distinct from `08BC`'s full
-   200-row one) is called every step with literal row-count/start-row parameters (`0x3C`/`0x20`)
-   that -- IF a specific stride reading of its own copy loop is right, not independently confirmed --
-   would mean only a ~60-row band (view-relative rows 32-91) actually reaches the real screen each
-   step, clipping the icon's own lower rows whenever its offset (32 or 47) pushes it below that band.
-   Not applied: the stride arithmetic behind it rests on one reading of `089C`'s own SI/DI
-   advancement that was not independently cross-checked, unlike the two fixes above (each resting on
-   a single, simple, unambiguous function). Needs either a cleaner re-derivation or a live DOSBox
-   capture before it should change any rendering.
+   `state.done` latch, checked first.
+3. **The icon also SQUASHES -- initially flagged `UNKNOWN_elimination_bounce_clip_band`, now
+   resolved and ported.** A pass that first raised this suspected `089C` (`CopyFrontViewRowsToVga`,
+   the loop's own PARTIAL per-step VGA present, called with literal row-count/start-row parameters
+   `0x3C`/`0x20`) of clipping the icon to a narrow view-relative row band (32-91) whenever its offset
+   pushed it below that band -- plausible from the call site alone, but resting on an unconfirmed
+   stride reading. A follow-up pass fully re-disassembled `089C`'s own copy loop (confirming the
+   destination row stride is 320 bytes -- mode 13h's own width, matching `menuView.js`'s own
+   pre-existing header note -- and the source stride 272, `0x888 = 8*272+8`) and found the suspicion
+   was a RED HERRING: at the bounce's own Y range (38-84), this band never actually clips anything.
+   The REAL mechanism is `1000:1767: SUB byte [BX+0x19],AL` (AL = the just-read wobble offset),
+   independently confirmed against THREE separate functions: `1000:1763: CALL 0630`
+   (`ClipSpriteDescToFrontView`, re-disassembled) resets `[BX+0x19]` to the sprite's own full height
+   (48) every step (Y never nears the real screen's own 200-row bound, so no screen-edge clip ever
+   applies either); `1767` then shrinks that count by the CURRENT offset, immediately before the
+   draw; `1000:176A: CALL 04BD` (`BlitSpriteTransparentFlipSaveUnder`, re-disassembled) draws exactly
+   `[BX+0x19]` rows counted from the sprite's own TOP (`04D2: MOV CH,byte ptr [BX+0x19]`, the draw
+   loop's own outer counter) -- while the DRAW POSITION (baseline+offset) still moves down each step
+   unchanged. Net effect: the icon's own visible BOTTOM edge stays pinned at `baseline+48` (the panel
+   row's own "floor") throughout, and it visibly SQUASHES into that floor as it sinks, down to just 1
+   visible row (which happens to render as entirely transparent on this specific sprite) at the
+   deepest point of each dip (offset 47 of 48) -- then resurfaces as the offset drops back down,
+   matching the wobble table's own double-dip shape. Ported via a new `cropRows` option threaded
+   through `blitTransparent` (`src/render/blit.js`) and `blitChr` (`src/render/menuView.js`), applied
+   in `drawEliminatedScreen`. Confirmed by reintroducing the bug (dropping `cropRows`) and
+   re-running the suite, AND by rendering several steps to PNG and looking -- the face visibly sinks
+   to a sliver by step 4-5 and fully resurfaces by step 8, exactly matching this derivation.
 
 **Port.** `src/frontend/elimination.js` (new, pure `eliminationInitialState`/`eliminationStep`, no
 input parameter -- the real loop never polls input). `src/frontend/tournament.js`:
@@ -7481,17 +7498,19 @@ array, `null` = the real `0xB` "unpicked" sentinel) instead of a variable-length
 `reportRaceResult`, returns the snapshot -- the one correct way to build a post-race names list on
 an evicting race, extracted so `flow.js` and its own test can share the identical code path).
 `src/frontend/screens.js`: `drawOpponentPanel` (`FUN_1000_19F2`), `drawEliminatedScreen`
-(`1000:16DE`'s own layout), `faceFrame`'s priority fix, new `eliminatedPanelSlots` (the victim's own
-slot substitution, `1000:170A`). `src/engine/sound.js`: `eliminatedMusic`
-(tune 6). `flow.js`: `enterEliminatedScreen`/`eliminationTick`/`leaveEliminatedScreen` (the SAME
-RAF-tick-driven pattern every other P1/P2/P3 phase uses, but with no reader -- the bounce takes no
-input -- and no auto-timeout once done, matching `179B`'s own real behaviour above); wired into
-`nextAfterOutcome` AHEAD of `needsOpponentPick`/`shouldShowBoard` (`13E4`'s own call order: RESULTS
--> ELIMINATED -> replacement picker -> PRESS ANY KEY -> [bonus race if pending] -> board -> next
-race intro); `leaveCharSelect`'s `challenge-opponent` branch now checks `hasEmptyOpponentSlot`
-instead of `opponents.length<3`, so the SAME code path serves both the initial 3-pick and a single
-replacement; `advanceRace` now calls `reportRaceResultWithOpponentSnapshot` instead of a manual
-snapshot-then-call pair.
+(`1000:16DE`'s own layout, incl. the `cropRows` squash), `faceFrame`'s priority fix, new
+`eliminatedPanelSlots` (the victim's own slot substitution, `1000:170A`). `src/render/blit.js` /
+`src/render/menuView.js`: new `cropRows` option on `blitTransparent`/`blitChr` (draw only a sprite's
+own first N rows, `1000:0630`/`1767`/`04BD`'s own mechanism). `src/engine/sound.js`:
+`eliminatedMusic` (tune 6). `flow.js`: `enterEliminatedScreen`/`eliminationTick`/
+`leaveEliminatedScreen` (the SAME RAF-tick-driven pattern every other P1/P2/P3 phase uses, but with
+no reader -- the bounce takes no input -- and no auto-timeout once done, matching `179B`'s own real
+behaviour above); wired into `nextAfterOutcome` AHEAD of `needsOpponentPick`/`shouldShowBoard`
+(`13E4`'s own call order: RESULTS -> ELIMINATED -> replacement picker -> PRESS ANY KEY -> [bonus
+race if pending] -> board -> next race intro); `leaveCharSelect`'s `challenge-opponent` branch now
+checks `hasEmptyOpponentSlot` instead of `opponents.length<3`, so the SAME code path serves both the
+initial 3-pick and a single replacement; `advanceRace` now calls
+`reportRaceResultWithOpponentSnapshot` instead of a manual snapshot-then-call pair.
 
 **Tests.** `tools/check-elimination.mjs` (new, `npm run elimination`): the wobble table matches
 `DS:034B` exactly (16 real steps), each step holds exactly `WOBBLE_STEP_TICKS`(9) ticks, the frame
@@ -7499,8 +7518,12 @@ alternates starting `frameOn=true` on the very first rendered step (the real loo
 every draw, including the first), the bounce always completes in exactly 144 ticks, it never reads
 an input parameter, `state.step` freezes at 15 (never 16) once done with `WOBBLE_TABLE[state.step]`
 always defined, and calling `eliminationStep` again after done stays frozen rather than waiting
-another 9 ticks. `tools/check-screens.mjs` gained `eliminatedPanelSlots` unit checks plus an
-end-to-end pixel check of `drawEliminatedScreen`'s own panel rows against an un-fixed reference.
+another 9 ticks. `tools/check-screens.mjs` gained `eliminatedPanelSlots` unit checks, an end-to-end
+pixel check of `drawEliminatedScreen`'s own panel rows against an un-fixed reference, an
+end-to-end pixel check that the icon disappears entirely once `done` (at a step chosen so the
+squash crop below doesn't itself already make the icon invisible), and a pixel check of the squash
+crop itself (a near-full step still shows real icon pixels; the deepest dip renders identically to
+no icon at all, both confirmed by reintroducing each bug and re-running the suite).
 `tools/check-tournament.mjs` rewritten substantially (test 7 re-derived
 against the corrected mechanics; new test 7a decisively distinguishes the 3-slot cursor from "always
 evict the lowest current index" and from a roster-index round robin, over 4 checkpoints with
