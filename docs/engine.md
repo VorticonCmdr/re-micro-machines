@@ -6123,3 +6123,28 @@ never-written byte that happens to sit in otherwise-inert data (string padding f
 byte for A329), making an apparently "unknown writer" resolve to "no writer, by design or by dead
 code" rather than a missed trace. Worth remembering next time an item is phrased as "X has no writer"
 -- check whether X is a `CS:`-relative constant before assuming a search gap.
+
+## 9as. P1's first item: the logo intro's real per-frame animation (2026-09-24)
+
+Full account, and every cited address, in `docs/intro-and-codecard.md`'s own "The real per-frame
+animation and its real skip input" section -- this entry is a pointer for the subsystem index.
+
+Full re-disassembly of `RunIntroMainLoop 1000:097f` and its callees. Ported `flow.js`'s static
+`composeLogoScreen()` still frame into the real thing: 48 records revealed one per vsync, the two
+banners sliding concurrently, then a diagonal shine sweep once the slide stops, self-terminating
+at exactly 314 iterations (~4.49 s at the real ~70 Hz vsync rate) unless a mouse click ends it
+early. `UNKNOWN_intro_key_effect` closed: **no key skips it** -- `SM.EXE`'s own `INT 9` hook
+consumes every keystroke itself (sends its own EOI, never chains to the BIOS), so nothing
+downstream, including `FONT.BIN`'s own code-card input, ever sees one. The one real keyboard
+effect is holding A and B together, which holds the post-shine exit counter at 0 for as long as
+both are held (a debug/build-stamp leftover whose own visible draw is inert here, since
+`ANTIFONT.BIN` ships 0 bytes) -- reachable, so ported as a level check on both keys, not the
+scancode latch it technically is (behaviourally identical, sampled once per iteration either way).
+The shine's own bright/dim arithmetic is ported exactly, including a real, permanent artefact: 5
+of its 30 diagonal bands are never dimmed back (Dim only revisits bands 2..26 of 30), so the
+banners are left with a lasting `+0x10` brightening at their edges, because nothing redraws them
+after the slide stops -- proven pixel-exact against the untouched `composeLogoScreen()` still
+frame in `tools/check-intro.mjs`. New, narrow, not blocking: `UNKNOWN_intro_loop_vs_total_gap`
+(the loop's own derived duration is ~0.23 s short of the M3.30 whole-process figure; plausibly the
+pre-loop setup, not separately timed -- see the linked section for the live check that would
+settle it).

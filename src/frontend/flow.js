@@ -41,7 +41,7 @@ import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntr
 import { CHARACTER_NAMES, OUTCOME_MESSAGES } from '../data/frontend-tables.js'
 import { drawTitleScreen, drawMainMenu, drawCharacterSelect, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion } from './screens.js'
 import { createSmoothnessGate } from '../engine/smoothness.js'
-import { composeLogoScreen, smPalette, SCREEN_W as LOGO_W, SCREEN_H as LOGO_H } from '../formats/gfx1.js'
+import { introInitialState, introStep, smPalette, SCREEN_W as LOGO_W, SCREEN_H as LOGO_H } from '../formats/gfx1.js'
 
 const DEFAULT_KEYS2 = [0x4b, 0x4d, 0x48, 0x50, 0x1f] // left,right,accel,brake,fire
 const STEP_DT = 1 / 35 // 35 Hz physics (docs/engine.md §2), matching play.js's own constant
@@ -94,20 +94,40 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   canvas.height = MENU_VIEW.h
   const menuBuf = createMenuBuffer()
 
-  // M3.10 "optional, cheap" logo intro: SM.EXE's own composed "Absolutely Brilliant!" screen
-  // (src/formats/gfx1.js, already decoded and rendered for the asset viewer since M1/M2 -- this
-  // is just sequencing it before the title screen, not new decoding). Skippable by any key, and
-  // auto-advances after a few seconds either way; missing either file just skips it outright.
-  const logo = gfx1Bytes && smBytes ? { indexed: composeLogoScreen(gfx1Bytes, smBytes).indexed, rgb: smPalette(smBytes) } : null
-  let logoTimer = null
-  function paintLogo() {
-    canvas.width = LOGO_W
-    canvas.height = LOGO_H
-    paint(canvas, LOGO_W, LOGO_H, indexedToRgba(logo.indexed, logo.rgb), { zoom: 1 })
-    statusEl.textContent = 'LOGO (any key to skip)'
+  // P1 (GOAL-DOS-PARITY.md, docs/intro-and-codecard.md, src/formats/gfx1.js header comment):
+  // SM.EXE's own real per-frame animation (48-record reveal, banner slide, diagonal shine sweep),
+  // not a static still. Real timing: one step per VGA vsync (~70Hz); missing either file just
+  // skips the intro outright. A key press does NOT skip it (SM.EXE's own INT9 hook consumes every
+  // keystroke itself, never chaining to the BIOS) -- only a mouse click does, or else the fixed
+  // post-shine 250-tick hold auto-advances. Holding A and B together (the one real, if obscure,
+  // keyboard effect -- see the gfx1.js header) holds the hold open indefinitely.
+  const introPalette = smBytes ? smPalette(smBytes) : null
+  const introState = gfx1Bytes && smBytes ? introInitialState(gfx1Bytes, smBytes) : null
+  const introHeldKeys = new Set()
+  let introMouseDown = false
+  let introRafId = null
+  let introLast = 0
+  let introAcc = 0
+  const INTRO_TICK_MS = 1000 / 70
+  function paintIntroFrame() {
+    paint(canvas, LOGO_W, LOGO_H, indexedToRgba(introState.screen, introPalette), { zoom: 1 })
+    statusEl.textContent = 'LOGO (click to skip)'
+  }
+  function introTick(now) {
+    if (phase !== 'LOGO') return
+    introAcc += Math.min(now - introLast, 250)
+    introLast = now
+    const abHeld = introHeldKeys.has('KeyA') && introHeldKeys.has('KeyB')
+    while (introAcc >= INTRO_TICK_MS) {
+      introAcc -= INTRO_TICK_MS
+      introStep(introState, { abHeld, mousePresent: true, mouseDown: introMouseDown })
+      if (introState.exited) { leaveLogo(); return }
+    }
+    paintIntroFrame()
+    introRafId = requestAnimationFrame(introTick)
   }
   function leaveLogo() {
-    if (logoTimer) { clearTimeout(logoTimer); logoTimer = null }
+    if (introRafId != null) { cancelAnimationFrame(introRafId); introRafId = null }
     canvas.width = MENU_VIEW.w
     canvas.height = MENU_VIEW.h
     phase = 'TITLE'
@@ -115,7 +135,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     paintMenu()
   }
 
-  let phase = logo ? 'LOGO' : 'TITLE'
+  let phase = introState ? 'LOGO' : 'TITLE'
   let menuCursor = 0
   let charCursor = 0
   let charWho = 'player' // 'player' ("WHO DO YOU WANT TO BE ?") or 'opponent' (H2H: "WHO DO YOU WANT TO RACE ?")
@@ -369,7 +389,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
 
   function confirm() {
-    if (phase === 'LOGO') { leaveLogo(); return }
+    if (phase === 'LOGO') return // a key never skips the intro -- see the P1 header comment above
     if (phase === 'TITLE') { phase = 'MENU'; menuCursor = 0; subMenuMusic(sound) }
     else if (phase === 'MENU') {
       if (menuCursor === 2) { statusEl.textContent = 'Two-human head-to-head is not implemented in this port.'; return }
@@ -420,11 +440,12 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
 
   function onKeydown(e) {
+    if (e.code === 'KeyA' || e.code === 'KeyB') introHeldKeys.add(e.code) // fed to introStep regardless of phase; only consumed during LOGO
     if (phase === 'RACING') {
       if (e.code === 'Escape' && abortRaceFn) abortRaceFn() // port-only quit-to-menu, see runOneRace's own comment
       return // the race's own createKeyboardReader owns the rest of a race's input
     }
-    if (phase === 'LOGO') { leaveLogo(); return } // any key skips, matching the title screen's own "fire, or any other release -> main menu"
+    if (phase === 'LOGO') return // no key skips the intro -- see the P1 header comment above
     if (phase === 'LOADING') return
     if (phase === 'PRESS_ANY_KEY') { confirm(); return } // 0C15: any key click
     if (phase === 'CHAR_SELECT' && e.code === 'Escape') { phase = 'MENU'; menuCursor = 0; titleMusic(sound); paintMenu(); return } // ESC at a select -> main menu
@@ -434,11 +455,30 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     else if (e.code === 'Space' || e.code === 'Enter') confirm()
   }
   window.addEventListener('keydown', onKeydown)
+  function onKeyup(e) { introHeldKeys.delete(e.code) }
+  window.addEventListener('keyup', onKeyup)
+  // A mouse click is the intro's real, only skip input (INT 33h AX=3, a level check every
+  // iteration) -- tracked here as a level, not an edge, same as the real byte it mirrors.
+  function onMousedown() { introMouseDown = true }
+  function onMouseup() { introMouseDown = false }
+  window.addEventListener('mousedown', onMousedown)
+  window.addEventListener('mouseup', onMouseup)
 
-  if (phase === 'LOGO') { paintLogo(); logoTimer = setTimeout(leaveLogo, 4000) } else { titleMusic(sound); paintMenu() }
+  if (phase === 'LOGO') {
+    canvas.width = LOGO_W
+    canvas.height = LOGO_H
+    introLast = performance.now()
+    introRafId = requestAnimationFrame(introTick)
+  } else { titleMusic(sound); paintMenu() }
 
   return {
-    stop: () => window.removeEventListener('keydown', onKeydown),
+    stop: () => {
+      window.removeEventListener('keydown', onKeydown)
+      window.removeEventListener('keyup', onKeyup)
+      window.removeEventListener('mousedown', onMousedown)
+      window.removeEventListener('mouseup', onMouseup)
+      if (introRafId != null) cancelAnimationFrame(introRafId)
+    },
     // debugging/testing hooks: drive the flow without a real keyboard
     getPhase: () => phase,
     getTournament: () => tournament,
@@ -446,6 +486,18 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     getRaceState: () => currentRaceState,
     confirm,
     moveCursor: (dir) => onKeydown({ code: dir > 0 ? 'ArrowDown' : 'ArrowUp' }),
+    // the synchronous fast-forward automated/backgrounded-tab tests rely on (play.js's own
+    // `forceSteps` precedent, CLAUDE.md rule 7): drives the LOGO phase's real introStep directly,
+    // bypassing requestAnimationFrame's own real-time pacing (and its throttling in a backgrounded
+    // tab) entirely. A no-op once past LOGO.
+    forceIntroSteps: (n, input) => {
+      if (phase !== 'LOGO') return
+      for (let i = 0; i < n; i++) {
+        introStep(introState, input)
+        if (introState.exited) { leaveLogo(); return }
+      }
+      paintIntroFrame()
+    },
   }
 }
 

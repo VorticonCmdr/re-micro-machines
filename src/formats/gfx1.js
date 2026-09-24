@@ -80,6 +80,129 @@ function smDescriptor(bytes, imageOffset) {
   return { x: i16le(bytes, o), y: u16le(bytes, o + 2), width: u16le(bytes, o + 4), height: u16le(bytes, o + 6), src: u16le(bytes, o + 10) }
 }
 
+// --- The intro's real per-frame animation (RunIntroMainLoop 1000:097f and its callees) --------
+//
+// Full re-disassembly (re/SM.EXE.lst, this session): one iteration = one VGA vertical-retrace
+// wait (port 0x3DA bit 3, ~70Hz on real mode-13h hardware -- not the 70.06Hz IRQ0 driver tick
+// used elsewhere in this project, a different clock SM.EXE never touches). Per iteration, in
+// order: TickExitTimeoutAfterShine (0aac), DrawNextLogoRecord (0bb3), SlideBannersTogether
+// (0b83), FUN_1000_0ac6 (the A/B-key branch below), the scancode sample (09d0, folded into the
+// `abHeld` input here since a level-checked "A and B both currently held" is behaviourally
+// identical to the real single-byte-scancode latch + flag pair it updates), the shine
+// (BrightenShineBandDiagonal 0a48 / DimShineTrailDiagonal 09f8), then the vsync wait and the
+// exit checks (a mouse click always wins over the timeout; INT 33h AX=3, a level check).
+//
+// `UNKNOWN_intro_key_effect` (P1, GOAL-DOS-PARITY.md): a key press does NOT skip the intro --
+// only a mouse click does, or the fixed post-shine timeout. The INT9 hook SM.EXE installs
+// (13 bytes at CS:0xcbf: PUSH AX; IN AL,60h; MOV [0x362],AL; MOV AL,0x20; OUT 20h,AL; POP AX;
+// IRET) sends its own EOI and never chains to the BIOS ISR, so a keystroke never reaches
+// FONT.BIN's own keyboard code either -- it is fully consumed here. The ONLY behavioural gate on
+// that captured byte (09d0: scancode 0x1E/0x9E toggles a held-A flag, 0x30/0xB0 a held-B flag) is
+// FUN_1000_0ac6: normally it clears screen rows 159-177 every frame (real coords 0xc6c0 =
+// row*320+0, 0xbe0 words = 19 rows) -- geometrically checked against this shipped GFX1.GFX/SM.EXE
+// (all 48 records' and both banners' rectangles, and the shine's own row range, sit entirely
+// above row 159), so that clear has no visible target and is not reproduced. Holding A+B
+// together instead zeroes the 250-frame post-shine exit counter EVERY iteration it's held (and
+// draws a "hidden build stamp" from ANTIFONT.BIN once) -- ANTIFONT.BIN ships 0 bytes (see the
+// module header), so the stamp draws nothing, same as the FONT.BIN antifont case, but the
+// counter reset is real and observable: holding A+B through the post-shine hold keeps the intro
+// up indefinitely, and releasing restarts the 250-frame count from 0. Ported below; the pixel
+// clear and the blank stamp draw are not (verified inert, not merely assumed).
+const RECORD_ADVANCE = 0xe // DI += 0xe per iteration (14 bytes/record); table has 48 records
+const RECORD_LAST = 47
+const BANNER_SPEED = 8
+const SLIDE_STOP_X = 0x48 // 72 -- SM_SLIDE_STOP_X above, kept local to this block for clarity
+const SHINE_Y = 0x50 // 80 -- [0x6c9], never changes after its one-time init
+const SHINE_ROWS = 0x46 // 70
+const SHINE_X_START = 0x48 // 72 -- [0x6c7]'s one-time init, coincides with SLIDE_STOP_X
+const SHINE_X_END = 0x138 // 312
+const SHINE_STEP = 8
+const SHINE_BRIGHT_DELTA = 0x10
+const SHINE_DIM_DELTA = -0x10
+const SHINE_DIM_OFFSET = 0x20 // 32 -- Dim trails Bright by this many columns (4 bands)
+const SHINE_DIM_GATE = 6 // Dim starts only once the bright-call counter reaches this
+const POST_SHINE_HOLD = 250 // 0xfa -- [0x6ba]/[0x6b8], TickExitTimeoutAfterShine
+
+/** Diagonal 70-row band (FUN_1000_0a48/09f8's shared inner loop): row r's 8-pixel strip sits at
+ * column `x - r`, row `y + r` -- a raw framebuffer address, no clipping, so a strip can bleed a
+ * few columns into the row above it at the sweep's own edges, exactly as the real bytes do. */
+function shineBand(screen, x, y, delta) {
+  for (let r = 0; r < SHINE_ROWS; r++) {
+    const rowStart = (y + r) * SCREEN_W + (x - r)
+    for (let c = 0; c < 8; c++) {
+      const i = rowStart + c
+      if (i >= 0 && i < screen.length) screen[i] = (screen[i] + delta) & 0xff
+    }
+  }
+}
+
+/** Fresh intro state: an all-black 320x200 indexed screen plus every counter RunIntroMainLoop's
+ * own entry() setup (FUN_1000_07f1 etc.) zeroes before the loop starts. `sm`/`gfx` are cached so
+ * `introStep` never re-decodes the record table or the banner descriptors per tick. */
+export function introInitialState(gfx, sm) {
+  const g = toU8(gfx)
+  const s = toU8(sm)
+  return {
+    gfx: g,
+    records: smLogoRecords(s),
+    bannerA: smDescriptor(s, SM_SLIDE_A),
+    bannerB: smDescriptor(s, SM_SLIDE_B),
+    screen: new Uint8Array(SCREEN_W * SCREEN_H),
+    recordIndex: 0,
+    bannerAX: smDescriptor(s, SM_SLIDE_A).x, // -208
+    bannerBX: smDescriptor(s, SM_SLIDE_B).x, // 368
+    slideActive: true, // [0x6c3]==0: the slide (and the record reveal) is still running
+    shineX: SHINE_X_START,
+    shineDone: false, // [0x6cd]
+    brightCount: 0, // [0x6cb], caps at 8
+    postShineCounter: 0, // [0x6ba]
+    exitTimeoutFlag: false, // [0x6b8]
+    iteration: 0,
+    exited: false,
+  }
+}
+
+/** One RunIntroMainLoop iteration (one real vsync wait). `input.abHeld`: A and B are both
+ * currently held (see the header comment above -- there is no separate keyboard skip). `input`
+ * mouse fields mirror the real INT 33h AX=3 level check: only meaningful when `mousePresent`. */
+export function introStep(state, input = {}) {
+  const { abHeld = false, mousePresent = false, mouseDown = false } = input
+  // 1. TickExitTimeoutAfterShine 1000:0aac
+  if (state.shineDone) {
+    state.postShineCounter++
+    if (state.postShineCounter === POST_SHINE_HOLD) state.exitTimeoutFlag = true
+  }
+  // 2. DrawNextLogoRecord 1000:0bb3 (stays on the last record once reached, re-blitting it)
+  const rec = state.records[state.recordIndex]
+  blitOpaque(state.screen, state.gfx, rec.x, rec.y, rec.src, rec.width, rec.height)
+  if (state.recordIndex !== RECORD_LAST) state.recordIndex++
+  // 3. SlideBannersTogether 1000:0b83 (stops moving, and stops being redrawn, once the slide ends)
+  if (state.slideActive) {
+    state.bannerAX += BANNER_SPEED
+    state.bannerBX -= BANNER_SPEED
+    const a = state.bannerA, b = state.bannerB
+    blitOpaque(state.screen, state.gfx, state.bannerAX, a.y, a.src, a.width, a.height)
+    blitOpaque(state.screen, state.gfx, state.bannerBX, b.y, b.src, b.width, b.height)
+    if (state.bannerAX === SLIDE_STOP_X) state.slideActive = false // sets [0x6c3]: shine may now start
+  }
+  // 4. FUN_1000_0ac6's A+B branch: holds the exit counter at 0 while both are down.
+  if (abHeld) state.postShineCounter = 0
+  // 5. 09d0's scancode sample is folded into `input.abHeld` itself (see header comment).
+  // 6. The shine, once the slide has stopped and the shine hasn't finished.
+  if (!state.slideActive && !state.shineDone) {
+    shineBand(state.screen, state.shineX, SHINE_Y, SHINE_BRIGHT_DELTA)
+    if (state.brightCount < 8) state.brightCount++
+    state.shineX += SHINE_STEP
+    if (state.shineX === SHINE_X_END) state.shineDone = true
+    if (state.brightCount >= SHINE_DIM_GATE) shineBand(state.screen, state.shineX - SHINE_DIM_OFFSET, SHINE_Y, SHINE_DIM_DELTA)
+  }
+  // 7. vsync wait, then the exit checks: a mouse click always wins over the timeout.
+  state.iteration++
+  if (mousePresent && mouseDown) state.exited = true
+  else if (state.exitTimeoutFlag) state.exited = true
+  return state
+}
+
 /**
  * BlitSpriteToScreen semantics: horizontal clipping only (x<0 skips source columns, x+w>320
  * shrinks), rows copied as width/2 words so an odd width loses its last pixel, no transparency,

@@ -66,8 +66,87 @@ Card 0, rows 1–16 (top to bottom), columns A–P:
 - The code-card gate is a startup module with no game state; the port can present the same prompt using the card table and symbol strip, or skip it. Nothing downstream depends on it.
 - `SM.EXE` leaves the machine in mode 0Eh; `MICRO.EXE` sets mode 13h itself, so there is no palette or screen state carried over.
 
+## The real per-frame animation and its real skip input (P1, GOAL-DOS-PARITY.md, 2026-09-24) `[STATIC]`
+
+Full re-disassembly of `RunIntroMainLoop 1000:097f` and every function it calls (`re/SM.EXE.lst`),
+done for the port's P1 item ("port the animation with its real timing and its real skip input...
+don't assume 'any key'"). Ported in `src/formats/gfx1.js` (`introInitialState`/`introStep`, full
+derivation in that file's own header comment) and wired into `src/frontend/flow.js`'s `LOGO`
+phase; proven in `tools/check-intro.mjs` (`npm run intro`). `flow.js`'s own session object also
+exposes `forceIntroSteps(n, input)` (`play.js`'s `forceSteps` precedent, CLAUDE.md rule 7): a
+Chrome tab that loses OS focus during an automated `wait` throttles `requestAnimationFrame` down
+to a handful of calls a minute (observed live verifying this very item), so a real per-frame
+timeout can't be waited out in that environment -- `forceIntroSteps` drives `introStep` directly,
+bypassing the real-time accumulator, and was how the 314-iteration timeout, the mouse-click skip,
+and the A+B hold were each re-confirmed live in `game.html`, on top of the headless check.
+
+**One iteration = one VGA vertical-retrace wait** (port `0x3DA` bit 3, real mode-13h hardware
+vsync, ~70 Hz — a different clock from the 70.06 Hz IRQ0 driver tick this project uses elsewhere;
+`SM.EXE` never touches IRQ0). Per iteration, in order:
+
+1. `TickExitTimeoutAfterShine 0aac` — once the shine is done (`[0x6cd]`), increments the post-shine
+   hold counter `[0x6ba]`; at 250 (`0xfa`) sets the exit-timeout flag `[0x6b8]`.
+2. `DrawNextLogoRecord 0bb3` — blits `LogoRecordTable`'s current 14-byte record (opaque), then
+   advances to the next of the 48, staying (and re-blitting) on the last once reached.
+3. `SlideBannersTogether 0b83` — while the slide is still active (`[0x6c3]==0`), moves banner A
+   +8px and banner B −8px, redraws both, and once A reaches `SlideStopX` (`0x48`=72) sets
+   `[0x6c3]`, ending the slide (and its own redraws) for good — banner A starts at x=−208, y=80;
+   banner B at x=368, y=120 (both `smDescriptor`-read, not guessed).
+4. `FUN_1000_0ac6` — **the one real, if obscure, keyboard effect this intro has.** Reads two
+   flags a 13-byte `INT 9` hook (`CS:0xcbf`: `PUSH AX; IN AL,60h; MOV [0x362],AL; MOV AL,0x20;
+   OUT 20h,AL; POP AX; IRET`) keeps current from raw scancodes (0x1E/0x9E toggle a held-A flag,
+   0x30/0xB0 a held-B flag; `09d0`, folded into a single `abHeld` boolean in the port, which is
+   behaviourally identical to the real single-byte-latch-plus-two-flags mechanism it mirrors,
+   since both are just a level check sampled once per iteration). **Not both held:** clears screen
+   rows 159–177 (`0xc6c0` = row 159 col 0, `0xbe0` words = 19 rows) — checked against this shipped
+   `GFX1.GFX`: every one of the 48 records (rows 26–74), both banners (rows 80–145) and the
+   shine's own row range (80–149) sit entirely above row 159, so this clear has no visible target
+   here and is not reproduced (verified, not assumed). **Both held:** skips that clear, forces the
+   250-frame hold counter `[0x6ba]` to 0 on every iteration held (holding A+B through the
+   post-shine hold keeps the intro open indefinitely; releasing restarts the 250-frame count from
+   0), and draws a "hidden build stamp" from `ANTIFONT.BIN` once — which, being the same 0-byte
+   shipped file the copyright text already draws nothing from, draws nothing here either. **Key
+   presses otherwise do nothing at all**: the `INT 9` hook sends its own EOI and never chains to
+   the BIOS ISR, so a keystroke never reaches the BIOS keyboard buffer, `FONT.BIN`, or anything
+   else — it is fully consumed by this one hook. `UNKNOWN_intro_key_effect` closed.
+5. The shine (`BrightenShineBandDiagonal 0a48` / `DimShineTrailDiagonal 09f8`), once the slide has
+   stopped and the shine itself isn't done: Bright draws an 8-pixel-wide, 70-row diagonal strip
+   (row `r`'s strip at column `x−r`, no clipping — the real bytes can bleed a couple of columns
+   into the row above at the sweep's own edges, reproduced as-is) at the current x (`[0x6c7]`,
+   init 72), then advances x by 8 (done at x=312, 30 calls); Dim repeats the identical diagonal
+   formula at `x−32` (4 bands behind), but only once the bright-call counter (`[0x6cb]`, caps at
+   8) reaches 6. Because Dim's own x always equals some earlier Bright x exactly, dimmed bands
+   cancel their own brightening pixel-for-pixel — except the first 2 bands (x=72,80) and the last
+   3 (x=288,296,304), which Dim's `≥6`-gated, `−32`-offset window never reaches (`i∈[2,26]` are
+   the only bands Dim ever revisits, of 30 total) — so those 5 bands are left **permanently**
+   brightened by `+0x10`, mod 256, every iteration onward, since nothing ever redraws the banners
+   after the slide stops. `tools/check-intro.mjs` proves this exactly: it re-derives the shine's
+   own net per-pixel delta independently, and requires the real run's final screen to equal
+   `composeLogoScreen()` (still fully correct for the pre-shine, at-rest frame) plus that delta,
+   mod 256, at every pixel the shine ever touched.
+6. The vsync wait itself, then the exit checks — **a mouse click always wins**, checked *before*
+   the timeout flag, every single iteration: `INT 33h AX=3` (a level check, not an edge), and only
+   if that doesn't fire does `[0x6b8]` get checked.
+
+**Total, no input:** 48-record reveal (1/iteration, holds after) + a 35-iteration banner slide,
+with the shine starting on that same 35th iteration and running 30 more (ending iteration 64) +
+a 250-iteration post-shine hold = **314 iterations**, `[STATIC]`, directly counted from the
+constants above (`-208` to `72` at 8px/iteration = 35; `72` to `312` at 8px/iteration = 30; the
+`0xfa`=250 hold). At the real ~70 Hz vsync rate this is ≈4.49 s. `UNKNOWN_intro_live_timing`'s own
+existing `[PROVEN]` M3.30 figure (4.72 s, mode-13h-set to mode-0Eh-exit — the *whole* `SM.EXE`
+run, not just the loop) is ~0.23 s more: that window also includes the pre-loop setup (VGA/mouse
+detection, the two file loads, the one-time copyright-text draw) which this session did not
+separately time, so the two figures are not in conflict — one measures a superset of the other's
+span — but the gap itself is not chased further this session (a new, narrower, genuinely open
+question, `UNKNOWN_intro_loop_vs_total_gap`, not blocking: the port paces the loop at the real
+vsync rate, which is the faithful choice regardless of how that pre-loop gap eventually resolves).
+
 ## Open items
 
 Resolved 2026-09-23 (M3.30, this session — see the sections above for full derivations): `UNKNOWN_codecard_pristine_bytes` (both patch sites' original bytes inferred with high confidence from the intact `+0xE9` site's own idiom and the function's control flow; a minor `+0xB0`→`+0xB2` citation correction found along the way), `UNKNOWN_codecard_cursor_origin` (live capture confirms no rendering bug — the cursor correctly frames cell (0,0); the numeric discrepancy is most likely the cursor sprite being centred on the cell rather than corner-aligned, since the cursor graphic (32×22) is larger than the cell (20×18)), `UNKNOWN_intro_live_timing` (live-timed via a BIOS-tick-counter breakpoint, immune to tool-latency overshoot: 4.72 s real intro duration, mode-13h-set to mode-0Eh-exit; +0.16 s more to the code-card screen; the exit-code half needed no live check, already settled by existing static analysis).
 
+Resolved 2026-09-24 (P1, this session — see "The real per-frame animation" above): `UNKNOWN_intro_key_effect` (no key skips the intro; only a mouse click does, or the 250-iteration post-shine timeout; holding A+B together is the one real keyboard effect, holding the timeout open).
+
 Still open, investigated and not further resolvable without new information: `UNKNOWN_gfx1_header` (exhaustively re-confirmed unread; version-number and several checksum hypotheses tested against the real file bytes and ruled out — see the `GFX1.GFX` section above).
+
+New, narrow, not blocking: `UNKNOWN_intro_loop_vs_total_gap` (the ~0.23 s between the loop's own derived 314-iteration/~4.49 s duration and the M3.30 whole-process 4.72 s figure — plausibly the pre-loop setup, not independently timed; would need a fresh live session bracketing the loop itself, e.g. breakpoints at `CS:097F`'s first hit and `CS:07C6`'s own `RET`, reading `0040:006C` at each, the same technique M3.30 used).

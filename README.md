@@ -53,7 +53,9 @@ and stays local to your machine.
 - **Every shipped asset format**: palettes, sprites/fonts (the `.CHR` arena), tile banks, vehicle
   rotation frames, track layout (`.MAP`/`.CT`/`.COL`/`.DIR`/`.LEV`), the LZ codec, the OPL2/AdLib
   music-and-sfx driver (`DRIVER1.BIN`) reimplemented as a from-scratch YM3812 synthesizer, the logo
-  intro, and the (patched-out) code-card copy protection.
+  intro (a real per-frame animation on `game.html` -- the 48-record reveal, banner slide and
+  diagonal shine, timed and skippable exactly as the original: a mouse click, not a key), and the
+  (patched-out) code-card copy protection.
 - **The race engine**: 35 Hz fixed-timestep physics (steering, velocity, collisions, terrain
   hazards per round, checkpoints/laps, airborne/ramps, the full car state machine), the drone AI,
   and per-round camera — all reproduced from the disassembly, not approximated.

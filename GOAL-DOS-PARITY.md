@@ -120,7 +120,7 @@ Don't read `docs/engine.md` from start to finish. It is 6,000 lines. Jump to sec
 ## Regression suite (run before every commit; all must pass)
 
 ```bash
-for s in catalog lz chrtable tables car step trace ai play sound rounds finish twocar tournament \
+for s in catalog lz chrtable tables car intro step trace ai play sound rounds finish twocar tournament \
          menu screens opl-toggle smoothness si2 live smoke; do npm run -s $s || echo "FAIL $s"; done
 npm run build
 ```
@@ -153,11 +153,16 @@ it live in DOSBox, (3) port it, (4) add a test and prove it fails without the fi
 docs, (6) commit.
 
 ### P1: boot chain
-- [ ] **Logo intro.** `flow.js` has a `LOGO` phase that shows a still frame (`composeLogoScreen`) for
+- [x] **Logo intro.** `flow.js` has a `LOGO` phase that shows a still frame (`composeLogoScreen`) for
   4 s. DOS plays the animated SM.EXE intro, which ends on a timeout or a mouse click. `src/formats/gfx1.js`
   and `docs/intro-and-codecard.md` already hold the draw tables and the live timing
   (`UNKNOWN_intro_live_timing` was resolved in M3.30). Port the animation with its real timing and
   its real skip input. Check what a key press does in SM.EXE (`re/SM.EXE.lst`); don't assume "any key".
+  **Done M3.47 (2026-09-24):** full re-disassembly of `RunIntroMainLoop 1000:097f`; a key never
+  skips it (`SM.EXE`'s own `INT 9` hook consumes every keystroke), only a mouse click or the
+  314-iteration timeout; holding A+B together is the one real keyboard effect (holds the exit
+  open). `src/formats/gfx1.js` (`introInitialState`/`introStep`), `src/frontend/flow.js`,
+  `tools/check-intro.mjs` (`npm run intro`), `docs/intro-and-codecard.md`, `docs/engine.md` §9as.
 - [ ] **Code-card screen.** `FONT.BIN` runs in mode 10h: an 8×8 symbol grid and "COLUMN x and ROW y".
   `src/formats/fontbin.js` decodes it, but the page doesn't show it. Show it after the logo, with
   cursor movement, and accept ENTER on any cell twice (this copy is patched; see
