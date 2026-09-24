@@ -1,7 +1,8 @@
 # Goal: `game.html` behaves like the DOS game, and every open item is closed
 
 Written 2026-09-24. Re-read this whole file at the start of every work session and after every
-context summary. Tick checkboxes here as you go; this file is your progress log.
+context summary. Tick a checkbox here in the same commit that closes its item; together with
+`git log`, this file is your progress log.
 
 ## Scope assumptions (the user may edit these three lines)
 
@@ -11,6 +12,17 @@ context summary. Tick checkboxes here as you go; this file is your progress log.
 
 Do not stop to ask the user about scope. They asked for all of it.
 
+## Start of every session
+
+```bash
+git status --short          # must be clean; if it isn't, read `git diff` before doing anything
+git log --oneline -15       # what the previous sessions finished
+```
+
+Then find the first unticked box below and continue from there. If the tree is dirty with work
+you don't recognise, don't discard it: read the diff, find the item it belongs to, and either
+finish that item or ask the user.
+
 ## What "done" means
 
 `game.html` runs the same sequence as typing `MICRO` in DOSBox, from the logo intro to the champion
@@ -18,8 +30,9 @@ screen and back. The same inputs produce the same screens, the same music, the s
 same race outcomes. Every `UNKNOWN_*` in the registries below has one of these outcomes:
 
 - **(a) Parity item** (something a player can see, hear or feel). It is ported, and it has a test
-  in `tools/check-*.mjs` that fails when you revert the fix. Run the test against the reverted code
-  once to prove that. The docs are updated.
+  in `tools/check-*.mjs` that fails without the fix. Prove this once per item before you commit:
+  `git stash push -- src/` (the test files stay), run the test and see it fail, then
+  `git stash pop` and see it pass. The docs are updated.
 - **(b) Needs a live capture.** It was captured under DOSBox and the result is recorded with a
   `[PROVEN]` tag. If the capture failed, the attempt is written up and the item stays open with a
   precise reason.
@@ -27,7 +40,7 @@ same race outcomes. Every `UNKNOWN_*` in the registries below has one of these o
   Examples: `UNKNOWN_gfx1_header`, `UNKNOWN_unp_version`, `UNKNOWN_1254_1256`,
   `UNKNOWN_ph0_1140_1380`, `UNKNOWN_lev_round2_size`.
 
-The final acceptance test is a front-end pixel diff, listed as P14 below.
+The final acceptance test is the front-end pixel diff in Part F.
 
 ## Read these first (once, in this order)
 
@@ -47,7 +60,7 @@ Don't read `docs/engine.md` from start to finish. It is 6,000 lines. Jump to sec
 `docs/engine.md` §10 overrides every other list. These are known to be stale:
 
 - `README.md` "What's not implemented" says palette fades are missing. They exist; the real
-  problem is the reverse (see P9).
+  problem is the reverse: the port fades in at race start and DOS doesn't (see P5).
 - The "Still open" list in `docs/track-graphics.md` names items that §10 shows as resolved
   (`UNKNOWN_ph0_tail_icons`, `UNKNOWN_tile_index_overflow`).
 - The "superseded" section of `PLAN-ENGINE.md` (line ~149) is historical, not status.
@@ -72,17 +85,39 @@ Don't read `docs/engine.md` from start to finish. It is 6,000 lines. Jump to sec
    explicit press and release, holds of about 300 ms, and about 3 s between a menu pick and fire.
    In menus, LEFT/RIGHT picks an option and fire is `S`. Live CS is `0x23E` and live DS is `0xB7A`.
    Use `debug_map_to_ghidra`/`debug_map_to_live` to translate addresses.
-4. **Files.** `game/` is read-only. `npm run build` must never contain game data. This directory is
-   **not a git repository**. Before editing a file, copy it to `<file>.bak3` (the existing
-   convention is `.bak2`). Delete your `.bak3` copies when the whole goal is done.
-5. **Grep.** The shell hook rewrites `grep` to `rtk grep`. Use `rtk proxy grep ...` when you need
+4. **Git.** The repository is on `main`, with a baseline commit of the pre-goal state. There is
+   no remote.
+   - One commit per checklist item. The commit includes the code, the test, the docs and the
+     ticked box in this file. If an item turns out to need two commits, both mention its ID.
+   - Commit message: first line `<item>: <what changed>`, for example
+     `P5 pause: resume on first key click (1000:37BF)`. The body gives the evidence in two to five
+     lines. End every message with these two lines:
+     ```
+     Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+     Claude-Session: https://claude.ai/code/session_01G6mge15veAgDGJW44DhvdM
+     ```
+   - Commit only when the regression suite is green. A red suite is never committed. Fix it, or
+     `git restore` your change and write down why the item is blocked.
+   - Never rewrite history: no `git reset --hard` on commits, no `rebase`, no `commit --amend` on
+     an earlier session's commit, no `push --force`. To undo a committed change, use `git revert`.
+   - Don't make `.bak` copies. Git is the backup. Before editing, `git status` must be clean.
+   - Before every commit, run `git status --short`. Nothing under `game/`, `ghidra/`, `re/`,
+     `tools/out/` or `.codegraph/` may appear; `.gitignore` covers them, so if one appears,
+     something is wrong. Stop and fix the ignore rule. Never `git add -f`.
+   - New live captures that the checks diff against go in `tools/refs/` and are committed, like
+     the existing ones. Keep each file small, because they come from commercial software. Commit
+     only the frames or bytes a check actually needs.
+5. **Files.** `game/` is read-only. `npm run build` must never contain game data.
+6. **Grep.** The shell hook rewrites `grep` to `rtk grep`. Use `rtk proxy grep ...` when you need
    the exact output or the exit code.
-6. **Browser checks.** A backgrounded Chrome tab pauses `requestAnimationFrame`. Use a foreground
+7. **Browser checks.** A backgrounded Chrome tab pauses `requestAnimationFrame`. Use a foreground
    tab, or the page's `forceSteps` debug hook. Keep the console clean.
-7. **One item at a time.** Change one thing, run the regression suite, then update the docs. Don't
-   batch several fixes; a regression can hide inside a batch (§9an method note 2).
+8. **One item at a time.** Change one thing, run the regression suite, update the docs, commit.
+   Don't batch several fixes into one commit; a regression can hide inside a batch (§9an method
+   note 2). When a later item breaks a check, `git bisect` over the per-item commits finds the
+   cause.
 
-## Regression suite (run after every change; all must pass)
+## Regression suite (run before every commit; all must pass)
 
 ```bash
 for s in catalog lz chrtable tables car step trace ai play sound rounds finish twocar tournament \
@@ -90,14 +125,17 @@ for s in catalog lz chrtable tables car step trace ai play sound rounds finish t
 npm run build
 ```
 
+Add `front` to the loop once Part F creates it.
+
 Known baselines that are **correct and must not be "fixed"**: `npm run trace` reports 13 of 20
 (one torn capture row, §9ab) and `npm run ai` reports 59 of 60. `npm run live` must report 0.
 
-## Docs to update when an item closes
+## Docs to update when an item closes (in the same commit)
 
 - `docs/engine.md`: add a new `§9as`, `§9at`, … section for the work, and update the item's entry
   in §10.
-- `PLAN-ENGINE.md` §5: add a milestone row, continuing from M3.46 with M3.47 and up.
+- `PLAN-ENGINE.md` §5: add a milestone row, continuing from M3.46 with M3.47 and up. Put the
+  commit's short hash in the row once it exists, in the next item's commit.
 - `PLAN.md` §9, if the item is listed there.
 - The relevant `docs/*.md` "Open items" section.
 - `CLAUDE.md`'s summary paragraph about the pages.
@@ -111,7 +149,8 @@ Known baselines that are **correct and must not be "fixed"**: `npm run trace` re
 ## Part P: the parity queue, in the order a DOS session runs
 
 Do these in order. For each item: (1) disassemble the listed routine fresh, (2) if in doubt, watch
-it live in DOSBox, (3) port it, (4) add a test, (5) update the docs.
+it live in DOSBox, (3) port it, (4) add a test and prove it fails without the fix, (5) update the
+docs, (6) commit.
 
 ### P1: boot chain
 - [ ] **Logo intro.** `flow.js` has a `LOGO` phase that shows a still frame (`composeLogoScreen`) for
@@ -128,11 +167,11 @@ it live in DOSBox, (3) port it, (4) add a test, (5) update the docs.
   title. Implement F1–F7: F1/F2 control device, F3 sound (BLASTER/SPEAKER), F4 smoothness
   (1 HIGH, 2 GOOD, 3 MEDIUM, 4 LOW), F5 redefine keys (`1000:92f0`), F6 credits (`1000:2a82`),
   F7 joystick calibration (`1000:2ab5`). RETURN plays, and ESC quits: show a "quit to DOS" end
-  state. The `25011968` cheat code sets `DS:0F69`. On desktop, SETTINGS.DAT is read on first entry
-  and written only when it changed (32 bytes, layout in CLAUDE.md). In the browser, persist it to
-  `localStorage` in the same 32-byte layout. Seed it from the real `game/SETTINGS.DAT` on first run.
-  Move the header's Smoothness select into this screen. Keep the header control only if it stays
-  in sync with this screen.
+  state. The `25011968` cheat code sets `DS:0F69`. DOS reads SETTINGS.DAT on first entry and
+  writes it only when something changed (32 bytes, layout in CLAUDE.md). In the browser, persist
+  it to `localStorage` in the same 32-byte layout. Seed it from the real `game/SETTINGS.DAT` on
+  first run. Move the header's Smoothness select into this screen. Keep the header control only if
+  it stays in sync with this screen.
 
 ### P2: title and menus
 - [ ] **Title attract loop** (`RunTitleScreenAttractLoop 1000:0100`). It shows LOGO, the copyright,
@@ -198,9 +237,9 @@ it live in DOSBox, (3) port it, (4) add a test, (5) update the docs.
   2000 "the precise real-world duration".
 - [ ] **The race-start fade-in.** The port fades the scene in; DOS shows black, then the first
   frame at full palette (§9an 8). Fix it in both `play.js` and `flow.js`.
-- [ ] **`UNKNOWN_fade_duration`.** The exit fade is unpaced. Measure it live (P13) and pace it.
+- [ ] **`UNKNOWN_fade_duration`.** The exit fade is unpaced. Measure it live (Part L) and pace it.
 - [ ] **`UNKNOWN_countdown_hud_digit`.** The HUD digit reads 3 during the start countdown and 4
-  once racing. Capture the original's value live and match it.
+  once racing. Capture the original's value live (Part L) and match it.
 - [ ] **`UNKNOWN_round3_bridge_path`.** `1000:5740-57f7` is unported, including the `683c` ramp path
   that stores progress 12. This is round 3 physics. Port it and add a `check-step`/`check-rounds` test.
 - [ ] **`DrawRound8ExtraAnim32 1000:843d`** (`DS:5EE3`): the CHOPPERS-only 32×32 extra animation
@@ -239,15 +278,16 @@ it live in DOSBox, (3) port it, (4) add a test, (5) update the docs.
 
 ## Part L: live-capture items (one DOSBox session each, done solo)
 
-Each one gets a live capture tagged `[PROVEN]`, or a write-up of the failed attempt. Suggested Lua
-or breakpoint approach: see §9f (Lua on the emulation thread, `dosbox.mem_read` once per frame).
+Each one gets a live capture tagged `[PROVEN]`, or a write-up of the failed attempt. For the
+approach, see §9f (a Lua script on the emulation thread, `dosbox.mem_read` once per frame).
+Commit each item on its own, including any capture file under `tools/refs/`.
 
 - [ ] `UNKNOWN_twocar_live_cycle`: a full two-car knockout exchange (§9am).
 - [ ] `UNKNOWN_0f64_speed_zero`: `car.speed` and the OPL pitch reaching 0 at a real `7AF8` call
   (pause entry, race exit, an exchange) (§9ar a).
 - [ ] `UNKNOWN_exit_banner_live`: ES at `30DF` (§9an 8).
-- [ ] `UNKNOWN_fade_duration`: the exit fade's length in ticks.
-- [ ] `UNKNOWN_countdown_hud_digit`: see P5.
+- [ ] `UNKNOWN_fade_duration`: the exit fade's length in ticks. This feeds P5.
+- [ ] `UNKNOWN_countdown_hud_digit`: the digit shown during the start countdown. This feeds P5.
 - [ ] A whole race end: the countdown and the final order. The ROUND21 lead rule firing (§10,
   "Added 2026-09-23 (§9ah)").
 - [ ] The rubber band boosting while car 0 genuinely leads mid-race, and the grip ×1.5 site (§9aq 4).
@@ -265,6 +305,9 @@ or breakpoint approach: see §9f (Lua on the emulation thread, `dosbox.mem_read`
 
 ## Part R: remaining static RE items (Ghidra only; can go to subagents, no DOSBox)
 
+Subagents may do the disassembly for these items, but only the main session edits files and
+commits.
+
 - [ ] `UNKNOWN_lev_low_bits` (`docs/track-layout.md`): bits 1–0 of the `.LEV` byte. Do an exhaustive
   byte-pattern search for every `.LEV` read.
 - [ ] `UNKNOWN_map_attr_bits` (partial): bit 1's physical meaning and round 8's pattern.
@@ -280,7 +323,7 @@ or breakpoint approach: see §9f (Lua on the emulation thread, `dosbox.mem_read`
 - [ ] Category (c) closures with a reason: `UNKNOWN_gfx1_header`, `UNKNOWN_unp_version`,
   `UNKNOWN_ph0_1140_1380` (three icon shapes with no consumer), `UNKNOWN_1254_1256`.
 
-## Part D: documentation debt
+## Part D: documentation and repository debt
 
 - [ ] D1. Make every open-item list agree with §10: `PLAN.md` §9, `docs/track-graphics.md`,
   `docs/track-layout.md`, `docs/sound.md` §8, the `docs/engine.md` §7 wording on `26B8`, and the
@@ -288,27 +331,32 @@ or breakpoint approach: see §9f (Lua on the emulation thread, `dosbox.mem_read`
 - [ ] D2. Rewrite §10 itself as a clean table (ID | status | section | address) instead of one
   run-on paragraph. Keep the history in the §9x sections.
 - [ ] D3. Rename the misleading Ghidra function names listed in §7 ("Ghidra names to fix": `0fbf`,
-  `102b`).
-- [ ] D4. Delete `src/**/*.bak2` once the P items touching those files are done and green. Check
-  first that nothing imports them.
+  `102b`). Ghidra isn't in git; save the program with `save_program`.
+- [ ] D4. Delete the old backup files (`src/engine/race.js.bak2`, `src/engine/sound.js.bak2`,
+  `src/render/raceView.js.bak2`, and anything else `git ls-files '*.bak*'` lists). The baseline
+  commit keeps them in history. First check that nothing imports them. Do this item first; it is
+  a one-commit cleanup.
+- [ ] D5. Add a line to `CLAUDE.md`'s "Working rules": the project is a git repository, with one
+  commit per finished item and no `.bak` copies.
 
-## P14: the final acceptance test (pixel diff of the front end)
+## Part F: the final acceptance test (pixel diff of the front end)
 
 `PLAN-ENGINE.md`'s acceptance line "each static screen pixel-diffs against a DOSBox screenshot"
 was carried forward and never met. Meet it now:
 
-1. In DOSBox, capture each static screen with `screen_capture` and read the DAC palette (as
-   `tools/refs/race_R21_dac.bin` was done). Capture: code card, OPTIONS, title (first showcase frame),
-   SELECT GAME, ONE PLAYER GAME, character select (settled), board, race intro, results, outcome,
-   eliminated, champion, and the H2H WON/LOST screens. Save the captures to `tools/refs/front/`.
-2. Write `tools/check-front.mjs` (`npm run front`). It renders the same screen through
-   `screens.js` with the same inputs and reports the differing-pixel count per screen, the way
-   `check-live.mjs` does. Target: 0 for every static screen. Where a screen animates, pin the frame
-   using the tick count read live.
-3. Walk one full session side by side: DOSBox and `game.html` in a foreground Chrome tab. Take the
-   boot → options → title → Challenge → qualifier → race → results → board → … → a lost race →
-   ONE LIFE LOST path, then quit. Write down each difference you see and either fix it or add it
-   to §10 as an open item.
+- [ ] F1. In DOSBox, capture each static screen with `screen_capture` and read the DAC palette (as
+  `tools/refs/race_R21_dac.bin` was done). Capture: code card, OPTIONS, title (first showcase frame),
+  SELECT GAME, ONE PLAYER GAME, character select (settled), board, race intro, results, outcome,
+  eliminated, champion, and the H2H WON/LOST screens. Save the captures to `tools/refs/front/`
+  and commit them.
+- [ ] F2. Write `tools/check-front.mjs` (`npm run front`). It renders the same screen through
+  `screens.js` with the same inputs and reports the differing-pixel count per screen, the way
+  `check-live.mjs` does. Target: 0 for every static screen. Where a screen animates, pin the frame
+  using the tick count read live. Add `front` to the regression loop above.
+- [ ] F3. Walk one full session side by side: DOSBox and `game.html` in a foreground Chrome tab.
+  Take the boot → options → title → Challenge → qualifier → race → results → board → … → a lost
+  race → ONE LIFE LOST path, then quit. Write down each difference you see and either fix it (one
+  commit each) or add it to §10 as an open item.
 
 ## Stop and report to the user (don't guess) when
 
@@ -317,7 +365,10 @@ was carried forward and never met. Meet it now:
 - The same DOSBox or tool failure repeats three times.
 - A rule in DOS depends on hardware timing the browser cannot reproduce. Describe the options.
 - Closing an item would need information outside the binary and the data files.
+- Something you didn't create shows up in `git status`, or `.gitignore` fails to keep game data
+  out.
 
-When all checkboxes are ticked, every `npm run` check and `npm run front` pass, and §10 lists only
-category-(b) items with a written-up attempt, write a final `docs/engine.md` section summarising
-the whole pass, then report to the user.
+When all checkboxes are ticked, every `npm run` check (including `front`) passes, and §10 lists
+only category-(b) items with a written-up attempt, write a final `docs/engine.md` section
+summarising the whole pass. Commit it, and report to the user with `git log --oneline` from the
+baseline commit.
