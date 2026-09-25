@@ -5,8 +5,8 @@
 // instructions are sound-driver commands (docs/sound.md's dispatch table lists both call sites by
 // address): `AH=8 CmdStopSfx` then `AH=6 CmdRequestReset` (a full driver reset -- both sfx queues
 // cleared, the silence list written, all 16 voice slots freed, current tune reset) -- ported here as
-// `sound.stopSfx(0)`/`sound.muteAll()` on the pause-ENTRY edge only, matching `raceOverSequence`'s
-// own "whatever AL holds" precedent for the stopSfx argument. Without this, engines would otherwise
+// `sound.stopSfx(0)`/`sound.muteAll()` on the pause-ENTRY edge only (AL is whatever it holds at
+// that call site; 0 is a no-op push). Without this, engines would otherwise
 // keep droning at their last pitch for the whole pause, since `updateEngines` simply isn't called
 // while physics is frozen -- silence, not a frozen last pitch, is what the real game does here.
 //

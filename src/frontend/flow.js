@@ -31,9 +31,9 @@ import { droneControlByte } from '../engine/ai.js'
 import { initCameraState } from '../engine/camera.js'
 import { createKeyboardReader, createExtraKeysReader, createPauseKeyReader, createMenuReleaseTracker, recordingReader, SCANCODE_TO_KEY_CODE } from '../engine/input.js'
 import { createPauseState, updatePause } from '../engine/pause.js'
-import { createRaceEndState, updateRaceEnd } from '../engine/raceEnd.js'
+import { createRaceEndState, updateRaceEnd, createEscQuitLatch } from '../engine/raceEnd.js'
 import { createFadeState, updateFade, applyFade } from '../engine/fade.js'
-import { raceStart, updateEngines, createRaceJitter, raceOverSequence, raceOverStart, raceOverGateCar, titleMusic, subMenuMusic, raceIntroMusic, raceResultMusic, raceOutcomeMusic, championMusic, eliminatedMusic } from '../engine/sound.js'
+import { raceStart, updateEngines, createRaceJitter, raceOverStart, raceOverGateCar, titleMusic, subMenuMusic, raceIntroMusic, raceResultMusic, raceOutcomeMusic, championMusic, eliminatedMusic } from '../engine/sound.js'
 import { lapLineSegments, nearestPaletteIndex } from '../engine/lapLine.js'
 import { Si2Player } from '../audio/si2Player.js'
 import { RUFF_TRUCK_TIMES } from '../data/engine-tables.js'
@@ -790,7 +790,6 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   let lastPassed = null
   let currentCars = null // exposed on the session for debugging (play.js's own bootRace precedent)
   let currentRaceState = null // likewise
-  let abortRaceFn = null // set by runOneRace while phase === 'RACING'; ESC (onKeydown, below) calls it
 
   function paintMenu() {
     menuBuf.fill(0)
@@ -880,6 +879,9 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     // carry a stray SPACE "pressed" edge in from leaving the RACE_INTRO screen (any key, on its
     // release, docs/engine.md §9bp) straight into the race's first frame, instantly pausing it.
     const pauseKey = createPauseKeyReader(window)
+    // [0x1096] (docs/engine.md §9ca): an ESC RELEASE from here on quits the race to the title --
+    // at the next loop head during the race, or after the hold and fade if the race has already ended.
+    const escLatch = createEscQuitLatch(window)
     const pauseState = createPauseState()
     const fadeState = createFadeState('in')
     const globalState = {} // written by cheats.js's applyCheatEffect on a pause-entry cheat-spot match
@@ -911,23 +913,16 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
         humanReader.dispose()
         p2Reader?.dispose()
         pauseKey.dispose()
-        abortRaceFn = null
+        escLatch.dispose()
       }
-      // ESC (docs/engine.md §9q's own header: `26E4` reloads the sound driver after ESC from a
-      // race) -- a port-only addition, not modelled on a specific original screen: the real game
-      // exits an interrupted race the same way it exits a finished one (silence, then back to the
-      // menu tree), which this reuses via `raceOverSequence` rather than a bespoke abort path.
-      // `onKeydown` calls this (it lives outside `RACING`'s own `humanReader`, which SPACE/arrows
-      // go through instead).
-      abortRaceFn = () => {
-        cleanup()
-        raceOverSequence(sound, cars)
-        resolve({ aborted: true })
-      }
+      let escGraceSteps = 0 // the rest of the iteration an ESC-ended pause returns into
       let raceEnd = null // the post-race hold + fade-out (engine/raceEnd.js), once the race is over
       let lastIndexed = null // the last painted frame: the hold re-shows it, and the fade-out darkens it
       function finishRace() {
         cleanup()
+        // 11CA/2185: [0x1096]==1 -> JMP 00CC -> 0054 -> the title (tune 1), whether the ESC ended the
+        // race itself or was released during the normal race end's hold or fade.
+        if (escLatch.latched) { resolve({ aborted: true }); return }
         // The tournament reads the order array at 11d5 ([2678..267E] -> [3FC..402]): the player's
         // place is car 0's slot in `raceState.rankOrder`, frozen by then (docs/engine.md §9ah). A
         // two-car race only checks slot 0 ([3FC]), after the [2630] exit fix-up that `runStep`
@@ -952,14 +947,19 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
         }
         updateFade(fadeState, dtMs)
 
+        // 3789/37B8: any key release ends the pause, so an ESC release does too; 35F0 returns into the
+        // middle of the iteration (307B), which runs its step and draw, and the next loop head quits.
+        if (escLatch.latched && pauseState.paused) { pauseState.paused = false; escGraceSteps = 1 }
         const { pressed, held } = pauseKey.read()
         const paused = updatePause(pauseState, dtMs, pressed, held, cars[0], cheats, round, race, globalState, sound)
 
         let shouldRender = paused
         let over = false
+        let escQuit = false
         if (!paused) {
           acc += dtMs / 1000
           while (acc >= STEP_DT) {
+            if (escLatch.latched && escGraceSteps-- <= 0) { escQuit = true; break } // 3067: CMP [0x1096],1 -> JMP 3115
             acc -= STEP_DT
             applyCheatGlobals(globalState, raceState, raceCtx)
             // `raceCtx.drawnTick`: read BEFORE the physics/state pass (was after, below) so
@@ -974,6 +974,13 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
             updateEngines(sound, cars, raceCtx, jitter)
           }
         }
+        if (escQuit) {
+          // 3115 -> 327A: no sfx 16, no hold, no AH=8/AH=6 -- the fade to black on the frame already
+          // shown; the engines keep their last pitch until the title's own entry silences the driver.
+          raceEnd = createRaceEndState({ esc: true })
+          requestAnimationFrame(frame)
+          return
+        }
         if (shouldRender && !over) {
           const composed = composeRaceView({ words, bank, camera, frames, vehicleSize, rotorFrames, bank2, pristineTile0, race, tileAnimCounter: raceState.tileAnimCounter ?? 0, cars, view: MENU_VIEW, hud: { ph0, raceFormat, round, ruffTruxTicks: raceState.ruffTruxTimer, raceOverCount: raceState.raceOverCount ?? 0, twoCar: raceState.twoCar, rankOrder: raceState.rankOrder, bannerBlink: bannerBlinkPhase(now) }, paused, lapLine: lapLineToggle?.checked ? lapLine : null })
           const faded = decodePalette(applyFade(palBytes, fadeState)).rgb
@@ -984,7 +991,6 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
         if (over) {
           // 30DF: sfx 16 gated on the camera-table car; then the hold (ESC is not read: 30F2-3100).
           raceOverStart(sound, cars, raceOverGateCar(raceState, raceFormat))
-          abortRaceFn = null
           raceEnd = createRaceEndState()
           requestAnimationFrame(frame)
           return
@@ -1001,7 +1007,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     const wasBonus = !!tournament.pendingBonusRace // position-keyed: inside TriggerBonusRace 1A82, whatever race it ended up running
     phase = 'LOADING' // input is ignored until runOneRace switches to RACING (a second confirm would start a second race)
     const result = await runOneRace(race)
-    if (result.aborted) { enterTitle(); return } // ESC quit, see runOneRace
+    if (result.aborted) { enterTitle(); return } // ESC released during the race or its exit: 11CA -> 00CC -> the title (docs/engine.md §9ca)
     // `ShowRaceResultsScreenTune8or6 1000:1439`'s own byte-exact pass/fail test (tournament.js's
     // `resultsPassed`, docs/engine.md §9bd), captured BEFORE `reportRaceResult` can advance
     // `tournament.raceIndex` -- the SAME timing constraint `wasQualifier` above needs, and the
@@ -1267,7 +1273,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     if (h2hInfoRafId != null) { cancelAnimationFrame(h2hInfoRafId); h2hInfoRafId = null }
     phase = 'LOADING'
     const result = await runOneRace(h2hTrack, { raceNumber: h2hMatch.raceNumber, rosterWords: h2hSetup.rosterWords }) // 2074: CALL 216C
-    if (result.aborted) { enterTitle(); return } // ESC during a race: port-only, as in one-player play
+    if (result.aborted) { enterTitle(); return } // 2185 -> 00CC -> the title, as in one-player play (docs/engine.md §9ca)
     const p1Won = result.finishPosition === 1 // [0x3FC]==0xC03 (256E's own 2574), after the [2630] fix-up
     const raceNumber = h2hMatch.raceNumber // the number 256E shows ([28C1], INC'd only after it at 207A)
     // 256E's own increments (2583/257D, 25B0/25BE) and 207A's INC, applied up front; the screen only
@@ -1583,8 +1589,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   function onKeydown(e) {
     if (e.code === 'KeyA' || e.code === 'KeyB') introHeldKeys.add(e.code) // fed to introStep regardless of phase; only consumed during LOGO
     if (phase === 'RACING') {
-      if (e.code === 'Escape' && abortRaceFn) abortRaceFn() // port-only quit-to-menu, see runOneRace's own comment
-      return // the race's own createKeyboardReader owns the rest of a race's input
+      return // the race's own readers own a race's input (ESC: its own release latch, runOneRace)
     }
     if (phase === 'LOGO') return // no key skips the intro -- see the P1 header comment above
     if (phase === 'TITLE') return // titleTick's own reader + menuReleaseTracker own this phase's input entirely

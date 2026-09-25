@@ -100,20 +100,6 @@ export function raceOverEnd(driver) {
   driver.muteAll()
 }
 
-/**
- * `ResetCarsAfterKnockoutSfxA`/race-over's simplified tail (docs/sound.md §6 "race end: AH=5 10h
- * (gated on a car being drawn)... StopEngineSounds... AH=8... AH=6") collapsed into one instant.
- * Kept only for the ESC quit (the real 306E path skips the sfx, the hold and the AH=8/AH=6 entirely;
- * the title screen's own entry sequence mutes). The real race end is `raceOverStart` + the page's
- * 100-tick hold + `raceOverEnd` (docs/engine.md §9an).
- */
-export function raceOverSequence(driver, cars) {
-  if (cars.some((c) => c.drawnThisFrame)) driver.playSfx(16)
-  for (let i = 0; i < cars.length; i++) driver.engine(i, { bend: 0 }) // StopEngineSounds: pitch 0 + END
-  driver.stopSfx(0) // AH=8 with "whatever AL holds" at this leftover call site -- 0 is a no-op push
-  driver.muteAll()
-}
-
 // --- Front-end music (M3.23, docs/sound.md §2/§6) -----------------------------------------------
 // The 15 `AH=4 CmdPlayTune` sites map to front-end screens, not races: `raceStart` above already
 // sends the `AH=7` that keeps every race itself silent. Only `flow.js` (the tournament front end)

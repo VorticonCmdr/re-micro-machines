@@ -4513,7 +4513,9 @@ confirming this section's own tune-1..8 mapping site-for-site, and additionally 
   `drawPauseBanner` fires, and the palette re-decoded through `applyFade` every render instead of
   once at load (`loadRaceAssets` now also returns the raw `palBytes` `decodePalette` needs).
 - **Port-only addition, not modelled on a specific original screen** (flagged as such, matching
-  this file's own convention for `play.js`'s earlier port-only additions): ESC now aborts a race
+  this file's own convention for `play.js`'s earlier port-only additions) **(CORRECTED, §9ca: not
+  port-only. DOS quits a race to the title too, on the ESC *release*, with no jingle and no hold but
+  with the fade; `raceOverSequence` is gone)**: ESC now aborts a race
   back to `TITLE` (`flow.js`'s `abortRaceFn`, set for the duration of `RACING` and called from
   `onKeydown`), reusing `raceOverSequence` for the same silence-everything effect a real race end
   already gets rather than a bespoke abort path. `play.js`'s own single-race page similarly gained
@@ -6122,6 +6124,10 @@ cheat's keypad `+`/`-` race skip at the race intro -- **ported and closed in §9
 open: `UNKNOWN_single_race_28c1` (§9by): `2329` never writes `[0x28C1]`, so a two-human single race
 runs with whatever value the session last left there; the alternate tuning never reads it, and its
 other readers' effect in a single race was not traced (the port passes 1).
+
+**Added 2026-09-25 (§9ca).** ESC during a race is ported the DOS way (P5's first item, closed). One
+new data point for `UNKNOWN_fade_duration`: `327A` took ~0.23s under DOSBox's CPU setting. That is
+not a closure.
 
 **Added 2026-09-25 (§9bz).** The four two-human screens are now drawn from the original's own draw
 calls and pixel-checked against seven DOSBox frames (`npm run h2hscreens`). They are Part F's first
@@ -11439,3 +11445,87 @@ now points here.
 
 The front-end part of Part F is not closed by this. It covers only the H2H screens; the other
 screens in F1's list still need captures and a `check-front.mjs`.
+
+## 9ca. ESC during a race: what DOS does, ported (2026-09-25)
+
+GOAL-DOS-PARITY.md P5's first item. The port's ESC quit had been flagged "port-only" (§9ai). DOS
+quits a race to the title screen too. What differed is how it gets there.
+
+**The mechanism, `[STATIC]` (read in full):**
+- **The latch.** `KeyboardIsr 2F41-2F5E`: on a key *release* (the scancode's top bit set), the
+  release latch `[0x107E]` is updated. If the released key is ESC (`CMP AH,1`, `2F59`), the ISR also
+  sets `[0x1096]=1`. A press never touches `[0x1096]`.
+- **Where it is cleared.** Seven sites write 0 into `[0x1096]`: `real_entry` `005C`/`0081`/`008B`,
+  `RunMainMenuKeepTitleTune 023D`, `RunCharacterSelectMenuTune2 09F1`, `RunTournamentLoop 10A0`, and
+  `InitRaceCarsFromTables 3CB6` (race setup).
+- **Where it is tested.** There are three readers:
+  - `RunRaceMainLoop 3067`, at every loop head: `[0x1096]==1` jumps straight to `3115`. That skips
+    `30DF-3113`, the whole normal race end: the sfx 16 jingle, the `7AF8` speed zero, the 100-tick
+    hold with `855A`, and `AH=8`/`AH=6`.
+  - `3115` then runs the same tail as a normal end: the `[0x2635]`/`[0x2630]` order fix-ups, the
+    `327A` fade to black, and the `chdir ..`.
+  - After the race returns, `SetupTournamentRace 11CA` (one-player, after `11B3-11C7`: the cheat
+    lives, the `11D5` order copy, the `26C0` reload) and `StopMusicRunRaceReloadAssets 2185`
+    (two-human, after `26C0`, before `11D5`) test `[0x1096]==1`. If set, they `JMP 00CC`.
+- **The title.** `00CC` restores the saved `SS:SP` (so the whole menu/tournament call chain is
+  abandoned) and calls `00E2` (a no-op on BLASTER). `0054` then clears `[0x1096]`, plays tune 1
+  (`AH=9`/`AH=4`), and calls `RunTitleScreenAttractLoop 0100`.
+- **After a normal race end.** Nothing clears `[0x1096]` between the loop and `11CA`/`2185`, and the
+  hold does not read it. So an ESC released during a normal race end's 100-tick hold or its fade
+  still lands on the title, and the results/outcome (or `256E`) are skipped. An ESC released later,
+  on a post-race screen, is not tested by anything until a clearing site. It stays set, harmlessly,
+  and that screen treats the release as an ordinary key release.
+- **While paused.** `35F0`'s pause loops end on any key release (`3789`/`37B8` test `[0x107E]`), so
+  an ESC release also ends the pause. `35F0` returns into the middle of the iteration (`307B`),
+  which runs its step and draw, and the next loop head quits.
+- **Sound.** The ESC exit sends nothing to the driver. The engine voices keep their last pitch through
+  the fade, until `26C0` reloads the driver and the title's own entry silences it.
+
+**`[PROVEN]` live (DOSBox, a two-human single race, `[0x1096]` at live `0B7A:1096`):**
+- ESC pressed and held 2.5s mid-race: still racing, and `[0x1096]` still 0.
+- A background sampler (every ~15ms: `[0x1096]`, the `327A` palette buffer at `7D78:0000` (live
+  `6FB6:0000`), and a VRAM window) recorded the ESC tap:
+  - `[0x1096]` went to 1 at 19.436s.
+  - 15ms later the palette buffer had started falling and VRAM had frozen. The fade began at once,
+    with no 100-tick (~1.43s) hold.
+  - The buffer reached 0 at 19.667s. The title followed at 20.40s: `[0x1096]` cleared and VRAM
+    changed.
+- A first attempt went differently. The race ended on its own (player 2 idle, so a separation win)
+  while ESC was held. The ESC release then dismissed the result screen, and the game went back to
+  SELECT VEHICLE with `[0x1096]=1` left set. This matches `2185` testing it only before `256E`.
+
+**A data point for `UNKNOWN_fade_duration` (not a closure):** under this DOSBox's CPU setting,
+`327A`'s fade took about 0.23s from the first buffer drop to black. The port's chosen fade is 800ms.
+The fade's own pacing (`32AE`/`331F`) is the separate P5/Part L item.
+
+**Port:**
+- `engine/raceEnd.js` has two new pieces:
+  - `createEscQuitLatch(target)` is `[0x1096]` for one race: ESC keyup only, and a new race starts
+    clear (`3CB6`).
+  - `createRaceEndState({ esc: true })` starts straight in the fade, with no hold and no
+    `raceOverEnd`.
+- `flow.js` `runOneRace`:
+  - It tests the latch at every physics step's loop head. On a hit it starts the ESC fade on the
+    last shown frame, then resolves `{ aborted: true }`, which goes to the title as before.
+  - An ESC release while paused unpauses, runs one more step, then quits.
+  - An ESC released during the normal hold or fade finishes that hold and fade, then goes to the
+    title instead of the results.
+  - The keydown-ESC `abortRaceFn` is deleted.
+- `sound.js`'s `raceOverSequence` is deleted: it played sfx 16 on the ESC quit, which DOS never
+  does. `check-sound.mjs` keeps a local copy only for its dropped-jingle regression case.
+- `play.js` (`index.html`) has no menu to return to and no ESC handling. It is unchanged.
+
+**Tests.** `npm run escquit` (`tools/check-escquit.mjs`) checks:
+- the latch: the release latches it, the press alone doesn't, other keys don't, and a new race
+  starts clear;
+- the ESC exit: fade then done, and nothing sent to the driver;
+- the normal exit: unchanged.
+
+It fails with the fix stashed. Live in `game.html` (two-human single race, Web Worker RAF shim, real
+key events):
+- ESC held 1.5s: still racing. On release, the canvas faded at once (brightness 77→0 over ~0.8s, the
+  port's own fade) and the title followed.
+- ESC released 0.4s into a pause: the same fade, then the title.
+- ESC released 0.3s into a finished race's hold: the frozen frame stayed for the rest of the hold,
+  then faded, and the page went to the **title**, not to the result screen.
+- No console errors.

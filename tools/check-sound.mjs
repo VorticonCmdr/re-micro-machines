@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Driver, Sequencer, createEngineJitter } from '../src/formats/si2.js'
-import { asDriver, raceStart, updateEngines, raceOverSequence, raceOverStart, raceOverEnd, raceOverGateCar, createRaceJitter } from '../src/engine/sound.js'
+import { asDriver, raceStart, updateEngines, raceOverStart, raceOverEnd, raceOverGateCar, createRaceJitter } from '../src/engine/sound.js'
 import { parseStrtPos } from '../src/formats/globaldata.js'
 import { loadWorld, loadBrk, roundCtx, spawnCars } from '../src/engine/race.js'
 import { runStep } from '../src/engine/step.js'
@@ -86,18 +86,27 @@ function check(name, cond) {
   check('at least one wired sfx id was queued over the run (id 1/2/3/5/8/9 from checkpoints/collide/velocity/states)', sfxSeen.size > 0)
   if (sfxSeen.size) console.log(`  sfx ids queued: ${[...sfxSeen].sort((a, b) => a - b).join(', ')}`)
 
-  raceOverSequence(driver, cars)
+  raceOverStart(driver, cars)
+  raceOverEnd(driver)
   seq.hostTick()
-  check('raceOverSequence runs without throwing and leaves the sequencer in a clean (reset) state', seq.slots.every((s) => s.state === 0))
+  check('the race exit (raceOverStart then raceOverEnd) leaves the sequencer in a clean (reset) state', seq.slots.every((s) => s.state === 0))
 }
 
 // 2b. The real race exit (docs/engine.md §9an): 30DF queues sfx 16, the 100-tick hold follows, and
 // only then 3102/3109 AH=8/AH=6. Sent in the same instant (the old raceOverSequence) the AH=6
 // reset clears the start queue first and sfx 16 never plays; 100 ticks apart it plays.
 {
+  // The old same-instant sequence (sfx 16, engines to pitch 0, AH=8, AH=6), kept here only to show why
+  // it was wrong; the port no longer uses it anywhere (the ESC quit sends nothing, docs/engine.md §9ca).
+  const oldSameInstant = (driver, cars) => {
+    if (cars.some((c) => c.drawnThisFrame)) driver.playSfx(16)
+    for (let i = 0; i < cars.length; i++) driver.engine(i, { bend: 0 })
+    driver.stopSfx(0)
+    driver.muteAll()
+  }
   const seqA = new Sequencer(new Driver(new Uint8Array(readFileSync(join(GAME, 'DRIVER1.BIN')))))
   const dA = asDriver(seqA)
-  raceOverSequence(dA, [{ drawnThisFrame: 1 }])
+  oldSameInstant(dA, [{ drawnThisFrame: 1 }])
   let heardA = false
   for (let t = 0; t < 5; t++) { seqA.hostTick(); if (seqA.slots.some((sl) => sl.sfxId === 16)) heardA = true }
   check('old same-instant race-over sequence: sfx 16 never becomes active (the dropped jingle)', !heardA)

@@ -120,7 +120,7 @@ Don't read `docs/engine.md` from start to finish. It is 6,000 lines. Jump to sec
 ## Regression suite (run before every commit; all must pass)
 
 ```bash
-for s in catalog lz chrtable tables car intro codecard options title mainmenu charselect board elimination keywait outcomewait windowedwait champion pressanykey raceskip step trace ai play sound rounds finish twocar twohuman h2hscreens tournament \
+for s in catalog lz chrtable tables car intro codecard options title mainmenu charselect board elimination keywait outcomewait windowedwait champion pressanykey raceskip step trace ai play sound rounds finish twocar twohuman h2hscreens escquit tournament \
          menu screens opl-toggle smoothness si2 live smoke; do npm run -s $s || echo "FAIL $s"; done
 npm run build
 ```
@@ -738,7 +738,7 @@ docs, (6) commit.
   port. Open: `UNKNOWN_single_race_28c1` (the stale `[28C1]` a single race runs with).
 
 ### P5: in-race behaviour that differs from DOS
-- [ ] **ESC during a race.** The port quits to the title, which is port-only (`flow.js:424`,
+- [x] **ESC during a race.** **Done (§9ca, M3.81): DOS also quits to the title, on the ESC release, with no jingle or hold but with the fade; the port now does the same.** The port quits to the title, which is port-only (`flow.js:424`,
   §9ai). Find what DOS does. Start at `1000:26E4`, which reloads the sound driver after ESC (see the
   §9q header), and at the pause path `CheckCheatSpotsThenPause 1000:37BF`. Match it, and delete the
   port-only path.
