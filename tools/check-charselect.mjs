@@ -67,6 +67,17 @@ for (let start = 0; start < 11; start++) {
   check('the scroll itself takes exactly 13 ticks (the ease table length)', steps === 13)
   check('settles back in IDLE after one slot', s.phase === 'IDLE')
   check('the selection actually changed', s.cursor !== startCursor)
+  // LEFT decreases the character index by exactly 1 (slot 5 -> slot 4, which this test's own
+  // roster marked taken, so the landed value is roster[4] = 4|0x40, not a plain 4) -- live-proven
+  // against a real DOSBox session, from ISOLATED single presses only (docs/engine.md §9bn): a
+  // single RIGHT press from a start of 5 read [0x160]=6 live; a single LEFT press from ANNE's own
+  // slot (2) read 1 (MIKE) -- LEFT and RIGHT move opposite directions along the SAME 11-character
+  // ring this port's own `roster` array models. (CHAINED presses, also sent this session (each
+  // held 50ms with a 300ms gap before the next), moved FEWER slots than presses each time: 6->2
+  // slots short by 2, and three more chains each short by 1 -- an unverified, open lead:
+  // docs/engine.md §9bn, NOT used as direction evidence here since a dropped press cannot
+  // distinguish "wrong direction" from "this press was ignored".)
+  check('LEFT moves the cursor DOWN by 1 slot (live-proven direction, docs/engine.md §9bn)', s.cursor === roster[4])
 }
 
 // 5. Fire is ignored on an invalid/taken slot (stays in IDLE, no BLINKING).

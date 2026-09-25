@@ -223,6 +223,53 @@ docs, (6) commit.
   into any reachable screen, since two-human H2H itself is P4.
 
 ### P3: tournament screens and rules
+- [ ] **REGRESSION, found 2026-09-25 (M3.68, docs/engine.md §9bn): `1000:179B`'s own real ~700-tick
+  (~10s) combined timeout was misdiagnosed as a dead constant and needs porting.** `179B` has
+  exactly three real callers (`get_xrefs_to`): TWO already-ticked items below (the elimination
+  screen's wait, the race-intro hold) plus the unported H2H race-info screen. Root cause: `179B`'s own stage-2 timeout compare
+  (`17D7: CMP word ptr CS:[0x93C2],0x2BC`) reads a `CS:`-segment-override address that an earlier
+  session's own sweep (`UNKNOWN_93c2_writer`, docs/engine.md §9ar item e) concluded was a
+  permanently-zero dead constant -- but `CS:[0x93C2]` is the SAME PHYSICAL BYTE as `DS:[0x2]` (the
+  shared tick counter with dozens of already-documented writers elsewhere in this file), reached
+  under a segment alias the sweep never accounted for (`CS:[X]`≡`DS:[X-0x93C0]` for any
+  `X>=0x93C0`, confirmed both statically via `list_segments` and against a live
+  `cpu_read_registers` read this session; independently cross-checked against the ALREADY-correct
+  `CS:[0x9C62]`≡`DS:[0x8A2]` alias, §9bf, via the identical formula). `179B` therefore has ONE
+  real, combined ~700-tick budget from its own entry-time reset, spanning BOTH its own stages
+  (stage 1's own timeout, `17BB: JNC 17FA`, exits the WHOLE function if it fires -- it does NOT
+  fall through into stage 2, correcting an additional misreading); it also combines both players'
+  own input (`17A5: MOV [0x1080],0`). **Also likely affects `UNKNOWN_a329_writer`
+  (docs/engine.md §9ar item f, `docs/track-graphics.md`'s own F12 screen-dump claim) via the exact
+  same alias class -- `CS:[0xA329]` arithmetic-checks out to `DS:[0x0F69]`, the real, live
+  `25011968` cheat flag, not a separate dead byte as currently documented; NOT yet independently
+  verified with a fresh disassembly this session, flagged here so it isn't lost. §9ar(f)'s own
+  dismissal of the `289D`->`A329` Ghidra xref as "stale" should be revisited too -- that xref is
+  Ghidra correctly resolving the SAME linear byte from two different segment:offset spellings,
+  corroborating the alias from the tool side rather than contradicting it; still genuinely open:
+  what VALUE the `25011968` cheat actually writes to `DS:0F69` (the F12 gate needs exactly `1`).**
+  **`FUN_1000_18D8` (docs/engine.md §9bl, called "an undocumented function") is actually the
+  ALREADY-PORTED tournament board (P3's own first item below, `npm run board`, §9ay) -- forward-correct
+  §9bl's own text and rename the function in Ghidra; its own `17FF` use, the board item's own
+  "simplified to the existing AWAIT_RELEASE idiom" note, plus `ShowRaceResultsScreenTune8or6`
+  (`164B`) and the outcome screen's own `CX=0xF` call (`1E0C`) are three more simplified `17FF`
+  callers -- consider whether a CX-parameterised `raceResultWaitStep` covering all of them deserves
+  its own bullet, separate from this regression.** **A held key across `179B`'s own entry has two
+  disagreeing port-side descriptions that need reconciling before this port: `tournament.js:168-173`
+  says DOS exits on that key's own LATER release, while `input.js`'s `createMenuReleaseTracker`
+  says such an already-held key is never tracked at all (and its own `onDown` doesn't filter
+  `e.repeat`, so a browser's own keyboard auto-repeat could behave differently from DOS's own
+  typematic make codes here too) -- pick one behaviour, document why, and test it as part of the
+  `179B` port below, since the port inherits whichever choice is made across all three screens.**
+  Fix, next
+  commit: forward-correct §9ar (e)/(f) and their own Method note, §9ba, `docs/track-graphics.md`,
+  and CLAUDE.md's "no real timeout" wording for the elimination screen; port `179B` as its own step
+  function (its own comparator/check-order/exit conditions differ from `raceResultWaitStep`, do not
+  reuse it) and wire it into `RACE_INTRO` (both formats) and the elimination screen's wait, closing
+  the release-vs-keydown mismatch `tournament.js`'s own header already documents for both; add a
+  new `PLAN.md` §8 pitfall (a CS-relative operand `>=0x93C0` is a DS alias; a no-writer sweep on
+  the CS-only encoding is empty by construction; a static read of `0` cannot distinguish an alias
+  from a genuinely dead byte); sweep the docs for any OTHER `CS:[0x9…]`/`CS:0x…` "dead
+  constant"/"no writer" conclusion with an offset `>=0x93C0` and recheck it.
 - [x] **Tournament board** (`1000:18d8`): the `CASE.CHR` map with `MINATURE` icons at the
   positions in `DS:0312` (26 words, §9t). It is gated on `[43A]=1`. Find exactly when it is shown
   in `RunTournamentLoop 1000:10a0`.
@@ -268,7 +315,13 @@ docs, (6) commit.
   PLAYER through the same `1a4a` carousel item 2 ported, not auto-picked (correcting this file's own
   and §9k's prior claim). `1000:179b`'s "press any key" wait has no real timeout past its own
   debounce (`CS:[0x93C2]` is a dead constant, §9ar e) -- ported as a plain keypress wait, matching
-  the existing `RACE_INTRO` idiom, not `PRESS_ANY_KEY`'s timer. `faceFrame` (P2 item 3, §9ax) had
+  the existing `RACE_INTRO` idiom, not `PRESS_ANY_KEY`'s timer.
+  **CORRECTED 2026-09-25, M3.68/docs/engine.md §9bn: `CS:[0x93C2]` is NOT a dead constant -- it is
+  `DS:[0x2]` under a segment alias (`CS:[X]`≡`DS:[X-0x93C0]` for `X>=0x93C0`), the same shared tick
+  counter this whole file tracks writers for elsewhere. `179B` has a real, combined ~700-tick (~10s)
+  timeout across both its own stages. See the new P3 regression bullet below -- this screen's own
+  wait needs the same fix as the race-intro hold.**
+  `faceFrame` (P2 item 3, §9ax) had
   eliminated/taken priority backwards, fixed against `0DB0`. An advisor review of the synthesized
   plan, before any code was written, caught three real bugs the plan would otherwise have shipped
   with: the eviction trigger would have fired one race early (capturing `raceIndex` after
@@ -463,6 +516,11 @@ docs, (6) commit.
   no read of the release latch anywhere in between. Proven only for a key
   pressed AND released inside the hold -- a key still held when the hold ends is the SAME
   release-vs-keydown mismatch already open as `UNKNOWN_outcome_screen_timeout`, not re-fixed here)
+  **-- REGRESSION FOUND 2026-09-25, M3.68/docs/engine.md §9bn: after `raceIntroHoldTicks`'s own
+  deadline passes, this port's own `flow.js` waits INDEFINITELY for a real keydown, with no
+  fallback -- but `179B` itself has a real, combined ~700-tick (~10s) timeout across its own two
+  stages that this port is currently missing entirely (the "no real timeout" premise this
+  `performance.now()`-deadline design leaned on was wrong, see the new P3 regression bullet below).**
   and `raceIntroParticipants(state)` (two text rows -- the player's name, then "VS" plus the
   opponents -- standing in for `19F2`'s own face panel; two rows and space-separated, not one row
   with commas, because `drawString`'s own glyph map has no comma/lowercase and an earlier draft's
@@ -479,10 +537,18 @@ docs, (6) commit.
   `DS:0002 & 7` without repeats. Reproduce `DS:0002` as a 70 Hz tick counter that runs from boot,
   so the choice is as non-deterministic as the original's. P2 input is KEYS 1. The race engine
   already runs two-car races (`twocar.js`). Check what it assumes about car 1 being a drone.
-  **In progress, 3 of 4 planned commits done (M3.60/M3.61/M3.62, docs/engine.md §9bf/§9bg/§9bh):**
+  **In progress, well past the original 4-commit plan (M3.60-M3.68, docs/engine.md §9bf-§9bn):**
   `car.isDrone` reflects real controller type; the alternate tuning path two-human H2H actually uses
   is ported and live-proven; `twoHuman.js` (track pick with no repeats, win tally, session-scoped
-  per-character lifetime stats, first-to-4 champion detection, skill labels) is ported and tested.
+  per-character lifetime stats, first-to-4 champion detection, skill labels) is ported and tested;
+  `256E`'s own full state (win-tally normalize, portrait blink resolver, bounded dismiss-wait) and
+  `0B51`'s own interactive Y/N toggle are both ported and tested too (M3.66/M3.67) -- only the
+  pixel-level draws and the actual `flow.js`/`screens.js` wiring remain, see "Remaining" below.
+  **`0B51`'s own new findings all `[PROVEN]` live (M3.68, docs/engine.md §9bn):** BRAKE dismisses
+  the handicap question exactly like FIRE; LEFT beats RIGHT when both are held; the OTHER player's
+  own fire/brake cannot dismiss a question that isn't theirs (both directions confirmed); and a
+  character's own answer defaults to whatever it was last set to on a later visit THIS SESSION,
+  surviving a full TWO PLAYER re-entry.
   **`DS:0002` correction (docs/engine.md §9bl): it is NOT a from-boot free-running counter** (13
   writers found -- 11 reset it to 0, 2 seed a nonzero value that just forces an immediate first
   blink-toggle -- triggered by nearly every wait-for-input screen in the game) -- the
@@ -508,8 +574,24 @@ docs, (6) commit.
   and `raceCtx.controllerTypes`, and
   new `screens.js` draw functions (where DOS marks a character pick taken is RESOLVED, §9bl: `09E0`
   itself, no new `charSelect.js` logic needed) -- scoped for BOTH two-human modes at
-  once, since P4's 2nd item below shares `twoHuman.js`'s own session state (§9bi). Each remaining
-  screen still its own commit, per the established one-commit-per-screen pattern.
+  once, since P4's 2nd item below shares `twoHuman.js`'s own session state (§9bi).
+  **Four wiring rules `[STATIC]`-settled this session, docs/engine.md §9bn -- easy to lose at the
+  next compaction, so recorded here too:** (1) `handicapStep` must be fed only the PICKING player's
+  own reader bits, never P1|P2 ORed together -- `09E0` never touches `[0x1080]`, so it stays at
+  whichever single reader block `1E20` set up for that pick. (2) CHOOSE GAME's own cancel/idle-out
+  (`1EF1`'s `CX==0`) does NOT return to character select -- `1E20` calls `1EF1` exactly once with no
+  loop, returning to `0220`'s own TWO PLAYER branch, which itself returns unconditionally; the actual
+  SELECT GAME redraw is `real_entry`'s own top-level loop (`0089-0095`) calling `0220` fresh, not
+  `0220` looping internally. (3) `nextTrack`'s own `v` seed differs by race: races 2+ read
+  `raceResultWaitStep`'s own `ticks` at dismiss (§9bl); race 1 has no preceding `256E`, so it reads
+  `twoItemMenuStep`'s own `idleTicks` at CHOOSE GAME's own fire-confirm instead (`0B51` never writes
+  `[0x2]`, only `RunTwoItemMenu`'s own `03BC` does, reset on every LEFT/RIGHT press, not just menu
+  entry). (4) Race-info's own exit (`179B`, shared with the one-player race-intro and the
+  elimination screen) accepts EITHER player's own fresh fire press or key release (`[0x1080]=0` at
+  entry, combining both readers), OR simply times out after a combined ~700 ticks (~10s) from entry
+  across both its own internal stages -- a real timeout this session found was previously
+  misdiagnosed as a dead constant, see the P3 regression bullet below. Each
+  remaining screen still its own commit, per the established one-commit-per-screen pattern.
 - [ ] **The single-race select** (`SelectSingleRaceTrack 1000:2193`, the 10-entry list at
   `DS:09D9`; LEFT and RIGHT both step +1). Find where it is reachable from, and port it if it is
   reachable.

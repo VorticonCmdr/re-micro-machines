@@ -9902,11 +9902,18 @@ scratch toggle cell `[0x1E0]` from the character's own PERSISTED answer (the cal
 responsibility to have set `DS:[0x1D6+c]` correctly beforehand -- `0` the first time a character is
 asked this session, else whatever it last answered. **`search_byte_patterns` for each address as a
 16-bit immediate operand (`"D6 01"`/`"D7 01"`/`"D8 01"`) returns exactly ONE hit apiece, all three
-`0B51`'s own `MOV BX,0x1D6`/`0x1D7`/`0x1D8` setup -- `0B51` is the ONLY place in the whole binary
-that references any of these three addresses at all**, so nothing (including `0EBA`'s own H2H-entry
-reset, already fully disassembled by M3.64/§9bj, which does not touch them either) ever resets them:
-an answer persists for the rest of the real DOS session, the same "no reset site anywhere" shape
-already established for the lifetime win/loss counters, §9bh. Ported as `handicapInitialState`'s
+`0B51`'s own `MOV BX,0x1D6`/`0x1D7`/`0x1D8` setup -- no OTHER function has a 16-bit-immediate/
+displacement reference to any of these three addresses** (this sweep does not cover a `REP STOS`/
+`MOVS` bulk fill, the same caveat M3.62's own lifetime-counter sweep had to separately rule out via
+its own dedicated `"F3 AA"`/`"F3 AB"` search -- not repeated here). `0EBA`'s own H2H-entry reset
+(already fully disassembled by M3.64/§9bj) does not touch them either. A static read this session
+(`read_memory 193C:01D6`, 3 bytes) confirms all three are `0` in the image, consistent with "0 the
+first time" for a character never yet asked (WALTER/MIKE/ANNE, `[STATIC]`, not yet observed live
+for a character §9bk's own live capture already touched, since that capture never re-visited the
+same character twice). An answer very likely persists for the rest of the real DOS session, the
+same "no reset site anywhere" shape
+already established for the lifetime win/loss counters, §9bh -- not yet as tightly closed as that
+finding, since the `REP STOS` sweep wasn't repeated. Ported as `handicapInitialState`'s
 own `defaultAnswer` parameter, since this module has no session-scoped storage of its own --
 `0` is the correct default only for a character's FIRST visit; the caller (the eventual
 `twoHuman.js`/`flow.js` wiring) owns tracking each character's own last answer across visits,
@@ -9977,14 +9984,279 @@ restored, 43/43 confirmed clean. Full 30-script regression suite plus `build` re
 
 **Verification status.** `[STATIC]`: the full `0B51-0C14` disassembly (`disassemble_function`, this
 session), including the newly-found BRAKE-also-exits detail, the LEFT-beats-RIGHT precedence, and
-the picking-player-only-bits finding -- none observed live (the live capture in §9bk only ever
-exercised RIGHT-then-commit-via-FIRE for two characters, never BRAKE, never both toggle keys
-together, and never a second player's own stray input during the question). `handicapInitialState`/
-`handicapStep` are therefore `[STATIC]`, not yet `[PROVEN]`. Not ported this session: the roster-
-word-bit-7 merge itself (no two-human H2H roster-word storage exists yet in this port), and the
-screen's own pixel draw (name label, NO/YES box, background) -- both `flow.js`/`screens.js`
-concerns for the eventual wiring commit, unchanged in scope from §9bl's own P4 note. **Good next
-live check, cheap alongside §9bl's own pending predictions (blink cadence at `26A0`, `[0xC16]`
-clean at race 2's `2481`, the face banks, `v` at `1FDD`): hold BRAKE (not FIRE) through a fresh
-`0B51` visit and confirm it dismisses the same way FIRE does, and confirm the OTHER player's own
-FIRE/BRAKE does NOT dismiss it.**
+the picking-player-only-bits finding -- none observed live at the time this section was first
+written (**UPDATED, same day, §9bn: all three now `[PROVEN]` live, plus a fourth finding,
+session-scoped persistence, found mid-pass** -- `handicapInitialState`/`handicapStep` are no longer
+`[STATIC]`-only for the findings §9bn covers). Not ported this session: the roster-word-bit-7 merge
+itself (no two-human H2H roster-word storage exists yet in this port), and the screen's own pixel
+draw (name label, NO/YES box, background) -- both `flow.js`/`screens.js` concerns for the eventual
+wiring commit, unchanged in scope from §9bl's own P4 note.
+
+## 9bn. Live DOSBox pass: `0B51`'s own new findings all `[PROVEN]` (2026-09-25)
+
+**Purpose.** §9bm's own "Verification status" flagged THREE predictions as `[STATIC]`-only: the
+BRAKE-also-exits detail, the LEFT-beats-RIGHT precedence, and the picking-player-only-bits finding.
+A FOURTH, session-scoped persistence, was identified mid-pass (below) once the live session
+unexpectedly bounced back to SELECT GAME. A fresh live DOSBox walkthrough (the same managed
+instance, reconnected cleanly at a bare `Z:\>`; boot recipe per CLAUDE.md, `input_type`/
+`input_sequence` throughout, `mem_read` on the live `DS` segment for ground truth, `screen_capture`
+at full resolution -- no `scale` downsample -- from the persistence tests onward, `scale:2` for the
+earlier shots) checked all four end to end, plus incidentally captured "HANDICAP ANNE ?" for the
+first time (§9bk's own capture only ever exercised WALTER and MIKE).
+
+**P1's own handicap question.** TWO PLAYER, P1 scrolled to ANNE (character 2) and confirmed with a
+clean short press+release (the already-documented held-fire trap, §9bk, avoided by releasing well
+before the carousel's own ~1.1s blink-commit finishes). "HANDICAP ANNE ? NO" appeared -- `[PROVEN]`
+live for ANNE specifically, closing the "no character other than WALTER/MIKE observed" gap.
+- P2's own fire (`K`) pressed while P1's question was showing: **no effect** -- the screen stayed on
+  "NO", confirming `[0x108B]` here is NOT P1|P2's OR'd byte (the other player's fire cannot dismiss
+  a question that isn't theirs).
+- RIGHT toggled to "HANDICAP ANNE ? YES" (`[0x1E0]` read `0x80` live, mid-toggle, `[0x1D8]` still
+  `0` -- scratch-only until commit, matching §9bk's own already-established mechanism).
+- P1's own BRAKE (decoded from the live `SETTINGS.DAT`'s own `keys2` field, NOT assumed --
+  `ArrowDown`, scancode `0x50`) dismissed the screen exactly like FIRE would, landing on PLAYER
+  TWO's own character select. `[0x1D8]` read `0x80` (YES) immediately after -- **BRAKE-also-exits
+  is `[PROVEN]` live.**
+
+**P2's own handicap question, using the real `SETTINGS.DAT`-decoded `keys1` (`J`/`L`/`I`/`M`/`K` =
+LEFT/RIGHT/ACCEL/BRAKE/FIRE, matching CLAUDE.md's own already-documented convention).** P2 scrolled
+to MIKE (character 1) and confirmed; "HANDICAP MIKE ? NO" appeared.
+- P1's own fire (`S`) pressed while P2's question was showing: **no effect**, the screen stayed on
+  "NO" -- the SAME picking-player-only-bits finding confirmed in the OTHER direction (P2's own
+  screen ignoring P1's own fire, mirroring P1's screen ignoring P2's own fire above). Two
+  independent live confirmations, one per direction, close this finding in full.
+- LEFT (`J`) then RIGHT (`L`) held TOGETHER (J first, L 50ms later), `[0x1E0]` read WHILE BOTH keys
+  were still genuinely held (a separate `input_sequence` call for the press, `mem_read` in between,
+  no release sent yet): `0`. **LEFT-beats-RIGHT is `[PROVEN]` live**, from a read that genuinely
+  overlapped both keys' own held state. **Retested in the OPPOSITE press order later this same pass
+  (below, under "Session-scoped persistence") -- RIGHT held first, LEFT added second -- with the
+  SAME `0` result, ruling out "whichever key was pressed first wins" as an alternate explanation:**
+  the priority is a pure bit-position check on the CURRENT `[0x108B]` snapshot each tick (matching
+  `0BF9`'s own `TEST AL,0x80` running before `0BFD`'s own `TEST AL,0x40` in the disassembly), not an
+  edge-triggered/press-order-dependent latch.
+- **A real automation pitfall was hit TWICE testing this SAME MIKE toggle, not once, and the second
+  hit committed a genuinely wrong value that had to be caught and corrected before moving on** (new
+  `PLAN.md` §8 pitfall): releasing two held keys a few ms apart -- the natural shape of a single
+  chained `input_sequence` call -- leaves a brief window where only ONE is still down, and the
+  level-based toggle re-evaluates every tick, so that window's own single-key state can silently
+  overwrite the "both held" result right before a downstream commit reads it. The FIRST hit: an
+  initial attempt sent J-press, L-press, J-release, L-release ALL as one chained `input_sequence`
+  call (releases ~20ms apart) and then read `[0x1E0]` -- it came back `0x80` (YES), an unexpected
+  result caught immediately (it contradicted the disassembly's own LEFT-precedence prediction) and
+  NOT trusted; re-testing with the press held via a SEPARATE call (no release queued) and reading
+  `[0x1E0]` WHILE BOTH keys were still genuinely down gave the correct `0`, confirming
+  LEFT-beats-RIGHT properly (the reading actually used above). The SECOND hit came right after,
+  releasing THOSE SAME two keys (J then L, ~20ms apart) and pressing K to confirm WITHOUT re-reading
+  `[0x1E0]` first -- the brief RIGHT-alone window before L's own release flipped the scratch toggle
+  to YES one more time, and **MIKE was committed as `[0x1D7]=0x80` (YES) as a result -- a real
+  response to that exact input sequence, not the intended test of "confirm the LEFT-won NO," and
+  NOT itself a new finding about `0B51`.** This was caught (via the unexpected `[0x1D7]` read) and
+  RETESTED CORRECTLY later in the same pass (below), this time in the OPPOSITE press order --
+  RIGHT (`L`) held first, LEFT (`J`) added second -- reading `0` mid-hold (confirming
+  LEFT-beats-RIGHT a second, independent time, and ruling out "whichever key was pressed FIRST
+  wins" as an alternate explanation, not just "whichever is tested last in the disassembly's own
+  code order": here RIGHT was held first and LEFT STILL won), then releasing `L` FIRST (so `J`
+  alone -- LEFT, matching the intended NO -- was the last state before commit), re-reading `[0x1E0]`
+  (still `0`), THEN confirming with `K`: `[0x1D7]` read back `0` (NO), proving the corrected release
+  procedure (release the LOSING key first, re-read before confirming) actually works.
+
+**Session-scoped persistence, `[PROVEN]` live, TWICE independently -- the strongest of the new
+findings.** After confirming MIKE's own (accidentally-YES) answer, the flow returned to SELECT GAME,
+not CHOOSE GAME as expected. **Likely cause, not confirmed to the tick: `RunTwoItemMenu`'s own real
+idle-cancel timeout, already established elsewhere in this file at `0x7D0` ticks (~28.6s, line
+~6711)** -- `1EF1`/`RunHeadToHeadChooseGameMenu` drives CHOOSE GAME through that SAME shared
+`0382`/`RunTwoItemMenu` state machine (§9bj), whose own `CX==0` branch (ESC OR idle) returns without
+writing `[0x8A0]` (a confirmed pick survives) and bubbles straight back up through `1E20`'s own tail
+to `0382`'s OTHER instance driving SELECT GAME itself (§9bj's own already-disassembled `1F97-1FA9`)
+-- if the real-world gap between confirming and the next input this session happened to exceed
+~28.6s (plausible given the tool round-trips in between, not measured precisely), CHOOSE GAME's own
+idle-cancel would explain the observed jump exactly, with no ESC ever pressed. Re-entering TWO
+PLAYER (a fresh `1E20`/`09E0` pass -- **the evidence that `0EBA` specifically ran is that `1E20`
+calls it unconditionally on every TWO PLAYER entry, already established statically, §9bj/M3.64; the
+roster read below shows `09E0`'s own entry-time release (`0A34-0A3B`) cleared ANNE's own taken bit,
+which is consistent with either `0EBA` or `09E0` alone having run, not independent proof `0EBA`
+itself fired**) and re-picking ANNE showed **"HANDICAP ANNE ? YES" as the DEFAULT**, not "NO" --
+`[0x1D8]` was never touched by the fresh entry, exactly as the `search_byte_patterns` sweep (§9bm)
+predicted. P2's own character select followed automatically in that SAME TWO PLAYER round (no
+second re-entry needed); re-picking MIKE ALSO showed **"HANDICAP MIKE ? YES" as the default** -- a
+second, independent persistence data point, through the genuinely different commit path described
+above
+(MIKE's own YES came from the release-order artifact, not an intentional RIGHT toggle, yet
+persisted identically). Both results are direct, live, end-to-end confirmation that an answer
+survives a full character-select/roster-reset cycle within the same DOS session, closing the "very
+likely session-scoped, not as tightly closed as the lifetime counters" hedge from §9bm into a plain
+`[PROVEN]` fact for this specific reset path (a full `REP STOS` sweep of `DS:0x1D6`-`0x1D8` was
+still not separately run, so "no writer ANYWHERE in the binary" remains the one still-`[STATIC]`
+half of the claim -- these live results only prove no writer fired ACROSS THIS PARTICULAR reset
+path, which is the one that actually matters for the eventual wiring commit). MIKE was then
+re-toggled to NO and re-confirmed (the corrected-release-procedure test above), leaving the session
+in a known state: `[0x1D8]`(ANNE)=`0x80`, `[0x1D7]`(MIKE)=`0`.
+
+**The SELECT-GAME-instead-of-CHOOSE-GAME jump is fully explained, `[STATIC]`.**
+`RunTwoPlayerHeadToHeadSetup 1000:1E20`, disassembled in full this session (`1E20-1EF0`, 57
+instructions -- previously known only by citation), calls `1EF1` exactly ONCE, unconditionally, at
+`1EE8`, with NO LOOP of its own around it: `1EE8: CALL 1EF1` falls straight through to `1EEB: MOV
+[0x3F3],0; RET`, the SAME tail P1's or P2's own ESC-cancel from the character carousel also reaches
+(`1E9F`/`1EE6: JC 1EEB`). `1E20`'s own SINGLE caller (`get_xrefs_to`) is `RunMainMenuKeepTitleTune
+1000:0220`'s own TWO PLAYER branch (`02D9: CALL 1E20`), which returns UNCONDITIONALLY via `02DC:
+CLC`/`02DD: RET` right after -- `0220` itself does NOT branch on anything `1E20` returned. `0220`'s
+own SINGLE caller, in turn, is `real_entry`'s own top-level loop (`0069-0095`, fully disassembled
+this session): `0090:
+CALL 0220` / `0093: JC 0069` (STC -> `0069-0080`: plays a tune -- AH=9/AL=1 query then AH=4/AL=1
+PlayTune -- then falls straight through into `0080: POP AX`, which sits IMMEDIATELY before `0086:
+CALL 0100`, `get_function_by_address`-confirmed `RunTitleScreenAttractLoop` -- SELECT GAME's own
+ESC returns to the title screen, NOT to DOS,
+exactly matching CLAUDE.md's already-documented hierarchy; `0089: JC 0032` there is the title's own
+ESC bubbling one level further UP to GAME OPTIONS at `0032`'s own `CALL 2770`, whose OWN `JC 0097`
+at `003C` is the exit tail -- confirmed only to restore the saved video mode, `0097: MOV AX,0x193C
+/ MOV DS,AX / ... INT 10h`; no `INT 21h` DOS-exit call was seen in this session's own read) / `0095: JMP 008B` (CLC -> loop
+back and `CALL 0220` again, completely fresh). So the SELECT GAME screen a player sees after
+returning from TWO PLAYER is not `0220` looping internally -- it is `real_entry`'s own outer loop
+calling `0220` a SECOND time from scratch. ANY return from `1EF1` -- a finished TOURNAMENT, an
+ESC'd SINGLE RACE that then exits CHOOSE GAME too, or CHOOSE GAME's own `CX==0` (ESC OR its own
+already-cited `0x7D0`-tick/~28.6s idle-cancel, §9aw) -- therefore sends control, via `1E20`'s own
+two-instruction tail (`1EEB-1EF0`) and `0220`'s own unconditional CLC, straight back to
+`real_entry`'s own loop, which redraws SELECT GAME by calling `0220` fresh. This is genuinely why
+the live session landed back at SELECT GAME after MIKE's own accidental confirm -- not a plausible
+guess, a direct consequence of `1E20` having no loop at all, regardless of WHICH of `1EF1`'s own
+several exit paths fired (which specific one remains unconfirmed -- ESC was never pressed, so the
+`0x7D0`-tick idle timeout is the likely trigger, but that detail no longer matters for explaining
+the destination). **This also means the "session-scoped persistence" re-entry above is not an
+artifact of a stray idle timeout -- it is the SAME path a normally-finished TWO PLAYER match takes
+back to SELECT GAME, so the whole test exercised the real, intended replay flow, not a
+workaround.**
+
+**CHOOSE GAME and race-info: only screenshotted in-context, not saved to disk as a durable
+reference** (`tools/refs/README.md`'s own established method -- `mem_read A000:0000` plus a
+`port_read`-based DAC dump, the SAME pair `race_R21_a000.bin`/`race_R21_dac.bin` already use -- was
+found but not used in time). After MIKE's second confirm, CHOOSE GAME appeared normally
+(screenshotted, in-context only). TOURNAMENT picked (LEFT then fire, `RunTwoItemMenu`, already
+ported/unmodified). The resulting race-info screen (screenshotted, in-context only) showed exactly
+what §9bj/§9bk already predicted: "TOURNAMENT RACE 1", "WON 0 LOST 0 ORDINARY" for both ANNE and
+MIKE, the `0`/`0` win-tally digits, and the two round-indexed vehicle-class icons at rest (round 4,
+"TURBO WHEELS") -- a THIRD independent reproduction of this same finding (after WALTER/MIKE in
+§9bk, DWAYNE/JETHRO context in §9bg), now with ANNE/MIKE. **By the time a `tools/refs`-style dump
+was attempted, the actual race had already started -- and the real cause is a genuine, previously
+mis-read ~700-tick (~10s) timeout, not a stray keypress.** `1FAF`'s own tail (`2071: CALL 179B`,
+`2074: CALL 216C`) reuses the SAME shared wait function `1000:179B` the one-player race-intro
+already reads through (already ported as `raceIntroHoldTicks`/its own H2H variant, §9be,
+`tournament.js`). **§9ba's own already-committed claim that `179B` "has no real timeout past its
+own initial debounce" is WRONG, forward-corrected in the next commit, not silently fixed here.**
+The error: `179B`'s own stage 2 timeout test (`17D7: CMP word ptr CS:[0x93C2],0x2BC`) uses a
+`CS:`-segment-override read that an earlier session's own investigation (`UNKNOWN_93c2_writer`,
+closed) concluded was a permanently-zero dead constant, having swept ONLY for the exact `CS:[0x93C2]`
+byte encoding and found no OTHER instruction using it -- missing that `CS:[0x93C2]` is the SAME
+PHYSICAL BYTE as `DS:[0x0002]` (`[0x2]`, the shared tick counter this whole file already tracks
+dozens of writers for), reached via a completely different encoding (no override, default DS). The
+alias: CS's own segment value is `0x1000`, DS's is `0x193C` (`list_segments`, and this session's own
+live `cpu_read_registers` independently read `cs=0x23E`/`ds=0xB7A`, difference `0x93C`
+paragraphs -- the SAME difference, confirming the alias holds live too, not just in the static
+image); `CS:[X]` and `DS:[X-0x93C0]` are therefore the same physical byte for any `X >= 0x93C0` --
+`0x93C2-0x93C0=0x2`, exactly `[0x2]`'s own address (independently cross-checked against the
+ALREADY-`[PROVEN]`-live `CS:[0x9C62]`≡`DS:[0x8A2]` alias (§9bf's own static finding, live-confirmed
+by §9bg's own breakpoint at `3F30`): `0x9C62-0x93C0=0x8A2`, the identical
+formula). `179B` therefore has ONE real, combined ~700-tick budget running from its own entry-time
+reset (`179F: MOV [0x2],0`) across BOTH its stages together (stage 1's own timeout, `17BB: JNC
+17FA`, exits the WHOLE function if the 700-tick budget expires before fire is even released --
+NOT a fall-through into stage 2 as an earlier read of this file assumed; stage 2 is only reached by
+a genuine release, and then keeps counting the SAME shared `[0x2]`, not a fresh budget). It also
+combines BOTH players' own input (`17A5: MOV [0x1080],0`, matching `RunTwoItemMenu`'s own
+combine-both-players convention, §9aw) -- either player's release or fresh press can advance it.
+**This session's own race-info observation is itself live, if circumstantial, evidence for the
+timeout, not against it:** the TOURNAMENT-confirm `S` key's own release landed ~100ms after its own
+press, well within `2216`'s own ~23-tick slide -- BEFORE `179B` was even entered, let alone before
+its own entry-time latch clear (`17AB`/`17B0`) wiped anything queued -- and nothing further was sent
+before the next screenshot, which came only after several Ghidra/file-read tool calls that easily
+took more than 10 real seconds. The session was
+consequently left MID-RACE (round 4, "TURBO WHEELS", car 0=ANNE/car 1=MIKE, both human-controlled,
+neither driven further this pass) rather than at race-info as planned -- reaching
+`256E`'s own WINNER!/LOSER! screen from here would need actually driving an 8-point two-car
+separation win or a lap-based finish, a longer and riskier walkthrough this pass did not attempt
+(time-boxed out of scope); §9bl's own four pending predictions (blink cadence at `26A0`, `[0xC16]`
+clean at race 2's `2481`, the face banks, `v` at `1FDD`) remain open for a dedicated future session.
+
+**Chained LEFT/RIGHT presses moved FEWER slots than presses sent, an open, unverified lead -- NOT
+used as direction evidence (isolated single presses were used instead, see below).** Four separate
+chained sequences this session, each a `press(50ms hold)/release, +300ms gap, repeat`
+`input_sequence` (so consecutive press ONSETS were ~350ms apart, but each key was held for only
+50ms): P1 round 1, 6 LEFT presses, slot 6->2 (4 slots moved, 2 short); P2 round 1, 5 LEFT presses,
+slot 6->2 (4 slots moved, 1 short, then a SEPARATE isolated single press moved the final slot,
+2->1); P1 round 2, 4 LEFT presses, slot 5->2 (3 slots moved, 1 short); P2 round 2, 5 LEFT presses,
+slot 6->2 again (4 slots moved, 1 short, then another isolated single press, 2->1) --
+every chain landed short, never over. `charSelectStep`'s own SCROLLING phase does not read new
+input at all until settling back to IDLE (matching `0A65-0A73`'s own real loop shape), so a press
+landing while the PREVIOUS press's own 13-tick (~186ms) scroll is still animating is correctly
+ignored by both the real game and this port -- consistent with, not necessarily contradicting, the
+port's own model. Since consecutive press ONSETS were ~350ms apart (comfortably more than 186ms at
+a perfect 70Hz), the more likely candidate is the 50ms HOLD length itself, not the 350ms spacing:
+a hold that brief may not reliably overlap whatever instant `2D5B`'s own poll (or DOSBox's own
+keyboard-event dispatch beneath it) actually samples, causing an occasional press to be missed
+entirely regardless of scroll timing -- a DIFFERENT mechanism from, though not ruling out, the SAME
+"at least a tick per step, not exactly one" caveat already noted for `3165`/`WaitNextVsyncTick`
+elsewhere in this file. UNVERIFIED either way, not chased further this pass.
+
+**Direction evidence, from ISOLATED single presses only** (the chained sequences above cannot
+distinguish "wrong direction" from "a press was silently dropped"): a single RIGHT press from a
+start of 5 read `[0x160]=6` live; a single LEFT press from ANNE's own slot (2) read `1` (MIKE) --
+LEFT decreases the character index, RIGHT increases it, confirming the port's own existing
+convention (`charSelectStep`'s own `LEFT(0x80)=+1`/`RIGHT(0x40)=-1` `dir` -- the SIGN convention
+is internal to the port's own scroll-position arithmetic, not the same thing as the character-INDEX
+direction observed here, which the port's own `centeredRosterValue` resolves correctly either way).
+
+**`v`'s own real source for RACE 1 specifically, resolved precisely -- `1FAF`'s own entry read
+(`1FAF-1FDD`, this session) plus `RunTwoItemMenu`/`twoItemMenuStep`'s own already-ported reset
+rules (`frontMenu.js`).** §9bl's own "source of `v`" finding covered races 2+, read at `1FDD` right
+after `256E` returns from its own dismiss-wait -- but race 1 has no PRECEDING `256E` call to seed
+`[0x2]` the same way. The disassembly of `1FAF`'s own entry (`1FAF-1FBE`: sets three unrelated
+flags, `[0x988]`/`[0x8A5]`/`[0x28C1]`, and `REP STOSB`-clears the 8-byte used-track bitmap
+`DS:9C2-9C9`, `nextTrack`'s own already-ported no-repeat mechanism -- NEITHER of which touches
+`[0x2]`) confirms `1FDD: MOV BX,[0x2]` is the FIRST read of `[0x2]` in this whole function, for
+race 1 exactly as for every later race -- no special reset or fixed seed. **`0B51` itself is NOT
+one of the 13 `[0x2]` writers (§9bm/§9bn) -- it only READS `[0x2]` via its own tick-wait idiom, so
+the handicap question's own dismiss does NOT reset it.** The real last writer before race 1's own
+`1FDD` is `RunTwoItemMenu`'s own single `[0x2]`-reset site (`03BC`, already among the 13) --
+`twoItemMenuStep`'s own already-ported code (`frontMenu.js`) shows this reset fires on EVERY
+LEFT/RIGHT press CHOOSE GAME receives, not just once at entry: the `AWAIT_RELEASE`->`POLL`
+transition, a SAME-direction repeat, and a direction CHANGE all reset `state.idleTicks` (`[0x2]`) to
+`0`; confirm exits on the FIRE PRESS itself (`bits&0x08`, `03DD-03E2`), a level-based check on the
+SAME tick fire is read, not on its release. So race 1's own `v` = `twoItemMenuStep`'s own
+`idleTicks` at the instant CHOOSE GAME's own `exit:'confirm'` fires -- "ticks since the LAST
+LEFT/RIGHT press (or menu entry) before TOURNAMENT/SINGLE RACE was confirmed" -- the SAME
+human-reaction-time-dependent shape `v` has for every other race, just via a DIFFERENT counter
+(`twoItemMenuStep`'s `idleTicks`, not `raceResultWaitStep`'s `ticks`) for this one screen. **A
+concrete, non-blocking consistency check, not a proof:** this session's own CHOOSE GAME confirm
+sent a LEFT press (resetting `idleTicks`), held it 100ms, released, then 700ms later sent the FIRE
+press -- an ~800ms total gap from the LEFT press to the FIRE press, ≈56 ticks at a perfect 70Hz.
+`nextTrack`'s own `slot = v & 7` (`twoHuman.js`) means the observed TURBO WHEELS result
+(`H2H_TRACK_TABLE[2]`) requires `v ≡ 2 (mod 8)` -- the two candidates bracketing 56 are `v=50` and
+`v=58`, both within a few ticks of the rough estimate (real DOSBox pacing, scheduling jitter, and
+the imprecision of "~800ms" itself easily account for the gap either way). This is a consistency
+check, not independent proof. The repeated TURBO WHEELS result across two
+independently-run live sessions (§9bk and this one) is most plausibly both sessions' own broadly
+similar automation timing landing on a similar `idleTicks` value at confirm, not a hidden fixed
+value -- **the wiring rule itself doesn't depend on resolving that coincidence: seed race 1's `v`
+from a `twoItemMenuStep`-shaped tick count at CHOOSE GAME's own confirm, and every later race's `v`
+from `raceResultWaitStep`'s own `ticks` at dismiss, per §9bl.**
+
+**Verification status.** `[PROVEN]` live, this session: BRAKE-also-exits; LEFT-beats-RIGHT (read
+mid-hold, twice, in BOTH press orders, independently of any commit value); both directions of
+picking-player-only-bits; session-scoped persistence across a full TWO PLAYER re-entry, for TWO
+different characters through TWO different commit paths (the full-binary "no writer anywhere" half
+of that claim is still `[STATIC]`); and the SELECT-GAME-destination mechanism (`1E20`'s own
+no-loop structure plus `real_entry`'s own outer loop -- `[STATIC]`, from a fresh full disassembly,
+not live-single-stepped through that exact instruction). **The `CS:[0x93C2]`≡`DS:[0x2]` segment
+alias itself is `[PROVEN]`**, not merely static: confirmed both via `list_segments` and against this
+session's own live `cpu_read_registers` read (`cs=0x23E`/`ds=0xB7A`, the SAME `0x93C`-paragraph
+difference), cross-checked against the identical, already-`[PROVEN]` `CS:[0x9C62]`≡`DS:[0x8A2]`
+alias (§9bg's own live breakpoint at `3F30`). **`179B`'s own genuine ~700-tick combined timeout FIRING is `[STATIC]` plus
+circumstantial live evidence, not yet `[PROVEN]` outright** -- the live race-info observation is
+consistent with (though not a direct breakpoint-read proof of) the timeout firing; a `[PROVEN]`
+confirmation would need a breakpoint on `179B`'s own `RET` with `[0x2]`
+read at that instant, not attempted this pass. `[STATIC]`, newly derived this session, not
+live-confirmed: race 1's own `v` source (`1FAF-1FDD`), the chained-press slot-drop lead. **This
+session's own §9ar(e)-reopening finding is corrected here in §9bn only; the ALREADY-COMMITTED §9ar
+(e), its own Method note, and §9ba's citation of it are forward-corrected in the NEXT commit, kept
+separate from this one's own scope** (GOAL-DOS-PARITY.md carries a new P3 regression bullet in the
+meantime so it survives a compaction). Not attempted: `256E`'s own screen,
+still fully `[STATIC]`/pending from §9bl -- the session was left mid-race (round 4, TURBO WHEELS),
+not at its own planned race-info starting point, for whenever a dedicated future attempt happens.

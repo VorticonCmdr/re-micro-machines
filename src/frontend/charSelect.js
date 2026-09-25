@@ -161,10 +161,11 @@ export function charSelectStep(state, input, roster) {
  * `handicapQuestionApplies`, above -- already covers 0b51-0b86). Full disassembly this session
  * (docs/engine.md §9bm). `defaultAnswer`: `DS:[0x1D6+character]`'s own persisted per-character
  * value (`0` the first time a character is asked this session, else whatever it last answered --
- * `0B9D: MOV AL,[BX]`, `BX` selected per-character at `0B68`/`0B73`/`0B7E`). SESSION-scoped, not
- * match-scoped: `search_byte_patterns` confirms `0B51` is the ONLY function in the whole binary
- * that references `DS:0x1D6`/`0x1D7`/`0x1D8` at all, so nothing ever resets them (not even `0EBA`'s
- * own H2H-entry reset) -- the caller owns tracking each character's own last answer across visits,
+ * `0B9D: MOV AL,[BX]`, `BX` selected per-character at `0B68`/`0B73`/`0B7E`). Very likely
+ * SESSION-scoped, not match-scoped: `search_byte_patterns` finds no OTHER function with a
+ * 16-bit-immediate reference to `DS:0x1D6`/`0x1D7`/`0x1D8` (not even `0EBA`'s own H2H-entry reset),
+ * though a bulk `REP STOS` fill wasn't separately ruled out (docs/engine.md §9bm) -- the caller
+ * owns tracking each character's own last answer across visits,
  * this module has no session storage of its own. `0` = NO, `0x80` = YES
  * (the real byte values, not booleans, so `state.answer` matches `[0x1E0]`'s own scratch cell
  * byte-exact).
