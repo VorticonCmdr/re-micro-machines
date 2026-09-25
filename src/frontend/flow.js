@@ -48,6 +48,7 @@ import { charSelectInitialState, charSelectStep } from './charSelect.js'
 import { boardInitialState, boardStep } from './board.js'
 import { eliminationInitialState, eliminationStep } from './elimination.js'
 import { waitScreenInitialState, waitScreenStep, holdTicksPreStep } from './keyWait.js'
+import { outcomeWaitInitialState, outcomeWaitStep } from './outcomeWait.js'
 import { composeCodeCardScreen, fontbinPalette, targetFromTickByte, moveCursor, CURSOR_X0, CURSOR_Y0, CODECARD_W, CODECARD_H } from '../formats/fontbin.js'
 import { cycleControl, cycleSound, cycleSmoothness, advanceCheatCursor, redefineKeyAccepted, redefineGroupOf, redefineSlotInGroup, REDEFINE_TOTAL_SLOTS, REDEFINE_SLOTS_PER_GROUP } from './options.js'
 
@@ -965,7 +966,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     // (either format), a bonus race or a lost Head-to-Head race; nothing after a won Head-to-Head race.
     const next = screenAfterRace(tournament, { wasQualifier, wasBonus: race.round === 9 })
     if (next === 'RESULTS') { raceResultMusic(sound, resultsWasPassed); phase = 'RESULTS' }
-    else if (next === 'OUTCOME') { raceOutcomeMusic(sound, tournament.lastOutcome); phase = 'OUTCOME' }
+    else if (next === 'OUTCOME') { enterOutcome(); return }
     else {
       nextAfterOutcome()
       return
@@ -991,6 +992,63 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     if (shouldShowBoard(tournament)) { enterBoard(); return } // 115c's own CALL 18d8, before the next race's own intro
     startNextRace()
     paintMenu()
+  }
+
+  /** The outcome-message screen, `ShowRaceOutcomeMessageTune8or6 1000:1C1B` (docs/engine.md
+   * §9bq, `outcomeWait.js`): its own two real waits -- the SIMPLE path's repeated `17FF` (CX=15)
+   * windows, or the LIVES path's silent digit slide then a poll every 6 ticks -- each with its own
+   * ~700-tick timeout, replacing the old indefinite Space/Enter keydown wait. Both entries (after a
+   * race, and from RESULTS) come through here. */
+  let outcomeWait = null
+  let outcomeRafId = null
+  let outcomeLast = 0
+  let outcomeAcc = 0
+  function enterOutcome() {
+    phase = 'OUTCOME'
+    raceOutcomeMusic(sound, tournament.lastOutcome) // ShowRaceOutcomeMessageTune8or6 1000:1c84, docs/engine.md §9ai
+    menuReleaseTracker.reset() // 1C30/1C35
+    outcomeWait = outcomeWaitInitialState(tournament.lastOutcome)
+    paintMenu()
+    outcomeLast = performance.now()
+    outcomeAcc = 0
+    if (outcomeRafId != null) cancelAnimationFrame(outcomeRafId)
+    outcomeRafId = requestAnimationFrame(outcomeTick)
+  }
+  function readOutcomeInput() {
+    const p1 = waitReaders.p1.read()
+    const p2 = waitReaders.p2.read()
+    const { code } = menuReleaseTracker.read()
+    return { p1FireHeld: (p1 & 0x08) !== 0, anyFireHeld: ((p1 | p2) & 0x08) !== 0, releasedCode: code }
+  }
+  /** One OUTCOME tick, shared by the real RAF loop and forceOutcomeSteps. Returns true once left. */
+  function outcomeWaitTick(readInput) {
+    const r = outcomeWaitStep(outcomeWait, readInput)
+    if (r.resetLatch) menuReleaseTracker.reset() // a fresh 17FF call's own 180F/1814
+    if (r.exit) { leaveOutcome(r.exit); return true }
+    return false
+  }
+  function outcomeTick(now) {
+    if (phase !== 'OUTCOME') return
+    outcomeAcc += Math.min(now - outcomeLast, 250)
+    outcomeLast = now
+    while (outcomeAcc >= INTRO_TICK_MS) {
+      outcomeAcc -= INTRO_TICK_MS
+      if (outcomeWaitTick(readOutcomeInput)) return
+    }
+    outcomeRafId = requestAnimationFrame(outcomeTick)
+  }
+  function leaveOutcome(exit) {
+    if (outcomeRafId != null) { cancelAnimationFrame(outcomeRafId); outcomeRafId = null }
+    // `]` (1DCD/1E12, a developer debug key): zeroes lives and returns from 1C1B at once, for both
+    // codes that reach the LIVES path. The two callers then differ, and applyLivesCheat reproduces
+    // both: 166A's own caller (ONE_LIFE_LOST) checks [0x406]==0 right away (166D) and ends the
+    // tournament; TriggerBonusRace's (EXTRA_LIFE, 1AA9) has no such check (1AAC: RET), so lives
+    // just sit at 0 -- and since [0x406] is a single byte, the NEXT loss wraps it to 255 rather
+    // than ending the run (decrementLives, docs/engine.md §9bc). The old keydown handler only left
+    // the screen when the tournament was over, so `]` on EXTRA_LIFE used to leave the port stuck on
+    // this screen; 1E12's own RET leaves in both cases (docs/engine.md §9bq).
+    if (exit === 'livesCheat') applyLivesCheat(tournament)
+    nextAfterOutcome() // whether this is a regular race or the just-unlocked bonus race, currentRace() resolves it
   }
 
   let raceIntroWait = null // waitScreenStep's own state: the slide hold is its pre-wait work, 179B the wait
@@ -1083,14 +1141,14 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       // elimination-check tail -- only a FAIL (CX=2) shows an OUTCOME screen at all (GOAL-DOS-
       // PARITY.md P3's 4th item, docs/engine.md §9bb item 3, showsOutcomeAfterResults's own header).
       if (showsOutcomeAfterResults(tournament)) {
-        phase = 'OUTCOME'
-        raceOutcomeMusic(sound, tournament.lastOutcome) // ShowRaceOutcomeMessageTune8or6 1000:1c84, docs/engine.md §9ai
+        enterOutcome()
+        return
       } else {
         nextAfterOutcome()
         return
       }
     } else if (phase === 'OUTCOME') {
-      nextAfterOutcome() // whether this is a regular race or the just-unlocked bonus race, currentRace() resolves it
+      leaveOutcome('dismiss') // debug/test entry only (window.mmGame.confirm) -- real input goes through outcomeTick
       return
     } else if (phase === 'CHAMPION') {
       enterSelectGame() // 1AAD returns to SELECT GAME (02D7 -> 0220's own CLC;RET chain), not the title -- no tune restart either
@@ -1120,32 +1178,8 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     if (phase === 'OPTIONS') { optionsKey(e); return }
     if (phase === 'QUIT') return // real DOS is gone at this point; nothing left to read
     if (phase === 'LOADING') return
-    if (phase === 'SELECT_GAME' || phase === 'ONE_PLAYER_GAME' || phase === 'CHAR_SELECT' || phase === 'BOARD' || phase === 'RACE_INTRO' || phase === 'ELIMINATED') return // each phase's own dedicated reader(s) + menuReleaseTracker own its input entirely (RACE_INTRO/ELIMINATED: 179B, raceIntroTick/eliminationTick)
+    if (phase === 'SELECT_GAME' || phase === 'ONE_PLAYER_GAME' || phase === 'CHAR_SELECT' || phase === 'BOARD' || phase === 'RACE_INTRO' || phase === 'ELIMINATED' || phase === 'OUTCOME') return // each phase's own dedicated reader(s) + menuReleaseTracker own its input entirely (RACE_INTRO/ELIMINATED: 179B, raceIntroTick/eliminationTick; OUTCOME: 1C1B, outcomeTick)
     if (phase === 'PRESS_ANY_KEY') { confirm(); return } // 0C15: any key click
-    if (phase === 'OUTCOME' && e.code === 'BracketRight') {
-      // 1000:1DCD, fully re-disassembled (GOAL-DOS-PARITY.md P3's 4th item, docs/engine.md §9bb): a
-      // developer debug key, reachable ONLY from inside the shared outcome-message wait loop
-      // (1D0D-1E11) that CX=2 (ONE_LIFE_LOST) and CX=3 (EXTRA_LIFE) alone reach (every other outcome
-      // code takes the simpler 1DE5 wait instead) -- `applyLivesCheat` (tournament.js) owns that
-      // reachability guard itself, not this call site, and no-ops for every other outcome. `]`
-      // (scancode 0x1B, [0x107E]) zeroes [0x406] (lives) and RETURNS from
-      // ShowRaceOutcomeMessageTune8or6 immediately, with NO further wait. The two reachable callers
-      // react differently, and applyLivesCheat reproduces both: the regular-race caller (166A's own
-      // call, reached for CX=2) checks `[0x406]==0` the INSTANT the call returns (166D) and ends the
-      // tournament right there, so `]` on ONE_LIFE_LOST is an immediate "quit with 0 lives";
-      // TriggerBonusRace's own call (1AA9, reached for CX=3) has NO such check afterward (1AAC:
-      // RET, unconditional) -- so `]` on EXTRA_LIFE just plants a lives-zeroed value silently, with
-      // no visible effect until whatever race-loss the player next reaches -- at which point, in
-      // the REAL game, [0x406] being a single BYTE (166D/1403's own CMP byte [0x406],0) means the
-      // NEXT loss's own DEC AL underflows 0 to 0xFF(255), so the tournament does NOT end there --
-      // it silently continues with 255 lives. `tournament.js`'s own `decrementLives` now reproduces
-      // this exactly (GOAL-DOS-PARITY.md's "two INFERRED tournament rules" item, docs/engine.md
-      // §9bc), so this port matches: `applyLivesCheat` followed by a loss correctly does NOT end
-      // the run here either.
-      applyLivesCheat(tournament)
-      if (tournament.over) nextAfterOutcome()
-      return
-    }
     if (e.code === 'Space' || e.code === 'Enter') confirm()
   }
   window.addEventListener('keydown', onKeydown)
@@ -1182,6 +1216,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       if (boardRafId != null) cancelAnimationFrame(boardRafId)
       if (eliminationRafId != null) cancelAnimationFrame(eliminationRafId)
       if (raceIntroRafId != null) cancelAnimationFrame(raceIntroRafId)
+      if (outcomeRafId != null) cancelAnimationFrame(outcomeRafId)
       clearTimeout(pressAnyKeyTimer)
       waitReaders?.p1.dispose(); waitReaders?.p2.dispose()
       titleReader?.dispose()
@@ -1262,6 +1297,14 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       if (phase !== 'RACE_INTRO') return
       for (let i = 0; i < n; i++) if (raceIntroWaitTick(input)) return
     },
+    // Same, for OUTCOME: `input` is `{ p1FireHeld, anyFireHeld, releasedCode }` (default: nothing),
+    // read only on the ticks the real code polls.
+    forceOutcomeSteps: (n, input = {}) => {
+      if (phase !== 'OUTCOME') return
+      const read = () => ({ p1FireHeld: !!input.p1FireHeld, anyFireHeld: !!input.anyFireHeld, releasedCode: input.releasedCode ?? null })
+      for (let i = 0; i < n; i++) if (outcomeWaitTick(read)) return
+    },
+    getOutcomeWait: () => (phase === 'OUTCOME' ? { ...outcomeWait, wait: outcomeWait.wait && { ...outcomeWait.wait } } : null),
     // Where a 179B-terminated screen is: `{ inWait, stage, ticks }` (null outside RACE_INTRO/ELIMINATED).
     getKeyWait: () => {
       const w = phase === 'RACE_INTRO' ? raceIntroWait : phase === 'ELIMINATED' ? eliminationWait : null

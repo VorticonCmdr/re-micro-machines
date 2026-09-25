@@ -120,7 +120,7 @@ Don't read `docs/engine.md` from start to finish. It is 6,000 lines. Jump to sec
 ## Regression suite (run before every commit; all must pass)
 
 ```bash
-for s in catalog lz chrtable tables car intro codecard options title mainmenu charselect board elimination step trace ai play sound rounds finish twocar tournament \
+for s in catalog lz chrtable tables car intro codecard options title mainmenu charselect board elimination keywait outcomewait step trace ai play sound rounds finish twocar twohuman tournament \
          menu screens opl-toggle smoothness si2 live smoke; do npm run -s $s || echo "FAIL $s"; done
 npm run build
 ```
@@ -315,6 +315,15 @@ docs, (6) commit.
   including a fire pressed on PRESS_ANY_KEY and held; synthetic events, so the no-auto-repeat
   case), and the ~700-tick timeout, measured from `179B`'s
   entry. Remaining: items (2) and (3). The box stays unticked until they have their own commits.
+  **Scope item (2) DONE 2026-09-25 (M3.71, docs/engine.md §9bq), closing
+  `UNKNOWN_outcome_screen_timeout`:** both of `1C1B`'s waits are ported (`outcomeWait.js`) and
+  wired: SIMPLE (codes 0/1/4/5: repeated `17FF` CX=15 windows, latch cleared at each, timeout at
+  tick 704) and LIVES (codes 2/3: a silent 30-iteration slide, then a poll every 6 ticks with the
+  `]` release first, any release, then P1-only undebounced fire; timeout at tick 702). `[PROVEN]`
+  live in the port for both paths. **Item (3)'s design question is settled by this commit:**
+  `raceResultWaitStep` now takes `17FF`'s `CX` as a parameter (default 20, `256E` unchanged), one
+  model rather than a copy, and the outcome screen's own `1E0C` call is done. What is left of item
+  (3) is wiring the board (`DrawTournamentBoard 18D8`) and the results screen (`164B`) onto it.
 - [x] **Tournament board** (`1000:18d8`): the `CASE.CHR` map with `MINATURE` icons at the
   positions in `DS:0312` (26 words, §9t). It is gated on `[43A]=1`. Find exactly when it is shown
   in `RunTournamentLoop 1000:10a0`.
@@ -726,6 +735,9 @@ Commit each item on its own, including any capture file under `tools/refs/`.
 - [ ] `UNKNOWN_race_4th_engine_delay` (`docs/sound.md` §8): a fresh race-start capture that logs
   `AH=3`'s return value.
 - [ ] `UNKNOWN_race_live_reverify` (`docs/sound.md` §8).
+- [ ] The outcome screen's LIVES-path timing (docs/engine.md §9bq assumptions a-c): a breakpoint at
+  `1000:1DCD` on a real ONE LIFE LOST screen, reading `[0x261F]` at the first poll. The port's
+  model predicts 156.
 - [ ] `UNKNOWN_opl_sample_fidelity`/`UNKNOWN_waveform_target`: an audio-level comparison of the JS
   OPL2 core against DOSBox's own output.
 - [ ] `UNKNOWN_class8_choppers`, live confirmation (optional; it is already resolved `[STATIC]`).

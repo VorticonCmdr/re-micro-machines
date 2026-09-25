@@ -87,7 +87,7 @@ export function createPauseKeyReader(target = window) {
  * menu screen that isn't reading a specific player's LEFT/RIGHT/FIRE bits (title's ESC-vs-other
  * test, `attract.js`) reads THIS instead: exactly one key is tracked at a time -- whichever is
  * pressed while nothing is already tracked -- and only THAT key's own release latches a result
- * (`'esc'` if its scancode is 1, `'other'` for anything else). **A key already HELD before `reset()`
+ * (`escReleased` if its scancode is 1, `otherReleased` for anything else). **A key already HELD before `reset()`
  * LIKELY eventually gets tracked in the real game, correcting an earlier claim here that it never
  * does (docs/engine.md §9bn, GOAL-DOS-PARITY.md P3 regression) -- but this is an INFERENCE, not
  * itself observed live:** the ISR's own press handler (`2F65: CMP [0x107F],0` / `2F6C: MOV
@@ -102,6 +102,10 @@ export function createPauseKeyReader(target = window) {
  * matching DOS's real behaviour in practice, though at different timing constants and not itself
  * measured this session either. `reset()` mirrors the real code's many screen-entry
  * `[107e]=0;[107f]=0` writes (title, both menu levels, character select).
+ *
+ * `read()` also returns `code`, the released key's own `KeyboardEvent.code` (or `null`): the real
+ * `[0x107E]` holds the released key's SCANCODE, not just a flag, and the outcome screen's own
+ * `]` cheat tests it for `0x1B` (`1000:1DCD`, docs/engine.md §9bq).
  */
 export function createMenuReleaseTracker(target = window) {
   let trackedCode = null
@@ -110,7 +114,7 @@ export function createMenuReleaseTracker(target = window) {
   const onUp = (e) => {
     if (e.code !== trackedCode) return
     trackedCode = null
-    latch = e.code === 'Escape' ? 'esc' : 'other'
+    latch = e.code
   }
   const onBlur = () => { trackedCode = null }
   target.addEventListener('keydown', onDown)
@@ -118,7 +122,7 @@ export function createMenuReleaseTracker(target = window) {
   target.addEventListener('blur', onBlur)
   return {
     read() {
-      const result = { escReleased: latch === 'esc', otherReleased: latch === 'other' }
+      const result = { escReleased: latch === 'Escape', otherReleased: latch != null && latch !== 'Escape', code: latch }
       latch = null
       return result
     },

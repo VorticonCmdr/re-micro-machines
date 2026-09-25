@@ -44,9 +44,11 @@ character-select carousel — reads the same LEFT/RIGHT/FIRE keys your copy's `S
 configures (both players' own bindings work at every menu level except character select, which is
 P1 only, exactly as the original does — see `docs/engine.md` §9av-§9ax); everything after the
 character picks mostly still uses plain Space/Enter, until `GOAL-DOS-PARITY.md`'s remaining P3
-items land. The exceptions are the race-intro and "IS OUT!!" screens, which now run the original's
-own key wait: any key moves on when you RELEASE it, a fire key held into the screen must be let go
-first, and after ~10 s they move on by themselves (`docs/engine.md` §9bp).
+items land. The exceptions are the race-intro, "IS OUT!!" and outcome-message screens, which now run the
+original's own key waits: any key moves on when you RELEASE it, and after ~10 s they move on by
+themselves. On the race-intro and "IS OUT!!" screens a fire key held into the screen must be let go
+first. The ONE LIFE LOST / EXTRA LIFE messages don't respond until the ~2 s lives slide ends; a
+key released during it still counts then, and fire held at that point leaves at once (`docs/engine.md` §9bp/§9bq).
 
 ## Setting up the game files for development
 

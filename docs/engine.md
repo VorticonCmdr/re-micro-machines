@@ -6355,7 +6355,10 @@ after an advisor review noted the original draft left it untested in the caller)
 New open items surfaced by this same pass, deliberately NOT fixed (out of scope for this item), NOT
 yet added to any GOAL-DOS-PARITY.md checklist item -- both need their own new bullet next time P3
 or P5 is picked up:
-**`UNKNOWN_outcome_screen_timeout`** -- the real `1C1B` wait loops both have a real ~700-tick
+**`UNKNOWN_outcome_screen_timeout`** -- **RESOLVED 2026-09-25 (M3.71, §9bq): both waits ported
+(`outcomeWait.js`) and wired, live-proven in the port. The description below is right about the
+release exits and the timeout, but two details are refined there: the counter is `[0x261F]`, not
+`[0x2]`, and `1D0D`'s fire test is P1-only and undebounced.** -- the real `1C1B` wait loops both have a real ~700-tick
 (`0x2BC`, ~10s) timeout AND exit on a plain key RELEASE (`[0x107E]`, the SAME global release latch
 `RunTwoItemMenu`/the title's own exit test already use, §9av) or fire, not a keyDOWN (`1D0D`:
 `1D2B`'s own timeout test, `1DD4`'s own `[0x107E]!=0` release exit, `1DDB`'s own fire exit; `1DE5`:
@@ -8523,6 +8526,7 @@ icons drawn (2 vs 4) differ by format; the portrait panel and its own setup are 
    on that key's own later release, `17C9`, while this port's own `confirm()` needs a fresh
    `keydown`) -- the same release-vs-keydown mismatch already recorded as
    `UNKNOWN_outcome_screen_timeout` (docs/engine.md §10, under the §9bb entry), not re-fixed here.
+   **Both since fixed: `179B` in §9bp (M3.70), `1C1B` in §9bq (M3.71).**
    This also STRENGTHENS `elimination.js`'s own analogous claim for its own bounce loop, rather than
    leaving it merely plausible: `179B` is the SAME shared function, confirmed elsewhere in this file
    (§9ar e: "the shared two-phase wait `179B-17FE`, called from `ShowNextRaceIntroScreenTune4or5`...
@@ -10560,3 +10564,120 @@ The H2H race-info screen's own `179B` call (`1000:2071`) stays unwired (P4). Sco
 (`UNKNOWN_outcome_screen_timeout`, `1C1B`) and (3) (the four `17FF` callers) are still open, so the
 GOAL-DOS-PARITY.md bullet stays unticked.
 
+
+## 9bq. Wait-screen input parity, part 2: the outcome screen's own waits (`1C1B`) (2026-09-25)
+
+**Purpose.** GOAL-DOS-PARITY.md P3's "Wait-screen input parity" bullet, scope item (2), closing
+`UNKNOWN_outcome_screen_timeout` (§10, under the §9bb entry). Until now the port's OUTCOME phase
+waited forever for a Space/Enter keydown, and `]` fired on keydown.
+
+**The disassembly (`ShowRaceOutcomeMessageTune8or6 1000:1C1B-1E17`, 187 instructions, re-read in
+full), all `[STATIC]`:**
+- Entry: `1C1B` `[0x261F]=0`; `1C30`/`1C35` `[0x107E]=0`/`[0x107F]=0` (the release latch).
+  `[0x261F]` is a tick counter: the timer ISR increments it at `48D8`, next to `[0x2]` (`48D4`)
+  and `CS:[0x4ADE]` (`48CB`). It is not the `[0x2]` counter `179B`/`17FF` use.
+- By outcome code `CX` (the port's `OUTCOME` codes are the same numbers): 0, 1, 4 and 5 take the
+  **SIMPLE** wait at `1DE5`; 2 (ONE_LIFE_LOST) and 3 (EXTRA_LIFE) take the **LIVES** wait at `1D0D`.
+- **SIMPLE (`1DE5-1E0F`).** Loop: `[0x261F] >= 0x2BC` returns; XOR the blink bit of the sprite at
+  `0xC03` (`1DF0`), redraw (`0DB0`), present (`08BC`), a palette fade-up the first time only
+  (`32CE`, gated on `[0x311]`), then `CALL 17FF` with `CX=0xF` (`1E09`). `17FF` (§9bl, `twoHuman.js`
+  `raceResultWaitStep`) sets `[0x1080]=0` (both players' fire combined), CLEARS the release latch
+  at its own entry (`180F`/`1814`), and returns CLC on a release or a fresh fire press, STC after
+  16 ticks. CLC falls through to `RET`; STC loops back to `1DE5`. So the timeout is only checked
+  every 16 ticks, and a key held across a window boundary becomes untracked there.
+- **LIVES (`1D0D-1DE2`).** `1D1F` re-zeroes `[0x261F]`; `1D25` sets `[0x2]=0x226` so the first
+  iteration blinks at once. Each iteration: the timeout check (`1D2B`), a blink when `[0x2] > 0xF`,
+  the lives digits drawn, five `CALL 3165` (`1D6D-1D75`; `3165` waits for `CS:[0x4ADE]` to change,
+  one tick each), a present, the fade-up the first time, then the digits drawn at X=`BX`. While
+  `BX` hasn't reached `DX` (`0x8C`->`0xC8` for CX=2, the reverse for CX=3, step 2, so 30 moves),
+  `BX += AX` and back to `1D2B` with NO input poll. On the 31st iteration (`BX == DX`) and every
+  one after, the code waits one more tick (`1DBF-1DC6`) and polls: `[0x107E]==0x1B` (the `]` key's
+  own scancode) zeroes lives and returns (`1DCD`, `1E12`); any other `[0x107E]!=0` returns
+  (`1DD4`); `[0x108B]&8` (fire HELD, no debounce) returns (`1DDB`); else loop. The latch is not
+  cleared again after entry, so a release made during the slide is still latched at the first poll.
+- **Whose fire does the LIVES path read?** `1D0D` never writes `[0x1080]`. A sweep of every
+  `80 10` byte pair (every store encoding, including `A3 80 10` and `89 0E 80 10`, not just the
+  `C7 06` form) found these stores: `0049`/`0146` (boot and title), `0388` (`RunTwoItemMenu`),
+  `0FD4` `RunOnePlayerHeadToHeadVsCpu` and `104C` `RunOnePlayerChallenge` (both `=0x137B`, P1's
+  own reader block), the `179B`/`17FF` push/overwrite/pop pairs, `1BF8` (`ShowChampionScreenTune3`),
+  and the two-human functions (`1E90`/`1ED7`/`2363`). Inside a one-player tournament nothing
+  between `0FD4`/`104C` and `1C1B` leaves it changed, so the LIVES path's fire test reads **P1
+  only**. `[STATIC]`.
+
+**Timing the model derives (ticks from phase entry):** SIMPLE timeout at tick 704, the first
+16-tick window boundary at or past 700. LIVES: first poll at tick 156 (30 x 5 + 5 + 1), then one
+every 6 ticks, timeout at tick 702 (the first iteration start at or past 700). Two assumptions,
+both open: (a) `CS:[0x4ADE]` is also incremented by the INT 0Ah vertical-retrace handler at `4AC5`;
+the 5-tick slide iteration holds only if that handler is not installed on this screen. (b) Both
+DOS budgets also include the entry draws and the first-iteration fade-up (`32CE`,
+`UNKNOWN_fade_duration`), which the port does not have, so DOS's visible wait is shorter by that
+unknown amount. The port counts from phase entry. (c) Each iteration's draw work finishes inside
+one tick. None of the draw helpers waits on anything: `08BC` is a plain 51 KB `REP MOVSD` (200 x
+256 bytes), and byte sweeps found no `0x3DA` retrace poll (only `3171`, `4865`/`487E`/`48B6`,
+`8B90`/`8B9F`), no `CALL 3165` (only `1D71`, `229C`, `2685`, `2CA5`, `30F6`, `78E4`) and no
+`CMP [0x2],AX` spin (none between `0400` and `09DF`, and none between `0C46` and `17BF`, which covers `0DB0`) inside `0DB0`/`0823`/`0929` or their blitters
+`053A`/`0999`. But on slow hardware or low DOSBox cycles a 64000-byte present can take more than
+14 ms, which would stretch each period by a tick. The exact numbers hold under (a)-(c). A DOS-side
+check would settle it: a breakpoint at `1DCD` reading `[0x261F]` at the first poll should show 156
+(recorded in GOAL-DOS-PARITY.md Part L).
+
+**What changed.**
+- `src/frontend/outcomeWait.js` (new): `outcomeWaitInitialState(code)`/`outcomeWaitStep(state,
+  readInput)`. `readInput` is called only on the ticks the real code polls, so the release tracker
+  keeps a slide-time release latched just like `[0x107E]`. The step returns `resetLatch` at every
+  new `17FF` window.
+- `twoHuman.js`: `raceResultWaitStep` takes `17FF`'s `CX` as an optional third parameter,
+  defaulting to `RACE_RESULT_WAIT_TICKS` (20), so `256E`'s own use is unchanged (`npm run twohuman`
+  still 133/133). This settles item (3)'s "is a CX-parameterised `17FF` model worth building"
+  question: yes, one model with a parameter, not a second copy. Item (3) is left with wiring the
+  board (`18D8`) and the results screen (`164B`).
+- `engine/input.js`: `menuReleaseTracker.read()` also returns `code`, the released key's
+  `KeyboardEvent.code` (the real `[0x107E]` holds the scancode). Additive; every existing caller
+  still reads `escReleased`/`otherReleased`.
+- `flow.js`: both OUTCOME entries (after a race; from RESULTS) go through `enterOutcome()` (music,
+  `menuReleaseTracker.reset()`, a per-tick RAF loop reading the session-lifetime `waitReaders`).
+  `onKeydown` ignores OUTCOME now; the `]` keydown branch is deleted. `leaveOutcome('livesCheat')`
+  calls `applyLivesCheat` and then ALWAYS leaves the screen (`1E12` returns for both codes). The
+  old keydown handler left only when the tournament ended, so `]` on EXTRA_LIFE used to leave the
+  port stuck on the screen. New debug hooks: `forceOutcomeSteps(n, {p1FireHeld, anyFireHeld,
+  releasedCode})` and `getOutcomeWait()`.
+
+**Tests.** `tools/check-outcomewait.mjs` (new, `npm run outcomewait`), 31 assertions: path
+selection for all six codes; `cx` default 20 and 15; SIMPLE timeout at 704 and a latch reset at
+16, 32, ..., 688; a release and a P2-only fresh fire press both dismiss in SIMPLE; a fire held into
+SIMPLE is debounced across window boundaries; LIVES polls first at 156 then every 6, never during
+the slide, times out at 702; a mid-slide release is acted on at tick 156; P1 fire held dismisses at
+156 with no debounce, P2-only fire never does; `]` beats both the release and the fire exits in
+LIVES and is an ordinary release in SIMPLE. Reintroduction-proven with five mutations: polling
+during the slide (5 fail), checking the SIMPLE timeout every tick (1), reading both players' fire
+in LIVES (1), ignoring `CX` (2), no latch reset per window (1). All restored, clean. Full
+regression suite plus `build` clean.
+
+**Live verification, `[PROVEN]` in the port.** `game.html` in Chrome, H2H vs CPU, reached through
+real races ended early by setting the live two-car score to 1 so the next knockout ends the match
+as a loss (the H2H qualifier gives code 0, SIMPLE; H2H race 1 gives ONE_LIFE_LOST, LIVES). The tab
+was hidden throughout. After about 5 minutes hidden, Chrome's intensive timer throttling froze a
+`setTimeout`-based RAF shim mid-race, so the RAF shim and the test script's own sleeps were moved
+onto a Web Worker's `setInterval(16)` ticker. The game code itself ran unmodified.
+- SIMPLE, Enter pressed 0.3s after entry, held 500ms, released: still OUTCOME (a `17FF` window
+  boundary untracked the key; synthetic events have no auto-repeat). Then no input: left 10.05s
+  after entry (704 ticks = 10.06s), last seen at 702 ticks.
+- SIMPLE, a 60ms Enter tap at 0.3s: left on the keyup, 384ms after entry.
+- LIVES, a 60ms Enter tap at 0.5s (mid-slide): still OUTCOME at 0.86s (62 ticks, iteration 12),
+  left at 2.225s (156 ticks = 2.229s), into the re-run race's RACE_INTRO.
+- LIVES, `KeyS` (P1 fire) pressed during the race and held into OUTCOME: left at the first poll,
+  2.228s.
+- LIVES, `]` tapped at 0.5s: left at 2.224s with lives 0 and the tournament over, to SELECT_GAME.
+- LIVES, no input: left 10.03s after entry (702 ticks = 10.03s).
+- No console errors. One contaminant, recorded so the result is not over-read: a watcher left over
+  from an earlier, throttled attempt woke up during the LIVES-timeout run and logged a line. Its
+  only possible action (an Enter keydown) cannot dismiss the LIVES wait, and the exit came at 702
+  ticks, so the timeout result stands.
+
+**Not covered.** The Challenge RESULTS -> OUTCOME entry (after a FAIL result) was not exercised
+live; it relies on the same listener order part 1 proved at PRESS_ANY_KEY (the tracker sees the
+confirming keydown before `onKeydown` runs, so `enterOutcome`'s `reset()` untracks that key).
+EXTRA_LIFE (reachable only after a bonus race) was not reached live; its path is
+the same code as ONE_LIFE_LOST except the slide direction, and `]` there is covered by the unit
+test only. The blinking sprite and the sliding lives digits are render items and stay unported
+(the port draws a static message). Nothing here is a DOS-side measurement.

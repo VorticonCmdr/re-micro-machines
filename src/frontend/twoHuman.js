@@ -456,20 +456,24 @@ export function raceResultWaitInitialState() {
   return { phase: 'AWAIT_RELEASE', ticks: 0 }
 }
 
-/** `input`: `{ fireHeld, anyKeyReleased }` -- `fireHeld` is the P1|P2 COMBINED fire bit
+/** `cx`: `17FF`'s own `CX` argument, the per-call tick budget -- `RACE_RESULT_WAIT_TICKS` (20) for
+ * `256E`'s own call; the outcome screen passes 15 (`1000:1E09`, docs/engine.md §9bq), and the board
+ * (`18D8`) and results screen (`164B`) have their own values, not yet wired (GOAL-DOS-PARITY.md P3
+ * "Wait-screen input parity" item (3)). `input`: `{ fireHeld, anyKeyReleased }` -- `fireHeld` is
+ * the P1|P2 COMBINED fire bit
  * (`[0x1080]=0` forces this OR-combine for the duration of the real wait, matching `frontMenu.js`'s
  * own already-documented convention for the SAME combined-bits idiom). Returns
  * `{ exit: null | 'dismiss' | 'retoggle' }`; `state` is mutated in place. */
-export function raceResultWaitStep(state, input = {}) {
+export function raceResultWaitStep(state, input = {}, cx = RACE_RESULT_WAIT_TICKS) {
   state.ticks++ // [0x2]'s own real increment -- ticks BEFORE either check, matching 1819/183B running before 1825/1847
   if (input.anyKeyReleased) return { exit: 'dismiss' } // 1825/1847: CMP [0x107E],0 / JNZ exit
   if (state.phase === 'AWAIT_RELEASE') {
     if (!input.fireHeld) { state.phase = 'AWAIT_PRESS'; return { exit: null } } // 182C: JZ -> inner loop, SAME tick count carries over
-    if (state.ticks > RACE_RESULT_WAIT_TICKS) { state.phase = 'AWAIT_RELEASE'; state.ticks = 0; return { exit: 'retoggle' } } // 1839: timeout
+    if (state.ticks > cx) { state.phase = 'AWAIT_RELEASE'; state.ticks = 0; return { exit: 'retoggle' } } // 1839: timeout
     return { exit: null } // 1833: CMP [0x2],CX / JLE -- keep waiting for release
   }
   // AWAIT_PRESS
   if (input.fireHeld) return { exit: 'dismiss' } // 184E: TEST AL,8 / JNZ exit
-  if (state.ticks > RACE_RESULT_WAIT_TICKS) { state.phase = 'AWAIT_RELEASE'; state.ticks = 0; return { exit: 'retoggle' } } // 1859: timeout
+  if (state.ticks > cx) { state.phase = 'AWAIT_RELEASE'; state.ticks = 0; return { exit: 'retoggle' } } // 1859: timeout
   return { exit: null } // 1855: CMP [0x2],CX / JLE -- keep waiting for a fresh press
 }

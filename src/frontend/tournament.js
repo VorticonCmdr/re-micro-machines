@@ -616,7 +616,8 @@ export function reportRaceResultWithOpponentSnapshot(state, result) {
 
 /**
  * `1000:1DCD`'s own `]` debug key (GOAL-DOS-PARITY.md P3's 4th item, docs/engine.md §9bb, full
- * derivation in `flow.js`'s own `onKeydown`). The reachability guard lives HERE, not in the caller
+ * derivation in `flow.js`'s own `leaveOutcome`; the key itself is detected on its RELEASE, only at the
+ * LIVES path's own polls, by `outcomeWait.js`, docs/engine.md §9bq). The reachability guard lives HERE, not in the caller
  * (an advisor review caught that leaving it in `flow.js` alone meant it was never actually tested):
  * reachable only while `state.lastOutcome` is `ONE_LIFE_LOST` or `EXTRA_LIFE` (the only two outcome
  * codes whose own message screen reaches the shared wait loop `1DCD` lives in) -- every other code
