@@ -132,8 +132,8 @@ and stays local to your machine.
   (portraits, win/lose poses, vehicle icons and their slides, pixel-checked against DOSBox,
   `docs/engine.md` §9bz), the tournament board screen, the interactive opponent picker, and the
   elimination/replacement screen.
-- One small draw difference found in Part R (`docs/engine.md` §9cf): when the projectile's tail
-  icon switches (the puffs, splashes and paint order are fixed, §9ch/§9ci). The pause's cheat-gated F1+F2 / F2+F3 key combos aren't ported either.
+- The pause's cheat-gated F1+F2 / F2+F3 key combos (`docs/engine.md` §9cf). The other Part R draw
+  differences are fixed (§9ch-§9cj).
 - Gamepad/mouse input during a race (keyboard only) -- mouse input elsewhere (the logo intro's
   click-to-skip) is implemented. The GAME OPTIONS screen's own F7 (joystick calibration) is gated
   correctly (never shown without a joystick) but its analog-read body isn't ported, same reason.
