@@ -147,13 +147,69 @@
 // were), so this cross-check confirms the formula's OWN output on a live-confirmed input, not an
 // independently-read label.
 //
-// Deliberately NOT modelled here (docs/engine.md §9bh, scoped by an advisor review): the handicap
-// question screen (`1000:0B51`, called only from `RunCharacterSelectMenuTune2` -- character select,
-// not this module's own per-race loop) and its still-open link (if any) to `altTuningFieldsFor`'s
-// own roster-word bit 7 (`UNKNOWN_handicap_rosterword_link`); the WINNER!/LOSER! banner draw and the
-// champion screen themselves (`256E`/`1AAD`, screens); the race-intro slide (`2216`); and the
+// **`2216`'s own tick count (`raceInfoSlideTicks`, docs/engine.md §9bj).** `2216-22B5`'s own slide
+// loop increments record 8's own X field (`[0xCDD]`, `0xC03+8*0x1B`) by `smoothness*4` per real ISR
+// tick until it exceeds 88 (`0x58`), decrementing record 9's own X field (`[0xCF8]`,
+// `0xC03+9*0x1B`) by the same amount -- solving that bound gives
+// `ticks = floor(88/step) + 1 = floor(22/smoothness) + 1`, distinguished from the alternate
+// "reaches-or-exceeds" reading (`ceil(22/smoothness)`, which coincides with this formula at
+// smoothness 3/4 but NOT 1/2 -- 88 divides evenly by `step` there) by a direct reintroduction test,
+// below. Called once per race by `RunHeadToHeadTournament` (`206E`) and once per
+// `selectSingleRaceTrack()` invocation by `SelectSingleRaceTrack` itself (`2193`'s own internal
+// `CALL 2216` at `2200` -- NOT from `2329`'s own top-level body; `234B` does write `[0xCDD]=0x56`
+// directly, but the calls between that write and `2200` -- `240A` (returns immediately, `[0x8A5]==0`
+// in this mode), `04B8` on record 4 (`0xC6F`), `2481` (records 0/1 only), `0910` (a plain
+// position-argument string draw, `get_function_by_address`-confirmed but not itself disassembled) --
+// touch neither `[0xCDD]`/`[0xCF8]` nor records 8/9 at all, so the `0x56` value is simply overwritten
+// by `2216`'s own entry-time reset before anything could show it, and single race genuinely DOES
+// animate the full slide on every track-select action, not just once per screen visit). Only the
+// tick COUNT is ported here, matching the established precedent (`tournament.js`'s own
+// `raceIntroHoldTicks`) of not porting the sprite-panel animation itself; also matching that
+// precedent's own caveat, NOT stated as a precise duration: `3165` (`WaitNextVsyncTick`, disassembled
+// this session) waits for `CS:[0x4ADE]` to CHANGE from whatever value it holds when `3165` is
+// entered, so each iteration advances by AT LEAST one real tick, more if the per-iteration draw/
+// present work (in between `226E`'s own `CS:[0x4ADE]=0` reset and `3165`'s own call) takes longer
+// than one tick on real 1994 hardware -- the reset's own exact purpose is not identified this
+// session. Records 8/9's own `+0x13` frame fields (`[0xCEE]`/`[0xD09]`) are set to `round-1` and
+// `round-1+8` -- two round-indexed icons, converging (record 8 slides X from 0 toward 88+, record 9
+// from 224 down toward 136-, both at Y=0x46) rather than diverging -- and their own RESTING position
+// depends on smoothness (`ticks*step`, which overshoots 88): 92/132 (40px apart) at smoothness 1,
+// 96/128 (32px apart) at smoothness 2-4 (12*8=8*12=6*16=96, a coincidence of these particular
+// smoothness/tick pairs) -- a real constraint for the eventual screens commit, which cannot hardcode
+// a single end position.
+//
+// Deliberately NOT modelled here (docs/engine.md §9bh/§9bj, scoped by an advisor review): porting
+// the handicap question screen as interactive UI/state (`1000:0B51`, re-disassembled in FULL already
+// in §9bf -- `0B40-0C10`, its own Y/N toggle and answer-cell storage at `DS:[0x1D6+character]` both
+// already traced byte-exact there -- called from `RunCharacterSelectMenuTune2`, and CONFIRMED
+// REACHABLE in two-human H2H specifically: `handicapQuestionApplies`'s own two skip conditions,
+// `raceFormat===1`/`otherDeviceType===6`, both come out FALSE for a real two-human match,
+// `[0x2656]=2` and `[0x265A]` = the real P2 control device (never `6`, the AI/drone sentinel) -- so
+// this screen genuinely fires for a character 0-2 pick in this mode, same as any other; what's NOT
+// done is porting it as actual interactive state/UI, and its still-open link to `altTuningFieldsFor`'s
+// own roster-word bit 7, `UNKNOWN_handicap_rosterword_link`); the WINNER!/LOSER! banner draw (`256E`,
+// a screen); `2216`'s own sprite-panel animation (only its tick count is ported, above); and the
 // source of `v` for `nextTrack` (`DS:0002`'s own value at the real resample site, still open -- see
 // docs/engine.md §9bh's own "Not yet done" list). These belong to the screens/flow-wiring commit.
+// `1AAD` (`ShowChampionScreenTune3`) itself is NOT new work: `flow.js` already has a `CHAMPION` phase
+// wired to `drawChampion`/`championMusic` for the one-player tournament path, and H2H's own champion
+// exit (`RunHeadToHeadTournament`'s post-`256E` code) calls the SAME `1AAD` -- the wiring commit
+// reuses this, not a new port. What DOES need no new port (§9bj): the character-select and
+// CHOOSE-GAME-menu STATE MACHINES -- `RunTwoPlayerHeadToHeadSetup 1000:1E20` calls the ALREADY-PORTED
+// `RunCharacterSelectMenuTune2`/`charSelectStep` twice, once per player, via a pointer swap
+// (`[0x1080]`) this port's own `charSelectStep(state, input, roster)` already supports by taking
+// `input` as a plain parameter -- a wiring commit needs a second `createKeyboardReader` instance for
+// P2's own control device, plus `0B51`'s own port (above), not new carousel logic (open, not chased
+// this session: `1E20` writes no roster byte between its two `09E0` calls, so either `09E0` marks a
+// pick taken internally -- unread, `09E0-0B50`'s own store sites into `DS:0164-016E` not swept -- or
+// nothing does and P2 could pick P1's own character; settle this before wiring). `1EF1`
+// (`RunHeadToHeadChooseGameMenu`, the "CHOOSE GAME!" TOURNAMENT/SINGLE RACE picker, its own real
+// resting selection `[0x8A0]` read `0` in the static image, `[STATIC]` -- nothing pre-selected,
+// unlike `SELECT GAME`'s own documented non-zero resting value; its own cancel path, `1FA9`, does
+// NOT write `[0x8A0]`, so a prior confirmed pick survives a cancel -- matching `SELECT GAME`'s own
+// persisted-pick pattern, not `ONE PLAYER GAME`'s reset-on-cancel one) is likewise a third instance
+// of the ALREADY-PORTED `twoItemMenuStep`/`twoItemMenuInitialState` (`frontMenu.js`), needing only a
+// new `screens.js` draw function and a `flow.js` entry, not new menu logic.
 
 import { CHARACTER_NAMES, H2H_TRACK_TABLE, H2H_SKILL_INDEX_TABLE, H2H_SKILL_LABELS, SINGLE_RACE_TRACK_TABLE } from '../data/frontend-tables.js'
 
@@ -248,4 +304,12 @@ export function reportRace(state, p1Character, p2Character, p1Won) {
 export function skillLabel(wins, losses) {
   const index = Math.max(0, Math.min(H2H_SKILL_INDEX_TABLE.length - 1, wins - losses + 10))
   return H2H_SKILL_LABELS[H2H_SKILL_INDEX_TABLE[index]]
+}
+
+/** `2216-22B5`'s own slide -- see this file's own header for the full derivation. `smoothness`:
+ * the resolved 1-4 value (`resolveSmoothnessForPlay`'s own output domain, `data/frontend-tables.js`
+ * -- `[0x263A]`'s own real range, AUTO already resolved away). Returns the number of real 70Hz
+ * ticks the slide runs for before `[0xCDD]` exceeds 88. */
+export function raceInfoSlideTicks(smoothness) {
+  return Math.floor(22 / smoothness) + 1 // 226E-22B3: [0xCDD] += smoothness*4 each tick, JLE 0x58
 }

@@ -9159,3 +9159,221 @@ reachable from is settled -- but the item itself stays unticked, same as item 1:
 1st item's own step 4 still needs, now with a clearer picture of what that commit must cover for
 BOTH two-human modes at once (one shared session object, `reportRace`'s own `matchOver` ignored in
 single-race mode, `selectSingleRaceTrack` for track choice instead of `nextTrack`).
+
+## 9bj. P4 step 4 scoping: `1E20`/`1EF1` mapped, `2216`'s own tick count derived (2026-09-25)
+
+**Purpose.** An advisor review of the M3.63 commit (§9bi) flagged that no one had yet actually
+disassembled `RunTwoPlayerHeadToHeadSetup 1000:1E20` or `RunHeadToHeadChooseGameMenu 1000:1EF1`
+this session, despite both being named in `flow.js:438` and GOAL-DOS-PARITY.md's own P4 item 1 --
+"map `1E20` -> `1EF1` first" was step 1 of the advice, before any `flow.js` edits. This section does
+that, plus `RunHeadToHeadVehicleSelectTune2 1000:2329`'s remaining unread half (`SelectSingleRaceTrack
+1000:2193`'s own FULL body, not just its cursor arithmetic), and ports the one genuinely new,
+self-contained piece it turned up: `2216`'s own tick count.
+
+**`RunTwoPlayerHeadToHeadSetup 1000:1E20` (`get_function_by_address`: true body `1E20-1EF0`), the TWO
+PLAYER menu entry `flow.js:438` already names.** Sets up two side-by-side record descriptors
+(`[0xCDD]/[0xCDF]/[0xCE5]` and `[0xCF8]/[0xCFA]/[0xD00]`, the SAME record fields `2216`'s own slide
+uses, below -- here just initialised, not animated); copies `[0xF61]` (SETTINGS.DAT's own P2 control
+word, closed `[PROVEN]` in §9bg) into `[0x265A]`; sets `[0x2656]=2` (`raceFormat`, the SAME cell
+`1F88` also writes) and `word ptr [0x9D6]=0`; calls `2D00` (`BuildInputReaderTable`, a generic init
+already covered by this port's own `input.js`), `0EBA` (`ResetTournamentState`, below), and `19F2`
+(a generic portrait/panel-background draw, ALSO called from `1EF1`, `12BD`'s own race-intro, and the
+opponent-picker -- already established elsewhere in this file to be a shared primitive, not
+H2H-specific); draws "PLAYER" (`DS:094D`) + "ONE" (`DS:0954`) at `1E78`; then runs
+`RunCharacterSelectMenuTune2 1000:09E0` (`get_function_by_address` confirms this IS `charSelect.js`'s
+own already-ported carousel, NOT a separate function) for P1 via `[0x1080]=0x137B` (P1's own
+reader-block address) and `[0x19E]=0xC03` (a panel-position selector), reading the result through
+`AX=[0x9A0]` (P1's own persisted last-pick cell) and `CALL 09E0`; on success (`JC 1EEB` NOT taken),
+redraws "PLAYER" (AX=0xBE this time, a different draw mode) + "TWO" (`DS:0958`), then runs `09E0`
+AGAIN for P2 via `[0x1080]=0x14DF` (P2's own reader-block address) and `[0x19E]=0xC1E`, reading/
+writing `[0x9A2]` (P2's own last-pick cell); on success, `CALL 1EF1`. **This settles the wiring
+commit's own biggest open question for free: the character-select STATE MACHINE needs no new port.**
+`charSelectStep(state, input, roster)` (`charSelect.js`) already takes `input` as a plain parameter,
+not a hardcoded P1 reader -- the real game's own `[0x1080]` pointer-swap is exactly this port's own
+"call it twice with two different `input` sources" shape, already supported. Only the DRAW position
+differs between P1/P2 (`[0x19E]`'s own two values), a `screens.js` concern for whenever
+`drawCharacterSelect` grows a two-player layout, not a new state-machine port. **This does NOT
+extend to `0B51` itself (the handicap question `09E0` calls internally): it genuinely fires in
+two-human H2H, and still needs its own port.** `0B51` (`0B40-0C10`) was already FULLY disassembled by
+§9bf -- its own Y/N toggle, `handicapQuestionApplies`'s already-ported gate, and its answer-cell
+storage (`DS:[0x1D6+character]`) are all already traced byte-exact there; what's NOT done is porting
+it as actual interactive UI/state, and the roster-word bit-7 link (below). `handicapQuestionApplies`'s
+own two skip conditions (`raceFormat===1`, `otherDeviceType===6`) are BOTH false in two-human H2H --
+`[0x2656]` is `2` (`1F88`, above), and `[0x265A]` holds the real P2 control device (`4`, KEYS1,
+`[PROVEN]` live in §9bg -- never `6`, the AI/drone sentinel that condition tests for) -- so a
+character 0-2 pick in this mode reaches `0B51` exactly like any other. **Not settled here, left for
+the wiring commit: where DOS marks a pick as taken.** `1E20` writes no roster byte between its two
+`09E0` calls, and `charSelect.js`'s own header already establishes that `charSelectStep` itself has
+no "if taken" check and treats `roster` as caller-owned -- so either `09E0`'s own body (`09E0-0B50`,
+beyond the `0B51` sub-call) marks a pick internally (its own stores into `DS:0164-016E` not swept
+this session), or nothing does and P2 could pick P1's own already-taken character. Both answers
+change the wiring commit's own design; settle before writing it.
+
+**`ResetTournamentState 1000:0EBA` (`0EBA-0F16`), disassembled in full.** Does NOT touch `[9A4+c]`/
+`[9AF+c]` (the lifetime win/loss counters, §9bh) anywhere -- confirms they survive a fresh TWO PLAYER
+entry, not just a fresh match within one. What it DOES reset: `[0x160]=6`, `[0x192]=0` (both
+unidentified, not consumed by anything this port's own engine reads -- low priority, left
+`UNKNOWN_0160_0192_meaning`); `[0x406]=3` (this is `tournament.lives`'s own real cell, ALREADY
+identified and ported -- M3.57/PLAN-ENGINE.md's own row cites this exact init site, `0ED0-0ED8`
+inside `ResetTournamentState` -- not new here, and not itself part of two-human H2H's own state,
+since neither mode reads lives); `[0x407..0x409]=3,3,3` (3 bytes, unidentified); the roster table
+`DS:0164..016E` (11 bytes) reset to identity `0,1,2,...,10` (every character un-picked -- the SAME
+table CLAUDE.md's own `frontend-tables.js` header already excludes as "genuinely not ported,"
+confirmed here to be a per-match reset, not session data, matching how `charSelect.js`'s own roster
+argument is already threaded through by its caller rather than owned internally); and FOUR 4-slot
+structures -- `[0x2668]/[0x266A]/[0x266C]/[0x266E]` (character index per car slot, `=11`, an
+out-of-range "none picked" sentinel -- the SAME `DS:0x2668` field the §9bg live capture already read
+as "4 words, character indices") and `[0xC16]/[0xC31]/[0xC4C]/[0xC67]` (portrait-frame fields, `=11`
+too -- the SAME `[0xC16]`/`[0xC31]` fields §9bh's own blink/mask finding already covers for cars 0/1;
+`0xC4C`/`0xC67` are the SAME shape for cars 2/3, unused by either two-human mode). None of this needs
+independent porting: `twoHuman.js` has no roster/portrait state of its own to reset (that already
+belongs to whatever calls `charSelectInitialState` per player), and the lifetime counters' own
+already-ported "no reset site" finding (§9bh) is now doubly confirmed by reading this function
+directly rather than inferring it from a byte-pattern sweep alone.
+
+**`RunHeadToHeadChooseGameMenu 1000:1EF1` (`1EF1-1FAE`), disassembled in full -- the "CHOOSE GAME!"
+screen §9bg's own live capture already identified qualitatively, now mapped instruction-by-instruction.**
+Draws "CHOOSE GAME!" (`DS:0922`, `CALL 0910`, a centered-title variant of the same string-draw
+primitive `1000:0929` uses elsewhere -- `0910` itself is confirmed by name only, `get_function_by_
+address`, not independently disassembled this session) then "TOURNAMENT" (`DS:092F`) / "SINGLE RACE"
+(`DS:093A`) as two menu items via the SAME generic two-icon layout `1F52-1F71` sets up (`BX=0xC8A`'s
+own struct, icon indices 4/5, `CALL 053A` twice) that `RunTwoItemMenu 1000:0382` (`frontMenu.js`'s
+own `twoItemMenuStep`/`twoItemMenuInitialState`, already ported and unmodified by this session) then
+drives via `CALL 08BC`/`CALL 0382` at `1F74`/`1F7D` -- **CHOOSE GAME is a THIRD instance of the exact
+same shared two-item-menu state machine SELECT_GAME/ONE_PLAYER_GAME already use, needing no new menu
+logic, only a new `screens.js` draw function and a `flow.js` entry.** `CX==0` (ESC/cancel) zeroes
+`[0x8A2]` and returns (`1FA9`, which does NOT write `[0x8A0]` -- a prior confirmed pick survives a
+cancel, matching `SELECT_GAME`'s own already-documented persisted-pick pattern, NOT `ONE_PLAYER_GAME`'s
+reset-on-cancel one); `CX==1` (TOURNAMENT) calls `1FAF` then returns all the way out (`1F97-1F9A`);
+`CX==2` (SINGLE RACE) calls `2329` and, once THAT returns (ESC out of the endless single-race loop),
+loops back to redraw this SAME menu (`1FA6: JMP 1EF1`) rather than exiting further -- confirming
+`flow.js`'s own eventual state machine needs CHOOSE GAME as a real loop-back target for single race's
+own ESC, not a one-shot dispatch, AND that this loop-back reopens with SINGLE RACE still selected
+(per the cancel-survives-pick rule above). Its own resting `initialSelection` (`[0x8A0]`, the same
+cell `CALL 0382` reads at `1F7A`) reads `0` in the static image -- `[STATIC]` (a Ghidra `read_memory`
+of the static image, not a live read -- the live session already confirmed TOURNAMENT/`1` there
+during M3.61's own capture, §9bg, so this `0` is the FRESH-GAME resting value specifically) --
+nothing pre-selected on a fresh game, unlike `SELECT_GAME`'s own already-documented non-zero resting
+value. `[0x989]/[0x98A]/[0x98B]/[0x98C]` are all zeroed at `1F09-1F18` (not just the win tally
+`[98A]`/`[98C]` §9bh already modelled -- `[0x989]`/`[0x98B]` are two MORE bytes zeroed in the same
+block, unidentified, no reader found this session -- `UNKNOWN_989_98b_meaning`, low priority: neither
+`256E` nor `2481`'s own already-disassembled bodies read them). `[0x8A2]` itself is confirmed, by
+finally reading its OWN writer's full context (`1F7A-1F9A`), to be exactly the menu's own `CX` result
+(1 or 2) persisted -- not a separate boolean -- matching §9bg's own hedge over the retracted
+"handicap answer" hypothesis exactly, with nothing left open about it.
+
+**`SelectSingleRaceTrack 1000:2193`'s remaining, undisassembled half, read in full.** §9bi ported its
+cursor/remap arithmetic (`21AB-21DF`) from a partial read; the REST of the function (`21E2-2215`,
+disassembled this session) draws: a round-indexed sprite field (`[0xBC5] = round-1`, `21E2-21EA`); a
+position for a second sprite record at `0xBB2` (`[0xBB6]=0x7F`, `[0xBB4]=0x50`, `21EE-21FA`, `CALL
+053A` to register it); **`CALL 2216` at `2200`** (already correctly cited by §9bi's own "called from
+BOTH `1FAF` and here" -- now independently re-confirmed by reading this whole body, not just the
+xref list); then a final icon draw (`CALL 089C`, unidentified, a `screens.js` concern). This settles
+that `2216`'s own slide-in animation runs to completion, blocking, on EVERY call to
+`selectSingleRaceTrack()` -- the initial pick (`23BF`, `delta=0`) and every LEFT/RIGHT re-pick
+(`23F4`, `delta=+1`) alike -- not once per screen visit. Also confirms `[0x28BF]`/`[0x28C0]` (`21DF`/
+`21CF`) are the SAME live "current round"/"current race" cells `selectSingleRaceTrack`'s own `round`/
+`race` return values already model, now tied to their real DS addresses for the first time.
+
+**`2216-22B5`'s own tick count, derived and ported (`raceInfoSlideTicks`), and what it actually
+slides.** `2481`'s own body (disassembled in full this session, below) confirms a `0x1B`-stride
+sprite-record array starting at `0xC03` (`0xC03`, `0xC1E`, `0xC6F`, `0xC8A`, and `2216`'s own two
+records, `0xCDB`/`0xCF6`, are all `0xC03 + k*0x1B`), each with `+2`=X, `+4`=Y, `+0x13`=frame -- so
+`[0xCDD]`/`[0xCF8]` (this file's own already-used shorthand) are record 8's and record 9's own X
+fields, and `[0xCEE]`/`[0xD09]` are the SAME two records' `+0x13` frame fields. Re-disassembling
+`2216` in full: a one-time setup -- `CALL 0862` (`FillRowsFrontView`, its own PRE-EXISTING Ghidra
+name from an earlier session, independently used at `1000:0425` for a divider-bar fill, line ~7076 --
+NOT itself re-disassembled this session, its identity rests on that existing name and the earlier
+use, not a fresh read) at `[0xBEC]+0x40` and, separately, `[0xBB6]+0x40` (that second `BX` value is
+PUSHed at `224F` and POPped at `2259`, then reused directly as the Y argument to the vehicle-class-
+name draw at `226B` -- NOT `FillRowsFrontView`'s own row count, `CX=8`, as an early pass mis-cited);
+the current round-1 into record 8's `[0xCEE]`; record 9's own frame, `[0xD09]`, set to `(round-1)+8`
+(`223B: ADD CX,8`) -- i.e. `2216` shows TWO round-indexed icons, not two character portraits; the
+vehicle-class name from `DS:002F` indexed by `[0x9D8]-1` (`225A`, matching §9bi's own already-cited
+byte offset exactly); resets record 8's X, `[0xCDD]=0`; sets record 9's X, `[0xCF8]=0xE0`(224) --
+i.e. the two icons start apart (X=0 and X=224) and CONVERGE, record 8 sliding right and record 9
+sliding left, both at Y=`0x46`(70) (set redundantly each loop iteration). THEN a loop (`226E-22B3`)
+that: resets `CS:[0x4ADE]=0` (a byte `3165`, below, does NOT itself read at that point -- `3165`
+captures whatever value `CS:[0x4ADE]` holds at ITS OWN entry and waits for the NEXT change,
+regardless of what the reset left it at, so this reset's own exact purpose is not identified this
+session); adds `[0x263A]*4` (smoothness, 1-4, `SETTINGS.DAT` word 2 verbatim) to record 8's X and
+subtracts it from record 9's X; draws both records (`CALL 04B8` x2, `ClipAndBlitSpriteTransparent`,
+a generic primitive); waits for the NEXT real ISR tick (`CALL 3165`, `WaitNextVsyncTick`,
+disassembled this session: `AL=CS:[0x4ADE]` then spins `CMP CS:[0x4ADE],AL / JZ` until it CHANGES --
+not smoothness-gated itself, unlike the DIFFERENT consumer of the same cell this file's own line
+~95-105 documents for the race loop's own present cadence) and presents (`CALL 08BC`,
+`CopyWholeFrontViewToVga`); restores both records' backgrounds (`CALL 05B4` x2,
+`RestoreSpriteBackground`); loops while record 8's own X `<= 0x58`(88). Because the draw/present work
+sits BETWEEN the reset and the wait, one iteration advances by AT LEAST one real tick, possibly more
+on slower hardware or a heavier iteration -- the SAME caveat `raceIntroHoldTicks` already carries,
+not a precise wall-clock guarantee. Solving record 8's own X arithmetic for the iteration count:
+iteration `k` leaves `X = k * step` (`step = smoothness*4`), and the loop exits the first time this
+EXCEEDS 88 (strict, `JLE` continues on equality, distinct from a "reaches-or-exceeds" reading) -- so
+`ticks = floor(88 / step) + 1 = floor(22 / smoothness) + 1`, checked against all 4 real smoothness
+values by direct calculation (1->23, 2->12, 3->8, 4->6) and ported as `raceInfoSlideTicks(smoothness)`
+in `twoHuman.js`. The FINAL X is `ticks*step`, which overshoots 88 -- so the two icons' own resting
+positions genuinely depend on smoothness, a real constraint for the eventual screens commit:
+
+| Smoothness | Final X (record 8 / record 9) | Distance apart |
+|---|---|---|
+| 1 | 92 / 132 | 40 px |
+| 2 | 96 / 128 | 32 px |
+| 3 | 96 / 128 | 32 px |
+| 4 | 96 / 128 | 32 px |
+
+(smoothness 2-4 coincide because `12*8 = 8*12 = 6*16 = 96` -- a coincidence of these particular
+tick/step pairs, not a general rule.) Applies identically to BOTH modes: `RunHeadToHeadTournament`
+calls `2216` directly, once per race (`206E`); single race calls it once per
+`selectSingleRaceTrack()` invocation (above), via `2193`'s own internal `CALL 2216`, not `2329`'s own
+body directly. `2329`'s own `234B` writes `[0xCDD]=0x56`(86)/`[0xCF8]=0x96`(150) directly, close to
+but short of the slide's own 88 target -- but `234B` runs BEFORE `23BF`'s own unconditional `CALL
+2193`, and every call in between (`2374: CALL 240A`, gated off and returning
+immediately since `[0x8A5]==0` in this mode; `2390: CALL 04B8` on record 4, `0xC6F`; `2397: CALL
+2481`; `239D...: CALL 0910`) is confirmed -- `2481` by a full disassembly this session, `0910` by its
+own small, position-argument call signature -- to touch neither record 8's nor record 9's own fields
+(`2481` only ever touches records 0/1, `0xC03`/`0xC1E` -- P1's and P2's own skill-label/portrait-
+frame fields; the one record-based draw in this span, `04B8` on record 4, is a different record
+entirely) -- so the `0x56` value written at `234B` is overwritten by `2216`'s own entry-time reset
+(`2235`) before the slide loop that would show it ever runs, and never actually persists to be seen:
+single race animates the SAME slide as tournament, on the SAME 0->88 range, just triggered from
+inside `2193` rather than `2329`'s own top-level body.
+
+**Tests.** `tools/check-twohuman.mjs` gained a `raceInfoSlideTicks` section: all 4 real smoothness
+values (1-4) against the hand-derived table above; the formula's own monotonicity (higher smoothness
+-> fewer ticks, matching "n=1 smoothest..4 chunkiest" wanting the SLOWEST reveal at the smoothest
+setting); a direct reimplementation of the loop itself (simulating the X field incrementing by
+`smoothness*4` per iteration until it exceeds 88, counting iterations) cross-checked against the
+closed-form formula for every smoothness 1-4, not just asserted equal to hand-computed constants.
+Reintroduction-proven against the derivation's own one genuinely non-trivial step (whether `JLE`
+continuing on equality means the exit test is a STRICT exceed, `> 88`, or a "reaches-or-exceeds," `>=
+88`): replacing the formula with `Math.ceil(22/smoothness)` (the reaches-or-exceeds reading) fails
+exactly 4 of 95 checks -- smoothness 1 and 2's own hand-derived AND simulation checks, the two values
+where 88 divides evenly by `step` and the two readings disagree (`22`/`11` vs `23`/`12`); smoothness
+3/4 are unaffected, since `ceil` and `floor+1` coincide whenever the division isn't exact. Restored
+and reconfirmed at 95/95. Full 30-script regression suite plus `build` re-run clean.
+
+**Verification status.** `[STATIC]`: every disassembly claim above, all read fresh this session
+(`1E20`, `0EBA`, `1EF1`, `2193`'s remaining half, `2216`, `3165`, `2481`) via `get_function_by_
+address`/`disassemble_function`/`get_xrefs_to` -- `0862` and `0910` are identified by their own
+PRE-EXISTING Ghidra names/an earlier session's own use (`0862`) and by name only (`0910`), NEITHER
+independently disassembled this session. `[0x8A0]`'s own fresh-game default (`0`) is a `[STATIC]`
+Ghidra `read_memory` of the static image, not a live read -- not upgraded to `[PROVEN]` here.
+`raceInfoSlideTicks`'s own formula is derived algebraically from the disassembled loop bounds, not
+observed live -- a live capture of an actual CHOOSE GAME or single-race screen, timing the real
+slide-in with `HIGH` smoothness (predicted: 23 iterations, EACH at least one real tick per the
+`3165`/`CS:[0x4ADE]` caveat above -- so the wall-clock duration is bounded below by ~0.33s at 70Hz,
+not pinned to it), would upgrade this to `[PROVEN]` and is a good first check for whoever drives the
+next live session. `UNKNOWN_0160_0192_meaning`, `UNKNOWN_989_98b_meaning`, and the still-open
+`UNKNOWN_handicap_rosterword_link` (§9bg/§9bh, untouched by this session) remain for later. **Step 4's
+own remaining scope, now much better bounded**: `0862`/`0910`/`089C` (disassembly still owed,
+screens.js concerns), `256E`'s own WINNER!/LOSER! draw and blink (§9bh already has its full address
+range and mechanism), `2481`/`240A` (skill-label/tally digits, §9bh/§9bi already have their
+formulas), the handicap screen `0B51` (its own disassembly is DONE, §9bf -- porting it as interactive
+UI/state, and its own roster-word link, are not), and `flow.js` wiring itself (now confirmed to need
+no new character-select or CHOOSE-GAME-menu STATE-MACHINE work, just two parameterised calls to the
+existing carousel, a `CHOOSE_GAME` third instance of the existing `twoItemMenuStep`, a P2
+`createKeyboardReader` instance, and `0B51`'s own new port). `ShowChampionScreenTune3 1000:1AAD`
+(the champion screen both `RunHeadToHeadTournament`'s own post-`256E` code and the one-player
+tournament path exit to) is NOT new work either: `flow.js` already has a `CHAMPION` phase wired to
+`drawChampion`/`championMusic` for the one-player path, reusable here rather than re-ported. Each
+remaining piece still its own commit, per the established one-commit-per-screen pattern.

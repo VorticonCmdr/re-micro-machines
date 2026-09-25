@@ -15,9 +15,11 @@
 //  - selectSingleRaceTrack (GOAL-DOS-PARITY.md P4's 2nd item, docs/engine.md §9bi): all 10
 //    SINGLE_RACE_TRACK_TABLE entries decode (after the PRO-class remap) to a real, named track;
 //    both wrap directions; the two remaps (10->round 3, 11->round 1); delta=0 re-reads the
-//    current entry without moving the cursor, matching 2329's own initial CALL 2193.
+//    current entry without moving the cursor, matching 2329's own initial CALL 2193;
+//  - raceInfoSlideTicks (2216's own tick count, docs/engine.md §9bj) matches the hand-derived
+//    formula AND a direct simulation of 226E-22B3's own loop, for all 4 real smoothness values.
 //   node tools/check-twohuman.mjs
-import { twoHumanSessionState, twoHumanMatchState, nextTrack, reportRace, skillLabel, selectSingleRaceTrack, H2H_TRACK_TABLE, H2H_WINS_TO_CHAMPION, SINGLE_RACE_TRACK_TABLE } from '../src/frontend/twoHuman.js'
+import { twoHumanSessionState, twoHumanMatchState, nextTrack, reportRace, skillLabel, selectSingleRaceTrack, raceInfoSlideTicks, H2H_TRACK_TABLE, H2H_WINS_TO_CHAMPION, SINGLE_RACE_TRACK_TABLE } from '../src/frontend/twoHuman.js'
 import { CHARACTER_NAMES, H2H_SKILL_INDEX_TABLE, H2H_SKILL_LABELS, trackName } from '../src/data/frontend-tables.js'
 
 let bad = 0
@@ -188,5 +190,23 @@ check('H2H_SKILL_LABELS has 8 entries (DS:08CD)', H2H_SKILL_LABELS.length === 8)
   check('PRO SPORTSCARS remap: roundRaw 11 -> round 1', selectSingleRaceTrack(9, 0).round === 1)
 }
 
-console.log(bad ? `${bad} of ${asserted} executed check(s) failed` : `check-twohuman: ${distinct.size} distinct assertions (${asserted} executed) pass -- two-human H2H's own tournament state (track pick with no repeats, win tally, session-level lifetime per-character stats that survive a new match, first-to-4 champion detection, the skill label formula, and single race's own track select) matches the disassembly (GOAL-DOS-PARITY.md P4, docs/engine.md §9bh/§9bi)`)
+// 8. raceInfoSlideTicks (2216's own tick count, docs/engine.md §9bj): [0xCDD] += smoothness*4 each
+// real 70Hz tick until it exceeds 88 -- checked against a direct simulation of that same loop for
+// every real smoothness value (1-4), not just the hand-derived constants.
+{
+  function simulateSlideTicks(smoothness) {
+    let cdd = 0
+    let ticks = 0
+    do { cdd += smoothness * 4; ticks++ } while (cdd <= 0x58) // 226E-22B3's own loop, JLE continues on <=
+    return ticks
+  }
+  const expected = { 1: 23, 2: 12, 3: 8, 4: 6 }
+  for (const smoothness of [1, 2, 3, 4]) {
+    check(`raceInfoSlideTicks(${smoothness}) === ${expected[smoothness]} (hand-derived)`, raceInfoSlideTicks(smoothness) === expected[smoothness])
+    check(`raceInfoSlideTicks(${smoothness}) matches a direct simulation of 226E-22B3's own loop`, raceInfoSlideTicks(smoothness) === simulateSlideTicks(smoothness))
+  }
+  check('raceInfoSlideTicks is monotonically DECREASING as smoothness rises (n=1 smoothest wants the slowest/longest reveal)', raceInfoSlideTicks(1) > raceInfoSlideTicks(2) && raceInfoSlideTicks(2) > raceInfoSlideTicks(3) && raceInfoSlideTicks(3) > raceInfoSlideTicks(4))
+}
+
+console.log(bad ? `${bad} of ${asserted} executed check(s) failed` : `check-twohuman: ${distinct.size} distinct assertions (${asserted} executed) pass -- two-human H2H's own tournament state (track pick with no repeats, win tally, session-level lifetime per-character stats that survive a new match, first-to-4 champion detection, the skill label formula, single race's own track select, and the race-info slide's own tick count) matches the disassembly (GOAL-DOS-PARITY.md P4, docs/engine.md §9bh/§9bi/§9bj)`)
 process.exitCode = bad ? 1 : 0

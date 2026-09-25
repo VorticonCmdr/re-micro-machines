@@ -483,11 +483,20 @@ docs, (6) commit.
   `car.isDrone` reflects real controller type; the alternate tuning path two-human H2H actually uses
   is ported and live-proven; `twoHuman.js` (track pick with no repeats, win tally, session-scoped
   per-character lifetime stats, first-to-4 champion detection, skill labels) is ported and tested.
-  **Remaining (step 4, its own commit):** the handicap question screen (`0B51`), the WINNER!/LOSER!/
-  champion screens, `2216`'s own slide, and `flow.js` wiring (a real P2 keyboard reader,
-  `enterSelectGame`'s TWO PLAYER branch, one shared `controllerTypes` array feeding both
-  `spawnCars` and `raceCtx.controllerTypes`) -- now scoped for BOTH two-human modes at once, since
-  P4's 2nd item below turned out to share `twoHuman.js`'s own session state (§9bi).
+  **Remaining, now better bounded (docs/engine.md §9bj maps `1E20`/`1EF1`/`2193`'s remaining half and
+  ports `2216`'s own tick count as `raceInfoSlideTicks`):** the handicap question screen as
+  interactive UI/state (`0B51` -- its own disassembly is DONE, §9bf, only the port and the
+  roster-word link remain), the WINNER!/LOSER! draw (`256E`), `2481`/`240A`'s own draw (formulas
+  already ported, §9bh/§9bi), and `flow.js` wiring -- confirmed §9bj to need NO new character-select
+  or menu STATE-MACHINE logic (P1/P2 picks reuse the already-ported `charSelectStep` twice via its
+  existing `input` parameter; the CHOOSE GAME TOURNAMENT/SINGLE RACE picker reuses the already-ported
+  `twoItemMenuStep` a third time; the champion screen, `1AAD`, reuses `flow.js`'s own already-wired
+  `CHAMPION` phase/`drawChampion`/`championMusic` from the one-player path) -- just a real P2
+  `createKeyboardReader`, `enterSelectGame`'s TWO PLAYER branch, one shared `controllerTypes` array
+  feeding both `spawnCars` and `raceCtx.controllerTypes`, new `screens.js` draw functions, and
+  settling where DOS marks a character pick taken (open, §9bj) -- scoped for BOTH two-human modes at
+  once, since P4's 2nd item below shares `twoHuman.js`'s own session state (§9bi). Each remaining
+  screen still its own commit, per the established one-commit-per-screen pattern.
 - [ ] **The single-race select** (`SelectSingleRaceTrack 1000:2193`, the 10-entry list at
   `DS:09D9`; LEFT and RIGHT both step +1). Find where it is reachable from, and port it if it is
   reachable.
@@ -503,7 +512,9 @@ docs, (6) commit.
   `vehicleClass` for the eventual screen's own class-name draw), `SINGLE_RACE_TRACK_TABLE`
   (`data/frontend-tables.js`, `DS:09D9`, `[PROVEN]` live). GOAL's own "LEFT and RIGHT both step +1"
   confirmed mechanically, not just cited. `tools/check-twohuman.mjs` gained 40 assertions (86
-  total), reintroduction-proven.
+  total), reintroduction-proven. `2193`'s own remaining, undisassembled half (its own `CALL 2216`)
+  is now also read (§9bj): every `selectSingleRaceTrack()` call -- not just the screen's first visit
+  -- runs the SAME slide-in animation tournament mode uses once per race.
 
 ### P5: in-race behaviour that differs from DOS
 - [ ] **ESC during a race.** The port quits to the title, which is port-only (`flow.js:424`,
