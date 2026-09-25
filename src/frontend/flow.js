@@ -31,7 +31,7 @@ import { droneControlByte } from '../engine/ai.js'
 import { initCameraState } from '../engine/camera.js'
 import { createKeyboardReader, createExtraKeysReader, createPauseKeyReader, createMenuReleaseTracker, recordingReader, SCANCODE_TO_KEY_CODE } from '../engine/input.js'
 import { createPauseState, updatePause } from '../engine/pause.js'
-import { createRaceEndState, updateRaceEnd, createEscQuitLatch } from '../engine/raceEnd.js'
+import { createRaceEndState, updateRaceEnd } from '../engine/raceEnd.js'
 import { createFadeState, updateFade, applyFade } from '../engine/fade.js'
 import { raceStart, updateEngines, createRaceJitter, raceOverStart, raceOverGateCar, titleMusic, subMenuMusic, raceIntroMusic, raceResultMusic, raceOutcomeMusic, championMusic, eliminatedMusic } from '../engine/sound.js'
 import { lapLineSegments, nearestPaletteIndex } from '../engine/lapLine.js'
@@ -879,9 +879,12 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     // carry a stray SPACE "pressed" edge in from leaving the RACE_INTRO screen (any key, on its
     // release, docs/engine.md §9bp) straight into the race's first frame, instantly pausing it.
     const pauseKey = createPauseKeyReader(window)
-    // [0x1096] (docs/engine.md §9ca): an ESC RELEASE from here on quits the race to the title --
-    // at the next loop head during the race, or after the hold and fade if the race has already ended.
-    const escLatch = createEscQuitLatch(window)
+    // [0x1096] (docs/engine.md §9ca), cleared at race setup (3CB6): from here on an ESC release that
+    // gets through the ISR's gate (menuReleaseTracker's mirrored [0x107E]/[0x107F], carried over from
+    // the screen before -- race setup does not clear them) quits the race to the title, at the next
+    // loop head during the race, or after the hold and fade if the race has already ended.
+    menuReleaseTracker.clearEscQuit()
+    const escLatched = () => menuReleaseTracker.escQuit()
     const pauseState = createPauseState()
     const fadeState = createFadeState('in')
     const globalState = {} // written by cheats.js's applyCheatEffect on a pause-entry cheat-spot match
@@ -913,7 +916,6 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
         humanReader.dispose()
         p2Reader?.dispose()
         pauseKey.dispose()
-        escLatch.dispose()
       }
       let escGraceSteps = 0 // the rest of the iteration an ESC-ended pause returns into
       let raceEnd = null // the post-race hold + fade-out (engine/raceEnd.js), once the race is over
@@ -922,7 +924,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
         cleanup()
         // 11CA/2185: [0x1096]==1 -> JMP 00CC -> 0054 -> the title (tune 1), whether the ESC ended the
         // race itself or was released during the normal race end's hold or fade.
-        if (escLatch.latched) { resolve({ aborted: true }); return }
+        if (escLatched()) { resolve({ aborted: true }); return }
         // The tournament reads the order array at 11d5 ([2678..267E] -> [3FC..402]): the player's
         // place is car 0's slot in `raceState.rankOrder`, frozen by then (docs/engine.md §9ah). A
         // two-car race only checks slot 0 ([3FC]), after the [2630] exit fix-up that `runStep`
@@ -949,9 +951,11 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
 
         // 3789/37B8: any key release ends the pause, so an ESC release does too; 35F0 returns into the
         // middle of the iteration (307B), which runs its step and draw, and the next loop head quits.
-        if (escLatch.latched && pauseState.paused) { pauseState.paused = false; escGraceSteps = 1 }
+        if (escLatched() && pauseState.paused) { pauseState.paused = false; escGraceSteps = 1 }
+        const wasPaused = pauseState.paused
         const { pressed, held } = pauseKey.read()
         const paused = updatePause(pauseState, dtMs, pressed, held, cars[0], cheats, round, race, globalState, sound)
+        if (paused && !wasPaused) menuReleaseTracker.clearIsrLatch() // 377F/3784: [0x107E]=0, [0x107F]=0
 
         let shouldRender = paused
         let over = false
@@ -959,7 +963,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
         if (!paused) {
           acc += dtMs / 1000
           while (acc >= STEP_DT) {
-            if (escLatch.latched && escGraceSteps-- <= 0) { escQuit = true; break } // 3067: CMP [0x1096],1 -> JMP 3115
+            if (escLatched() && escGraceSteps-- <= 0) { escQuit = true; break } // 3067: CMP [0x1096],1 -> JMP 3115
             acc -= STEP_DT
             applyCheatGlobals(globalState, raceState, raceCtx)
             // `raceCtx.drawnTick`: read BEFORE the physics/state pass (was after, below) so
@@ -974,13 +978,6 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
             updateEngines(sound, cars, raceCtx, jitter)
           }
         }
-        if (escQuit) {
-          // 3115 -> 327A: no sfx 16, no hold, no AH=8/AH=6 -- the fade to black on the frame already
-          // shown; the engines keep their last pitch until the title's own entry silences the driver.
-          raceEnd = createRaceEndState({ esc: true })
-          requestAnimationFrame(frame)
-          return
-        }
         if (shouldRender && !over) {
           const composed = composeRaceView({ words, bank, camera, frames, vehicleSize, rotorFrames, bank2, pristineTile0, race, tileAnimCounter: raceState.tileAnimCounter ?? 0, cars, view: MENU_VIEW, hud: { ph0, raceFormat, round, ruffTruxTicks: raceState.ruffTruxTimer, raceOverCount: raceState.raceOverCount ?? 0, twoCar: raceState.twoCar, rankOrder: raceState.rankOrder, bannerBlink: bannerBlinkPhase(now) }, paused, lapLine: lapLineToggle?.checked ? lapLine : null })
           const faded = decodePalette(applyFade(palBytes, fadeState)).rgb
@@ -988,6 +985,14 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
           paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(composed.indexed, faded), { zoom: 1 })
         }
         statusEl.textContent = paused ? 'Paused' : (isBonus ? 'RUFFTRUX bonus race' : raceStatusLine(cars[0]))
+        if (escQuit) {
+          // 3115 -> 327A: no sfx 16, no hold, no AH=8/AH=6 -- the fade to black on the last frame drawn
+          // (this frame's steps included); the engines keep their last pitch until the title's own
+          // entry silences the driver.
+          raceEnd = createRaceEndState({ esc: true })
+          requestAnimationFrame(frame)
+          return
+        }
         if (over) {
           // 30DF: sfx 16 gated on the camera-table car; then the hold (ESC is not read: 30F2-3100).
           raceOverStart(sound, cars, raceOverGateCar(raceState, raceFormat))

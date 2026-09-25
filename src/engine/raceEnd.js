@@ -10,7 +10,7 @@
 // frozen frame's palette.
 //
 // The ESC quit (docs/engine.md §9ca): `KeyboardIsr 2F59-2F5E` sets `[0x1096]=1` on an ESC key RELEASE
-// (never on the press); `RunRaceMainLoop`'s loop head (`3067`) then jumps straight to `3115`, past
+// (never on the press) that gets through the ISR's release gate (`input.js`'s release tracker); `RunRaceMainLoop`'s loop head (`3067`) then jumps straight to `3115`, past
 // `30DF-3113` -- no sfx 16, no 100-tick hold, no AH=8/AH=6 -- into the same `327A` fade to black. The
 // engine voices keep their last pitch through it (nothing updates or stops them) until the title's
 // own entry silences the driver.
@@ -26,15 +26,6 @@ export function createRaceEndState({ esc = false } = {}) {
   return { phase: 'hold', elapsedMs: 0, fade: null, esc: false }
 }
 
-/** `[0x1096]`, the ESC-release latch (`KeyboardIsr 2F59-2F5E`), for one race: set by an ESC keyup
- * only, cleared only by creating a new one (`InitRaceCarsFromTables 3CB6` clears it at race setup). */
-export function createEscQuitLatch(target) {
-  const latch = { latched: false, dispose }
-  function onUp(e) { if (e.code === 'Escape') latch.latched = true }
-  target.addEventListener('keyup', onUp)
-  function dispose() { target.removeEventListener('keyup', onUp) }
-  return latch
-}
 
 /** Advance by `dtMs` of real time: 'hold' -> (AH=8/AH=6) 'fade' -> 'done'. */
 export function updateRaceEnd(state, dtMs, sound) {

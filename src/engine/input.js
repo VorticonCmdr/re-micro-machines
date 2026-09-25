@@ -110,13 +110,27 @@ export function createPauseKeyReader(target = window) {
 export function createMenuReleaseTracker(target = window) {
   let trackedCode = null
   let latch = null
-  const onDown = (e) => { if (trackedCode == null) trackedCode = e.code }
+  // The ISR's own cells, mirrored exactly (docs/engine.md §9ca): `[0x107E]` (isrLatch), `[0x107F]`
+  // (isrTracked) and `[0x1096]` (escQuit). Unlike `latch` above, `[0x107E]` is never cleared by being
+  // read, and once it is nonzero EVERY release latches (2F43-2F48), not only the tracked key's.
+  let isrLatch = null
+  let isrTracked = null
+  let escQuit = false
+  const onDown = (e) => {
+    if (trackedCode == null) trackedCode = e.code
+    if (isrTracked == null) isrTracked = e.code // 2F65-2F6C (auto-repeat makes re-tracking a held key)
+  }
   const onUp = (e) => {
+    if (isrLatch != null || isrTracked === e.code) { // 2F43-2F4E
+      isrTracked = null
+      isrLatch = e.code // 2F50-2F55
+      if (e.code === 'Escape') escQuit = true // 2F59-2F5E
+    }
     if (e.code !== trackedCode) return
     trackedCode = null
     latch = e.code
   }
-  const onBlur = () => { trackedCode = null }
+  const onBlur = () => { trackedCode = null; isrTracked = null }
   target.addEventListener('keydown', onDown)
   target.addEventListener('keyup', onUp)
   target.addEventListener('blur', onBlur)
@@ -126,7 +140,15 @@ export function createMenuReleaseTracker(target = window) {
       latch = null
       return result
     },
-    reset() { trackedCode = null; latch = null },
+    reset() { trackedCode = null; latch = null; isrLatch = null; isrTracked = null },
+    /** `[0x1096]`: an ESC release got through the ISR's gate since the last `clearEscQuit`. */
+    escQuit() { return escQuit },
+    /** `[0x1096]=0` (`InitRaceCarsFromTables 3CB6`, `0054`, ...). */
+    clearEscQuit() { escQuit = false },
+    /** `[0x107E]=0;[0x107F]=0` alone (the pause entry, `377F`/`3784`), leaving the port's own `latch`. */
+    clearIsrLatch() { isrLatch = null; isrTracked = null },
+    /** The mirrored cells, for checks and debugging. */
+    isrState() { return { latch: isrLatch, tracked: isrTracked, escQuit } },
     dispose() {
       target.removeEventListener('keydown', onDown)
       target.removeEventListener('keyup', onUp)

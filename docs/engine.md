@@ -4482,7 +4482,7 @@ confirming this section's own tune-1..8 mapping site-for-site, and additionally 
   reading every instruction in `InitLoadAssets` (`26c0-26eb`): the reload (plus a front-end asset-
   arena/palette refresh) is all it does; whatever screen the caller shows next restarts music via
   its own ordinary `AH=9`/`AH=4` pair. This port's own ESC handler (above) matches that shape --
-  `abortRaceFn` triggers no music call of its own, `advanceRace`'s `aborted` branch calls
+  `abortRaceFn` (**deleted in §9ca**; the ESC quit sends nothing to the driver) triggers no music call of its own, `advanceRace`'s `aborted` branch calls
   `titleMusic` only because it lands on `TITLE`, exactly mirroring the real reload's own downstream
   callers (all of which re-trigger through whichever screen they return to, not the reload itself).
 - **Live coverage stays narrow**: of the 15 sites, only #1/#2 (`AL=1` at boot/title-entry) and the
@@ -11452,9 +11452,17 @@ GOAL-DOS-PARITY.md P5's first item. The port's ESC quit had been flagged "port-o
 quits a race to the title screen too. What differed is how it gets there.
 
 **The mechanism, `[STATIC]` (read in full):**
-- **The latch.** `KeyboardIsr 2F41-2F5E`: on a key *release* (the scancode's top bit set), the
-  release latch `[0x107E]` is updated. If the released key is ESC (`CMP AH,1`, `2F59`), the ISR also
-  sets `[0x1096]=1`. A press never touches `[0x1096]`.
+- **The latch, and its gate.** `KeyboardIsr 2F41-2F6C` keeps two cells:
+  - A press (`2F65-2F6C`) records its scancode in `[0x107F]` only if `[0x107F]` is 0. Held keys'
+    typematic repeats count as presses.
+  - A *release* (the scancode's top bit set) passes the gate (`2F43-2F4E`) only if `[0x107E]` is
+    already nonzero, or if the released key is the one in `[0x107F]`. Otherwise the ISR ignores it.
+  - A release that passes clears `[0x107F]`, writes its scancode into `[0x107E]` (`2F50-2F55`), and,
+    if it is ESC (`CMP AH,1`, `2F59`), sets `[0x1096]=1`. A press never touches `[0x1096]`.
+  - So when `[0x107E]` is 0 and another key is tracked (for example throttle held since the last
+    clear), an ESC release does nothing, until that key's own release latches `[0x107E]`.
+  - Race setup does not clear `[0x107E]`/`[0x107F]`, so the race inherits the previous screen's
+    state. The pause entry clears both (`377F`/`3784`).
 - **Where it is cleared.** Seven sites write 0 into `[0x1096]`: `real_entry` `005C`/`0081`/`008B`,
   `RunMainMenuKeepTitleTune 023D`, `RunCharacterSelectMenuTune2 09F1`, `RunTournamentLoop 10A0`, and
   `InitRaceCarsFromTables 3CB6` (race setup).
@@ -11475,8 +11483,9 @@ quits a race to the title screen too. What differed is how it gets there.
   still lands on the title, and the results/outcome (or `256E`) are skipped. An ESC released later,
   on a post-race screen, is not tested by anything until a clearing site. It stays set, harmlessly,
   and that screen treats the release as an ordinary key release.
-- **While paused.** `35F0`'s pause loops end on any key release (`3789`/`37B8` test `[0x107E]`), so
-  an ESC release also ends the pause. `35F0` returns into the middle of the iteration (`307B`),
+- **While paused.** `35F0`'s pause loops end once `[0x107E]` is set (`3789`/`37B8`), so an ESC
+  release that passes the gate also ends the pause. The pause entry has just cleared both cells, so
+  with a key held since then, ESC is ignored and the game stays paused. `35F0` returns into the middle of the iteration (`307B`),
   which runs its step and draw, and the next loop head quits.
 - **Sound.** The ESC exit sends nothing to the driver. The engine voices keep their last pitch through
   the fade, until `26C0` reloads the driver and the title's own entry silences it.
@@ -11500,14 +11509,18 @@ The fade's own pacing (`32AE`/`331F`) is the separate P5/Part L item.
 
 **Port:**
 - `engine/raceEnd.js` has two new pieces:
-  - `createEscQuitLatch(target)` is `[0x1096]` for one race: ESC keyup only, and a new race starts
-    clear (`3CB6`).
+  - `input.js`'s session-global release tracker now mirrors the ISR's own cells, `[0x107E]`,
+    `[0x107F]` and `[0x1096]`, including both gate branches. `escQuit()`, `clearEscQuit()` (`3CB6`)
+    and `clearIsrLatch()` (the pause entry) are new. Its existing `reset()` (the screens'
+    `[0x107E]=0;[0x107F]=0` entries) clears them too. Its older port-side `read()` latch is
+    unchanged.
   - `createRaceEndState({ esc: true })` starts straight in the fade, with no hold and no
     `raceOverEnd`.
 - `flow.js` `runOneRace`:
-  - It tests the latch at every physics step's loop head. On a hit it starts the ESC fade on the
+  - It clears `[0x1096]` at race setup and tests it at every physics step's loop head. On a hit it starts the ESC fade on the
     last shown frame, then resolves `{ aborted: true }`, which goes to the title as before.
-  - An ESC release while paused unpauses, runs one more step, then quits.
+  - An ESC release that passes the gate while paused unpauses, runs one more step (drawn before the
+    fade starts), then quits. The pause entry clears the mirrored cells.
   - An ESC released during the normal hold or fade finishes that hold and fade, then goes to the
     title instead of the results.
   - The keydown-ESC `abortRaceFn` is deleted.
@@ -11515,9 +11528,18 @@ The fade's own pacing (`32AE`/`331F`) is the separate P5/Part L item.
   does. `check-sound.mjs` keeps a local copy only for its dropped-jingle regression case.
 - `play.js` (`index.html`) has no menu to return to and no ESC handling. It is unchanged.
 
+**`[PROVEN]` live, the gate (DOSBox, same race setup, LEFT held so the race can't end on its own):**
+- The race started with `[0x107E]=0x1F` (S's release from SELECT VEHICLE) and `[0x107F]=0x4B`
+  (LEFT). With `[0x107E]` written to 0 and LEFT still held, an ESC tap left `[0x1096]=0`, and the
+  game kept racing.
+- Releasing LEFT set `[0x107E]=0x4B`, `[0x107F]=0`. The next ESC tap quit to the title.
+- (The first live pass above went through the ungated branch, since `[0x107E]` was already nonzero.)
+
 **Tests.** `npm run escquit` (`tools/check-escquit.mjs`) checks:
-- the latch: the release latches it, the press alone doesn't, other keys don't, and a new race
-  starts clear;
+- the gate: an ESC tracked first latches; the press alone doesn't; with `[0x107E]=0` and another
+  key tracked, ESC is ignored until that key's release; once `[0x107E]` is set, an untracked ESC
+  latches; and after the pause entry's clear, with a key held, ESC does nothing (three mutations of
+  the gate caught);
 - the ESC exit: fade then done, and nothing sent to the driver;
 - the normal exit: unchanged.
 
@@ -11526,6 +11548,9 @@ key events):
 - ESC held 1.5s: still racing. On release, the canvas faded at once (brightness 77→0 over ~0.8s, the
   port's own fade) and the title followed.
 - ESC released 0.4s into a pause: the same fade, then the title.
+- With the gate: after pausing, W held (so tracked), an ESC tap left the game paused and racing.
+  After W's release, the next ESC tap faded to the title. (This browser's stored settings map P1 to
+  A/D/W/S/Q and P2 to the arrows and M, so the drive used those keys.)
 - ESC released 0.3s into a finished race's hold: the frozen frame stayed for the rest of the hold,
   then faded, and the page went to the **title**, not to the result screen.
 - No console errors.
