@@ -6111,6 +6111,12 @@ coast decay: `255-20=235`), pinned with a teeth-proven test in `tools/check-step
 observed reached, reason not established); the larger state-cadence divergence (§9ah), unchanged by
 design; mouse/joystick fire preempt (disassembly only, not live-checked).
 
+**Added 2026-09-25 (§9bp-§9bs).** Closed: `UNKNOWN_outcome_screen_timeout` (§9bq). New open:
+`UNKNOWN_champion_slide_duration` (`ShowChampionScreenTune3 1000:1AAD`, §9bs): the 108 slide
+iterations before the champion screen's first poll wait on nothing, so their DOS duration is
+CPU-bound; the port runs one per tick. A GOAL-DOS-PARITY.md Part L item. Also still open in P3:
+PRESS ANY KEY's own wait (`FUN_1000_0C15`, §9bs's closing note).
+
 ## 9ar. Six small named globals/writers, chased (2026-09-24)
 
 **Scope.** User request: work `UNKNOWN_0f64_speed_zero`, `UNKNOWN_fallbranch_stale_fields`,
@@ -10800,7 +10806,10 @@ iteration fades. If either line is not yet in place (`1BD8-1BE4`): step the char
 toward `0x35`, restore the background, loop -- no input poll, no tick wait. Otherwise (`1BF4`):
 `[0x1080]=0` (`1BF8`, both players' readers ORed), one tick (`1BFE-1C05`), `2D5B`, and leave when
 `[0x108B]!=0` (`1C0B`), else loop. `2D5B` writes `[0x108B]` straight from the reader routines'
-control byte (`2DAD-2DE8`), so this is ANY control bit, from either player. No release-latch test,
+byte (`2DAD-2DE8`), so this is ANY bit those readers set, from either player. That the keyboard
+reader sets only the five control bits is INFERRED (the port's own `createKeyboardReader` does, and
+the other keys land in `[0x107C]`), not read: the reader routines behind `[0x1083]`/`[0x1085]`
+were not disassembled. No release-latch test,
 no timeout.
 
 **The slide's length and duration.** Line 1 needs (0x28 + 0xB0) / 2 = 108 steps and line 2

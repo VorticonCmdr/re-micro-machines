@@ -10,9 +10,9 @@
 // practice only on the first iteration); present (`08BC`). While either line is not yet in place
 // (`1BD8-1BE4`) it restores the background and loops with NO input poll and NO tick wait. Once both
 // are in place it sets `[0x1080]=0` (`1BF8`, both players' readers ORed), waits one tick
-// (`1BFE-1C05`), polls (`2D5B`) and leaves when `[0x108B]!=0` (`1C0B`): ANY control bit held
-// (left/right/accelerate/brake/fire; `2D5B` writes `[0x108B]` straight from the reader routines'
-// control byte), from either player. There is no release-latch test and no timeout.
+// (`1BFE-1C05`), polls (`2D5B`) and leaves when `[0x108B]!=0` (`1C0B`): ANY bit the readers set
+// (`2D5B` writes `[0x108B]` straight from the reader routines' byte), from either player -- the
+// five control bits, INFERRED: the reader routines behind `[0x1083]`/`[0x1085]` were not read. There is no release-latch test and no timeout.
 //
 // Line 1 needs (0x28 - -0xB0) / 2 = 108 steps, line 2 (0x100 - 0x68) / 2 = 76, so the 108th
 // iteration is the first to find both in place, and its own tick wait and poll are the first ones.
