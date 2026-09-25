@@ -120,7 +120,7 @@ Don't read `docs/engine.md` from start to finish. It is 6,000 lines. Jump to sec
 ## Regression suite (run before every commit; all must pass)
 
 ```bash
-for s in catalog lz chrtable tables car intro codecard options title mainmenu charselect board elimination keywait outcomewait windowedwait step trace ai play sound rounds finish twocar twohuman tournament \
+for s in catalog lz chrtable tables car intro codecard options title mainmenu charselect board elimination keywait outcomewait windowedwait champion step trace ai play sound rounds finish twocar twohuman tournament \
          menu screens opl-toggle smoothness si2 live smoke; do npm run -s $s || echo "FAIL $s"; done
 npm run build
 ```
@@ -333,7 +333,8 @@ docs, (6) commit.
   and times out at 10.29s; RESULTS times out at 10.05s; a fresh fire press dismisses RESULTS into
   ONE LIFE LOST, which then leaves at its first poll. Every `17FF` call reachable in one-player play
   now runs the real `17FF`; `26BA` (two-human) is P4's, and `2166` has no callers.
-  **P3 is not closed by this: see the champion-screen bullet below, added after this one.**
+  **P3 is not closed by this: see the champion-screen and PRESS ANY KEY bullets below, added after
+  this one.**
 - [x] **Tournament board** (`1000:18d8`): the `CASE.CHR` map with `MINATURE` icons at the
   positions in `DS:0312` (26 words, §9t). It is gated on `[43A]=1`. Find exactly when it is shown
   in `RunTournamentLoop 1000:10a0`.
@@ -593,14 +594,25 @@ docs, (6) commit.
   Confirmed by reintroducing an off-by-one on both tick counts (58/120), and separately a version of
   `raceIntroParticipants` with no qualifier/bonus-race guard, and re-running the suite each time:
   the targeted assertions fail, pass again once reverted.**
-- [ ] **The champion screen's own wait** (`ShowChampionScreenTune3 1000:1AAD`, docs/engine.md
+- [x] **The champion screen's own wait** (`ShowChampionScreenTune3 1000:1AAD`, docs/engine.md
   §9br's closing note). Found 2026-09-25 right after the wait-screen bullet was ticked, so P3 was
   NOT actually closed by M3.72. DOS: the two text lines slide in with no input poll (`1B2B-1BE4`);
   then, every tick, `[0x1080]=0` and the screen leaves when `[0x108B]!=0` (`1C0B`): any control bit
   held, either player; no release latch, no timeout. The port takes a Space/Enter keydown at any
   time (flow.js's CHAMPION branch of `confirm()`), and README.md still says so. Port the slide-in's
   length (the ticks until both lines are in place) and the any-control-bit exit, test it, and
-  live-check it.
+  live-check it. **DONE 2026-09-25 (M3.73, docs/engine.md §9bs).** Correction to this bullet's own
+  wording: the slide-in is 108 ITERATIONS, not ticks; its iterations wait on nothing, so its DOS
+  duration is CPU-bound and not derivable (`UNKNOWN_champion_slide_duration`, a Part L item); the
+  port runs one iteration per tick (~1.54s), a port choice. Then any control bit of either player
+  leaves, with no timeout. `npm run champion`; `[PROVEN]` live in the port (a held ArrowLeft
+  leaves at 1.548s, Enter does nothing, no timeout after 16s, P2's KeyJ leaves).
+- [ ] **PRESS ANY KEY's own wait** (`FUN_1000_0C15`, docs/engine.md §9bs's closing note). DOS: the
+  release latch cleared at entry, then per tick a `[0x261F] >= 0x2BC` timeout check, a tick, and
+  leave on any key RELEASE or on fire HELD (no debounce). The port leaves on any keydown, with a
+  `setTimeout(0x2BC ticks)`. Trace which reader `[0x1080]` selects there (the callers are
+  `RunOnePlayerHeadToHeadVsCpu`/`RunOnePlayerChallenge`; check whether `0FD4`/`104C` run before
+  the call), then port it as a per-tick loop on the session-lifetime readers, test it, live-check it.
 
 ### P4: two-human Head to Head
 - [ ] Port `FUN_1000_1e20` → `1ef1` / `RunHeadToHeadTournament 1000:1faf` / `2329` / `256e`: the WON/LOST
@@ -753,6 +765,8 @@ Commit each item on its own, including any capture file under `tools/refs/`.
 - [ ] `UNKNOWN_race_4th_engine_delay` (`docs/sound.md` §8): a fresh race-start capture that logs
   `AH=3`'s return value.
 - [ ] `UNKNOWN_race_live_reverify` (`docs/sound.md` §8).
+- [ ] `UNKNOWN_champion_slide_duration` (docs/engine.md §9bs): how long `1AAD`'s 108 wait-free
+  slide iterations take on DOS (for example, `[0x2]` read at `1BF8` minus its value at entry).
 - [ ] The outcome screen's LIVES-path timing (docs/engine.md §9bq assumptions a-c): a breakpoint at
   `1000:1DCD` on a real ONE LIFE LOST screen, reading `[0x261F]` at the first poll. The port's
   model predicts 156.

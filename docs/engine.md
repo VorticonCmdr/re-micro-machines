@@ -10784,3 +10784,73 @@ bullet in GOAL-DOS-PARITY.md. The other unidentified `[0x261F]` user from part 2
 `FUN_1000_0CD3` (`0CFE-0D09`), is the character-select carousel's own one-tick scroll step, not a
 timeout, so it is not a gap.
 
+
+## 9bs. The champion screen's own wait (`1AAD`) (2026-09-25)
+
+**Purpose.** GOAL-DOS-PARITY.md P3's champion-screen bullet (found right after M3.72, §9br's
+closing note). The port's CHAMPION phase took a Space/Enter keydown at any time.
+
+**The disassembly (`ShowChampionScreenTune3 1000:1AAD-1C1A`, 127 instructions), all `[STATIC]`.**
+Tune 3 (`1AB7`/`1AC4`), `[0x3AA]=0xFF50`, `[0x3AC]=0x100` (the two text lines' X), `[0x2]=0x32`.
+Loop `1B2B`: blink the character when `[0x2] >= 0xF`; draw it at Y=`AX`; draw line 1 at
+`[0x3AA]`, then step it +2 unless it is `0x28` (`1B67`); draw the cup (`1B73-1B9D`); draw line 2 at
+`[0x3AC]`, then step it -2 unless it is `0x68` (`1BC2`); `PaletteFadeUpFromBlack 32CE`; present
+(`08BC`). `32CE` fades only while `[0x26CE]==1` and clears it (`32D6-32DD`), so only the first
+iteration fades. If either line is not yet in place (`1BD8-1BE4`): step the character's Y down
+toward `0x35`, restore the background, loop -- no input poll, no tick wait. Otherwise (`1BF4`):
+`[0x1080]=0` (`1BF8`, both players' readers ORed), one tick (`1BFE-1C05`), `2D5B`, and leave when
+`[0x108B]!=0` (`1C0B`), else loop. `2D5B` writes `[0x108B]` straight from the reader routines'
+control byte (`2DAD-2DE8`), so this is ANY control bit, from either player. No release-latch test,
+no timeout.
+
+**The slide's length and duration.** Line 1 needs (0x28 + 0xB0) / 2 = 108 steps and line 2
+(0x100 - 0x68) / 2 = 76, so the 108th iteration is the first to find both in place, and its own
+tick wait and poll are the first. The iteration COUNT is exact. The DURATION is not derivable:
+the slide iterations wait on nothing (no `CALL 3165`, no `[0x2]` spin, no `0x3DA` poll in any of
+their calls), unlike `256E`'s own 22-iteration slide, which waits a tick per iteration (`3165` at
+`2685`). So on DOS they run as fast as the CPU can draw and present them, plus the first
+iteration's fade. New open item **`UNKNOWN_champion_slide_duration`** (a Part L item in
+GOAL-DOS-PARITY.md). The port runs one iteration per tick, about 1.54s: a port choice, and an
+upper bound under the project's own assumption that each draw fits in a tick. It is not a
+measurement. Zero would let a held control key skip the screen instantly, which DOS never does.
+
+**What changed.** `src/frontend/champion.js` (new): `championInitialState`/`championStep(state,
+readInput)`, with `readInput` called only on the iterations that poll. `flow.js`: the one CHAMPION
+entry (`nextAfterOutcome`) goes through `enterChampion()` (tune 3, a per-tick RAF loop reading
+the session-lifetime `waitReaders`, `p1 | p2`). `onKeydown` ignores CHAMPION now, and
+`confirm()`'s CHAMPION branch is a debug-only leave. `leaveChampion()` goes to SELECT GAME, as
+before. New debug hooks: `forceChampionSteps(n, {controlBits})`, `getChampionWait()`. The blink,
+the cup, the character's Y slide and both text slides are render items and stay undrawn (the port
+shows a static screen).
+
+**A real consequence, deliberately kept.** A control key still held when the screen's poll starts
+(for example accelerate, held through the winning final race) leaves the screen at the first poll.
+That is what `1C0B` does.
+
+**Tests.** `tools/check-champion.mjs` (new, `npm run champion`): an independent re-simulation of
+the loop's own order (draw, step each line unless in place, then the both-in-place test) gives
+108, matching the model; no input is read on iterations 1-107, then every iteration polls; each of
+the five control bits alone exits at 108; nothing held for 20000 iterations never exits. The
+P1|P2 OR lives in `flow.js` and is checked live. Reintroduction-proven with five mutations:
+polling during the slide (3 fail), fire-only instead of any bit (4), an added timeout (1), the
+constant set to 107 (1), a slide one iteration short (8). All restored, clean. Full regression
+suite plus `build` clean.
+
+**Live verification, `[PROVEN]` in the port.** `game.html`, the Web Worker RAF shim and worker
+sleeps (§9bq), a fresh page load, console tracking on from the start. CHAMPION was reached by
+setting `tournament.over`/`champion` at PRESS_ANY_KEY, then pressing a key there.
+- ArrowLeft (P1's KEYS 2 left), pressed as the PRESS_ANY_KEY confirm and held: the screen left at
+  its first poll, 1.548s after entry (108 ticks = 1.543s), to SELECT_GAME.
+- PRESS_ANY_KEY confirmed with Space instead (not a control key): an Enter tap at 2.5s did nothing
+  (iteration 215, both lines in place); with no control key the screen was still up after 16.0s
+  (iteration 1121): no timeout. Then KeyJ (P2's KEYS 1 left, per this copy's `SETTINGS.DAT`) left it
+  within 100ms.
+- No console errors.
+
+**Found on the way: PRESS ANY KEY (`FUN_1000_0C15`) has the same mismatch the wait-screen bullet
+fixed elsewhere.** Disassembled in full (`[STATIC]`): `[0x261F]=0`, the release latch cleared
+(`0C2D`/`0C32`), then per tick: `[0x261F] >= 0x2BC` leaves (`0C37`), draw the blinking text
+(`0C96`, which does not wait), one tick (`0C42-0C49`), `2D5B`, and leave on any key RELEASE
+(`0C4E`, `[0x107E]!=0`) or on fire HELD (`0C55-0C5A`, `[0x108B]&8`, no debounce; whose reader
+`[0x1080]` selects there is not yet traced). The port leaves on any keydown and uses a
+`setTimeout`. Tracked as a new unticked P3 bullet, so P3 is still open.

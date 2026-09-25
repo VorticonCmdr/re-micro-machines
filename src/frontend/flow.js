@@ -49,6 +49,7 @@ import { boardInitialState, boardStep } from './board.js'
 import { eliminationInitialState, eliminationStep } from './elimination.js'
 import { waitScreenInitialState, waitScreenStep, holdTicksPreStep } from './keyWait.js'
 import { outcomeWaitInitialState, outcomeWaitStep } from './outcomeWait.js'
+import { championInitialState, championStep } from './champion.js'
 import { windowedWaitInitialState, windowedWaitStep, RESULTS_17FF_CX } from './windowedWait.js'
 import { composeCodeCardScreen, fontbinPalette, targetFromTickByte, moveCursor, CURSOR_X0, CURSOR_Y0, CODECARD_W, CODECARD_H } from '../formats/fontbin.js'
 import { cycleControl, cycleSound, cycleSmoothness, advanceCheatCursor, redefineKeyAccepted, redefineGroupOf, redefineSlotInGroup, REDEFINE_TOTAL_SLOTS, REDEFINE_SLOTS_PER_GROUP } from './options.js'
@@ -983,7 +984,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
    * race. */
   function nextAfterOutcome() {
     if (tournament.over) {
-      if (tournament.champion) { phase = 'CHAMPION'; championMusic(sound); paintMenu(); return }
+      if (tournament.champion) { enterChampion(); return }
       enterSelectGame()
       return
     }
@@ -1100,6 +1101,46 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     else nextAfterOutcome()
   }
 
+  /** The champion screen, `ShowChampionScreenTune3 1000:1AAD` (docs/engine.md §9bs,
+   * `champion.js`): a 108-iteration slide-in with no input poll (one iteration per tick here, a
+   * port choice -- `UNKNOWN_champion_slide_duration`), then it leaves when any control bit of
+   * either player is held (`1C0B`), with no timeout. Replaces the old Space/Enter keydown wait. */
+  let championState = null
+  let championRafId = null
+  let championLast = 0
+  let championAcc = 0
+  function enterChampion() {
+    phase = 'CHAMPION'
+    championMusic(sound)
+    championState = championInitialState()
+    paintMenu()
+    championLast = performance.now()
+    championAcc = 0
+    if (championRafId != null) cancelAnimationFrame(championRafId)
+    championRafId = requestAnimationFrame(championTick)
+  }
+  function readChampionInput() {
+    return { controlBits: waitReaders.p1.read() | waitReaders.p2.read() } // 1BF8: [0x1080]=0, both players ORed
+  }
+  function championWaitTick(readInput) {
+    if (championStep(championState, readInput).exit) { leaveChampion(); return true }
+    return false
+  }
+  function championTick(now) {
+    if (phase !== 'CHAMPION') return
+    championAcc += Math.min(now - championLast, 250)
+    championLast = now
+    while (championAcc >= INTRO_TICK_MS) {
+      championAcc -= INTRO_TICK_MS
+      if (championWaitTick(readChampionInput)) return
+    }
+    championRafId = requestAnimationFrame(championTick)
+  }
+  function leaveChampion() {
+    if (championRafId != null) { cancelAnimationFrame(championRafId); championRafId = null }
+    enterSelectGame() // 1AAD returns to SELECT GAME (02D7 -> 0220's own CLC;RET chain), not the title -- no tune restart either
+  }
+
   let raceIntroWait = null // waitScreenStep's own state: the slide hold is its pre-wait work, 179B the wait
   let raceIntroPreStep = null
   let raceIntroRafId = null
@@ -1192,7 +1233,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       leaveOutcome('dismiss') // debug/test entry only (window.mmGame.confirm) -- real input goes through outcomeTick
       return
     } else if (phase === 'CHAMPION') {
-      enterSelectGame() // 1AAD returns to SELECT GAME (02D7 -> 0220's own CLC;RET chain), not the title -- no tune restart either
+      leaveChampion() // debug/test entry only (window.mmGame.confirm) -- real input goes through championTick
       return
     }
     paintMenu()
@@ -1219,7 +1260,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     if (phase === 'OPTIONS') { optionsKey(e); return }
     if (phase === 'QUIT') return // real DOS is gone at this point; nothing left to read
     if (phase === 'LOADING') return
-    if (phase === 'SELECT_GAME' || phase === 'ONE_PLAYER_GAME' || phase === 'CHAR_SELECT' || phase === 'BOARD' || phase === 'RACE_INTRO' || phase === 'ELIMINATED' || phase === 'OUTCOME' || phase === 'RESULTS') return // each phase's own dedicated reader(s) + menuReleaseTracker own its input entirely (RACE_INTRO/ELIMINATED: 179B, raceIntroTick/eliminationTick; OUTCOME: 1C1B, outcomeTick; RESULTS: 13E4, resultsTick)
+    if (phase === 'SELECT_GAME' || phase === 'ONE_PLAYER_GAME' || phase === 'CHAR_SELECT' || phase === 'BOARD' || phase === 'RACE_INTRO' || phase === 'ELIMINATED' || phase === 'OUTCOME' || phase === 'RESULTS' || phase === 'CHAMPION') return // each phase's own dedicated reader(s) + menuReleaseTracker own its input entirely (RACE_INTRO/ELIMINATED: 179B, raceIntroTick/eliminationTick; OUTCOME: 1C1B, outcomeTick; RESULTS: 13E4, resultsTick; CHAMPION: 1AAD, championTick)
     if (phase === 'PRESS_ANY_KEY') { confirm(); return } // 0C15: any key click
     if (e.code === 'Space' || e.code === 'Enter') confirm()
   }
@@ -1259,6 +1300,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       if (raceIntroRafId != null) cancelAnimationFrame(raceIntroRafId)
       if (outcomeRafId != null) cancelAnimationFrame(outcomeRafId)
       if (resultsRafId != null) cancelAnimationFrame(resultsRafId)
+      if (championRafId != null) cancelAnimationFrame(championRafId)
       clearTimeout(pressAnyKeyTimer)
       waitReaders?.p1.dispose(); waitReaders?.p2.dispose()
       titleReader?.dispose()
@@ -1328,6 +1370,13 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       if (phase !== 'RESULTS') return
       for (let i = 0; i < n; i++) if (resultsWaitTick(input)) return
     },
+    // Same, for CHAMPION: `input` is `{ controlBits }`, read only on the iterations that poll.
+    forceChampionSteps: (n, input = {}) => {
+      if (phase !== 'CHAMPION') return
+      const read = () => ({ controlBits: input.controlBits ?? 0 })
+      for (let i = 0; i < n; i++) if (championWaitTick(read)) return
+    },
+    getChampionWait: () => (phase === 'CHAMPION' ? { ...championState } : null),
     getResultsWait: () => (phase === 'RESULTS' ? { ticks: resultsWait.ticks, windows: resultsWait.windows, stage: resultsWait.wait.phase } : null),
     // Same fast-forward precedent, for ELIMINATED (P3's third item): the bounce, then 179B's own
     // wait. `input` is `{ fireHeld, anyKeyReleased }` (default: nothing), ignored during the bounce,
