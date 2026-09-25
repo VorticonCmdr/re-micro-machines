@@ -37,7 +37,7 @@ import { raceStart, updateEngines, createRaceJitter, raceOverSequence, raceOverS
 import { lapLineSegments, nearestPaletteIndex } from '../engine/lapLine.js'
 import { Si2Player } from '../audio/si2Player.js'
 import { RUFF_TRUCK_TIMES } from '../data/engine-tables.js'
-import { initTournament, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, raceIntroHoldTicks, raceIntroParticipants, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, resultsPassed, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, OUTCOME } from './tournament.js'
+import { initTournament, isInQualifier, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, raceIntroHoldTicks, raceIntroParticipants, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, resultsPassed, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, OUTCOME } from './tournament.js'
 import { CHARACTER_NAMES, OUTCOME_MESSAGES, resolveSmoothnessForPlay } from '../data/frontend-tables.js'
 import { drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawOpponentPanel, drawEliminatedScreen, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
 import { createSmoothnessGate } from '../engine/smoothness.js'
@@ -983,7 +983,8 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
 
   async function advanceRace() {
     const race = currentRace(tournament)
-    const wasQualifier = !tournament.pendingBonusRace && tournament.raceIndex === 0
+    const wasQualifier = isInQualifier(tournament) // position-keyed (tournament.js's own inQualifier header)
+    const wasBonus = !!tournament.pendingBonusRace // position-keyed: inside TriggerBonusRace 1A82, whatever race it ended up running
     phase = 'LOADING' // input is ignored until runOneRace switches to RACING (a second confirm would start a second race)
     const result = await runOneRace(race)
     if (result.aborted) { enterTitle(); return } // ESC quit, see runOneRace
@@ -1021,7 +1022,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     // The screen after the race (tournament.js `screenAfterRace`, docs/engine.md §9an): the results
     // table only for a Challenge race that isn't the qualifier; an outcome message for a qualifier
     // (either format), a bonus race or a lost Head-to-Head race; nothing after a won Head-to-Head race.
-    const next = screenAfterRace(tournament, { wasQualifier, wasBonus: race.round === 9 })
+    const next = screenAfterRace(tournament, { wasQualifier, wasBonus })
     if (next === 'RESULTS') { enterResults(resultsWasPassed); return }
     else if (next === 'OUTCOME') { enterOutcome(); return }
     else {

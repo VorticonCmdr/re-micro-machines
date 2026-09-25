@@ -63,6 +63,11 @@ export function initTournament({ format = 'challenge' } = {}) {
   return {
     format,
     raceIndex: 0, // index into ORDER_TABLE; 0 = the qualifier (docs/engine.md §7: "Qualifier = entry 0")
+    // Where RunTournamentLoop 1000:10A0 is, when it differs from what the race index implies (see
+    // isInQualifier/raceCountOf below, docs/engine.md §9bu). `null`/0 until the 25011968 cheat's race
+    // skip decouples them.
+    qualifierOverride: null,
+    raceCountOffset: 0,
     lives: 3, // DS:0406 -- only the player's own counter is modelled (docs: "only [406] is used")
     streak: 3, // [3fa], counts down from 3 to trigger a bonus race
     bonusRacesTaken: 0, // [342], the COUNTER is capped at MAX_BONUS_RACES (1A9F) -- the TRIGGER itself is not (see maybeTriggerBonusRace's own header, docs/engine.md §9bb)
@@ -129,10 +134,34 @@ export function hasEmptyOpponentSlot(state) {
   return state.opponents.includes(null)
 }
 
+/**
+ * Whether `RunTournamentLoop 1000:10A0` is still in its qualifier prologue (`10AF-10F6`, around the
+ * first `CALL 115C`) -- a CODE POSITION: DOS judges that race by the qualifier rule (`10CB-10F6`),
+ * sets the qualifier's fixed drones (`10B9`/`10BF`) and runs the picker after it (`10F6`) no matter
+ * what `[28C1]` says. Without the `25011968` cheat's race skip it is exactly "`raceIndex === 0` and
+ * no bonus race pending"; the skip can move `[28C1]` away from 0 inside the prologue, or to 0
+ * inside the loop, so it records the real position in `qualifierOverride` (docs/engine.md §9bu).
+ */
+export function isInQualifier(state) {
+  if (state.qualifierOverride != null) return state.qualifierOverride
+  return state.raceIndex === 0 && !state.pendingBonusRace
+}
+
+/**
+ * `[0x310]`, the loop's own race COUNT: zeroed beside `[28C1]` (`10B4`) and incremented beside it
+ * (`10FD`), so normally equal to the race index -- but the `25011968` cheat's race skip moves only
+ * `[28C1]`, and the elimination schedule reads `[0x310]` (`1676`), so the skip keeps the difference
+ * in `raceCountOffset` (docs/engine.md §9bu).
+ */
+export function raceCountOf(state) {
+  return state.raceIndex + (state.raceCountOffset ?? 0)
+}
+
 /** Whether the next race gets its intro screen: every race except the Head-to-Head qualifier, whose
  * intro routine (11F8) starts tune 4 and returns without drawing anything (126D-127B). */
 export function hasRaceIntro(state) {
-  return !(state.format === 'twocar' && state.raceIndex === 0 && !state.pendingBonusRace)
+  // data-keyed, like 11F8 itself: [28BF]==9 first (1219), then [28C1]==0 (126D) with [3F8]==1 (1274)
+  return !(state.format === 'twocar' && effectiveRaceIndex(state) === 0 && currentRace(state).round !== 9)
 }
 
 /**
@@ -206,8 +235,8 @@ export function hasRaceIntro(state) {
  * session's user explicitly chose over the full sprite port after being shown the tradeoff.
  */
 export function raceIntroHoldTicks(state) {
-  if (state.pendingBonusRace) return 0
-  if (state.raceIndex === 0) return 0
+  if (currentRace(state).round === 9) return 0 // 1219: [28BF]==9, data-keyed (a skip from a bonus intro runs a regular race's intro)
+  if (effectiveRaceIndex(state) === 0) return 0 // 126D: [28C1]==0
   return state.format === 'twocar' ? 59 : 121
 }
 
@@ -221,8 +250,8 @@ export function raceIntroHoldTicks(state) {
  * array for H2H, 3 for Challenge), so this needs no format branch of its own.
  */
 export function raceIntroParticipants(state) {
-  if (state.pendingBonusRace) return null
-  if (state.raceIndex === 0) return null
+  if (currentRace(state).round === 9) return null
+  if (effectiveRaceIndex(state) === 0) return null
   return [state.playerCharacter, ...opponentCharactersFor(state)]
 }
 
@@ -330,7 +359,7 @@ export const QUALIFIER_OPPONENTS = [6, 6, 6]
  * the player's own interactively-picked opponents (`state.opponents`) for every race after.
  */
 export function opponentCharactersFor(state) {
-  if (state.format === 'challenge' && state.raceIndex === 0 && !state.pendingBonusRace) return QUALIFIER_OPPONENTS
+  if (state.format === 'challenge' && isInQualifier(state)) return QUALIFIER_OPPONENTS // position-keyed: 10B9/10BF set the drones once, in the qualifier prologue
   return state.opponents
 }
 
@@ -346,7 +375,9 @@ export function opponentCharactersFor(state) {
  * about to increment".
  */
 export function needsOpponentPick(state) {
-  return state.format === 'challenge' && state.raceIndex === 1 && state.opponents.every((o) => o === null)
+  // position-keyed (10F6, right after the qualifier's own judging): past the qualifier with nobody
+  // picked yet -- the same thing `raceIndex === 1` meant before the race skip could decouple them
+  return state.format === 'challenge' && !state.over && !isInQualifier(state) && state.opponents.every((o) => o === null)
 }
 
 /**
@@ -382,9 +413,9 @@ export function needsOpponentPick(state) {
  * `needsOpponentPick`'s own sibling, `hasEmptyOpponentSlot`) to fill the vacancy -- the replacement
  * is chosen by the PLAYER, not auto-picked.
  */
-function checkElimination(state, completedRaceIndex) {
-  if (completedRaceIndex % 3 !== 0) return // completedRaceIndex is never 0 here (only reached past the qualifier), so no separate ===0 guard is needed
-  if (completedRaceIndex === 3) {
+function checkElimination(state, completedRaceIndex, completedRaceCount) {
+  if (completedRaceCount % 3 !== 0) return // 1676-1681: [0x310] % 3 -- the race COUNT, not the index (docs/engine.md §9bu); never 0 here (only reached past the qualifier)
+  if (completedRaceIndex === 3) { // 1683: [28C1]==3 -- the race INDEX
     let bestSlot = 0
     for (let i = 1; i < 3; i++) {
       if (state.opponents[i] < state.opponents[bestSlot]) bestSlot = i
@@ -403,7 +434,8 @@ function checkElimination(state, completedRaceIndex) {
 }
 
 function advance(state) {
-  state.raceIndex++
+  state.raceIndex++ // 10F9 (and [0x310] beside it, 10FD -- raceCountOf moves with it)
+  state.qualifierOverride = null // any skip-set position has been used by now: a loop race skipped to index 0 keeps it across an H2H loss re-run (no advance), and loses it here
   if (state.raceIndex > ORDER_TABLE_LAST_INDEX) {
     state.champion = true
     state.over = true
@@ -556,7 +588,8 @@ export function reportRaceResult(state, { finishPosition, won, lifeDelta = 0, ch
     return
   }
 
-  if (state.raceIndex === 0) {
+  if (isInQualifier(state)) { // position-keyed: 10CB-10F6 judge whatever race the prologue's CALL 115C ran
+    state.qualifierOverride = null // leaving the prologue: from here on the index says it again (10F9 goes to the loop)
     const passed = state.format === 'twocar' ? finishPosition === 1 : finishPosition <= 2
     if (!passed) { state.lastOutcome = OUTCOME.QUALIFIER_FAILED; state.over = true; return }
     state.lastOutcome = state.format === 'twocar' ? OUTCOME.QUALIFIED_FOR_HEAD_TO_HEAD : OUTCOME.PASSED
@@ -590,10 +623,11 @@ export function reportRaceResult(state, { finishPosition, won, lifeDelta = 0, ch
   // Captured BEFORE advance(): 13E4's own elimination check (called from RunTournamentLoop at
   // 110D) runs BEFORE that loop's own [28C1] INC (10F9) -- see checkElimination's own header.
   const completedRaceIndex = state.raceIndex
+  const completedRaceCount = raceCountOf(state)
   // Unconditional, and BEFORE the bonus-trigger check: 13E4 runs before RunTournamentLoop's own
   // 1123-113A -- a bonus-triggering race still evicts. The old `!bonusTriggered` gate here was
   // wrong (this file had never actually traced RunTournamentLoop's own call order) and is removed.
-  checkElimination(state, completedRaceIndex)
+  checkElimination(state, completedRaceIndex, completedRaceCount)
   let bonusTriggered = false
   if (finishPosition === 1) bonusTriggered = maybeTriggerBonusRace(state)
   advance(state)
