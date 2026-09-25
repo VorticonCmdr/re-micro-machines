@@ -6118,6 +6118,11 @@ CPU-bound; the port runs one per tick. A GOAL-DOS-PARITY.md Part L item. PRESS A
 (`FUN_1000_0C15`) is ported in §9bt. `UNKNOWN_f6a_reader` (§9au) is traced in §9bt: the `25011968`
 cheat's keypad `+`/`-` race skip at the race intro -- **ported and closed in §9bu.**
 
+**Added 2026-09-25 (§9bv-§9by).** P4's two-human Head to Head is wired end to end (both modes). New
+open: `UNKNOWN_single_race_28c1` (§9by): `2329` never writes `[0x28C1]`, so a two-human single race
+runs with whatever value the session last left there; the alternate tuning never reads it, and its
+other readers' effect in a single race was not traced (the port passes 1).
+
 ## 9ar. Six small named globals/writers, chased (2026-09-24)
 
 **Scope.** User request: work `UNKNOWN_0f64_speed_zero`, `UNKNOWN_fallbranch_stale_fields`,
