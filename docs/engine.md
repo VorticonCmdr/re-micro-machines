@@ -4342,7 +4342,7 @@ car entered in state 0 with its progress written; the tile query never writes 0;
 **Not done / open.** Two-car (Head-to-Head vs CPU) still ends the port's interim way (when car 0
 finishes): its real exit is the knockout match score `[26B4]` (`76f2`/`772a`/`7742`), unported.
 The round-3-only bridge path `5740-57f7` (its own `57b2` write, and the `683c` ramp-launch path that
-stores CX=12 as progress, an original quirk) is not ported. `drawnThisFrame` is set for every state-0
+stores CX=12 as progress, an original quirk) is not ported **(ported 2026-09-25, §9cc: it is round 3's whole collision path)**. `drawnThisFrame` is set for every state-0
 car in `states.js`, not by an on-screen test, so the rubber band and every drawn-gated sfx still
 approximate "on screen". A live `[PROVEN]` capture of a whole race ending (linger, final order) was
 not taken.
@@ -6010,7 +6010,7 @@ writes, and the 0xFF knockout site. New open items: `UNKNOWN_twocar_race_end` (H
 still ends when car 0 finishes; the real exit is the `[26B4]` match score, `76f2`/`772a`/`7742`) --
 **resolved and ported 2026-09-23 (§9am)**;
 `UNKNOWN_round3_bridge_path` (`5740-57f7` unported, incl. the `683c` ramp path that stores progress
-12); `UNKNOWN_fire_gating` -- **resolved and ported 2026-09-23 (§9an 5a)** -- (a keyboard/mouse human's 0x08 jumps `4d70 -> 4f03` before steering and
+12) -- **resolved and ported 2026-09-25 (§9cc): it is round 3's whole collision path**; `UNKNOWN_fire_gating` -- **resolved and ported 2026-09-23 (§9an 5a)** -- (a keyboard/mouse human's 0x08 jumps `4d70 -> 4f03` before steering and
 ENDS the tick -- no steering/throttle, in every round -- and `4f03` sends `[26C6]==2`/`[2915]==1` to the
 ground-gated coast `4e2e`; drones and joystick humans reach `4f03` only via `4efb`, after an
 accelerate-without-brake tick; the port fires first and always steers/throttles, so TANKS drones
@@ -11595,3 +11595,62 @@ Both are fixed, `[STATIC]`.
 
 Not captured live. The fold case needs a chopper at a precise screen edge, and the counter's
 off-screen freeze has no easily visible effect.
+
+## 9cc. Round 3's own collision path (`5740-57F7`), ported (2026-09-25)
+
+GOAL-DOS-PARITY.md P5 (`UNKNOWN_round3_bridge_path`). The item described this as a bridge
+sub-case. The bytes show more: in `UpdateCarTileCollisionSfx6or4 5532`, `55B4-55BB` sends **all** of
+round 3's collision through `5740`. The generic path is re-entered only at its tails. `[STATIC]`,
+read in full (`5532-585A`, `585B`, `683C`).
+
+**The round-3 path:**
+- **The query.** `5740-575F` does the same query and stores as `55BE-55DD`: the meta-tile, the map
+  attribute and the sub-cell, `[12E5]=0`, CX = the plane-2 byte. Then `585B`: `dirBytePrev =
+  dirByte`, `dirByte` = the new `.DIR` byte, and the carry is `589C`'s collision-mask bit.
+- **Solid:**
+  - If the new `.DIR` byte has bits 0xE0 all set, the cell is open after all (`5764-5770 -> 57FB`).
+  - Otherwise it goes to `561D`, the generic wall path: the guarded progress write, then `5659`'s
+    dwell/sfx/hit box. `55E5-561A`'s class-immunity test is skipped, which doesn't matter for
+    FORMULA ONE.
+- **Open, leaving a bit-4 cell** (`dirBytePrev & 0x10`, `5776 -> 57E6`):
+  - If the new byte's high nibble is 0, it calls `683C`, the ramp launch: `zVel = (hi(velX)² +
+    hi(velY)²)/12 + 4`, `[1384]=1`, sfx 1 if drawn.
+  - `683C`'s `DIV` leaves **CX=12**, which it never restores. So `57FB`'s progress write stores 12,
+    not the cell's plane-2 byte, unless the round-3 bridge skip applies. That's an original quirk.
+  - A nonzero high nibble means no launch.
+- **Open, entering a bit-4 cell from a non-bit-4 one** (`577E-5790`):
+  - If the new byte has any 0xA0 bit, it is copied into `dirBytePrev` too (`57F3-57F7`), and the
+    cell is open.
+  - Otherwise the step is a **wall**. The `.DIR` byte is put back (`[12DA] = [12DC]`, `5792-5796`).
+    The guarded progress write runs (`579A-57CA`; 0xFF knocks out at once). Then `[138A]=1` (the
+    bounce-halving flag), speed capped at 0x100 with a signed `JL` (so reversing is untouched,
+    `57CF-57DD`), and `JMP 5659` for the full wall response.
+- **Everything else** goes to `57FB`: `wallHitPending=0`, `[12E5]=0`, and the guarded progress
+  write.
+
+In play terms: the edge of a bit-4 area (a bridge deck or a raised level on the pool table) can't
+be driven onto from below unless the edge cell carries an 0xA0 bit (a ramp). Driving off a raised
+cell onto flat ground (high nibble 0) is a launch.
+
+**Port.** `collide.js`'s `updateCarTileCollision` is split along the real tails:
+- `openTail` (`57FB`), `solidTail` (`561D`) and `wallResponse` (`5659`) are shared by both paths;
+- `round3Collision` is `5740-57F7`, with the `683C` launch shared from `terrain.js` (`h683c`, now
+  exported) and progress 12 passed to the open tail.
+
+The generic path's behaviour is unchanged (every existing check passes unmodified).
+
+**Tests.** `check-step.mjs` has one case per branch:
+- a solid 0xE0 cell is open;
+- another solid cell is a wall, with progress written first;
+- the launch, with zVel 6 from velX 0x300 / velY −0x400, and progress **12**;
+- no launch onto a nonzero high nibble;
+- the bit-4 wall: `.DIR` byte restored, `[138A]=1`, speed 0x180 capped to 0x100, progress written;
+- a reversing speed not capped;
+- the 0xA0 entry;
+- the round-1 control;
+- a 0xFF progress knocking out before the wall response.
+
+Three mutations are caught: no round-3 path, no CX=12, no `.DIR` restore. `check-rounds` and
+`check-finish` (all 29 races resolve) pass.
+
+Not captured live: it needs a car driven onto a precise pool-table edge in DOSBox.

@@ -11,6 +11,7 @@ import { parseLev } from '../formats/levbrk.js'
 import { contactAngle, ROUND3_TILE_FLAGS } from '../data/engine-tables.js'
 import { SINE8 } from '../data/engine-tables.js'
 import { toU8 } from '../formats/bytes.js'
+import { h683c } from './terrain.js'
 
 const EMPTY_LEV = { raw: 0, unsafeRespawn: false, heading: 0x40, nudge: { dx: 0, dy: 0 }, lowBits: 0 }
 
@@ -164,61 +165,97 @@ export function updateCarTileCollision(car, world, ctx) {
   car.dirByte = hit.dirByte
   car.progressChanged = 0 // 55d5/5757: cleared on every gated query, before any write
 
+  // 55B4-55BB: round 3 takes its own path for everything (docs/engine.md §9cc).
+  if (ctx.round === 3) return round3Collision(car, world, ctx, hit)
+
   const grade = hit.dirByte >> 4
   const solidHit = hit.solid && !classImmune(ctx.round, grade)
-  if (!solidHit) {
-    // 1000:57fb, reached from the "not solid" and "class-immune" branches of the real
-    // UpdateCarTileCollisionSfx6or4 -- resets wallHitPending every tick it isn't (re-)set. The
-    // port previously only ever set this field (never cleared it), and bounceAndCommit read a
-    // freshly-computed local instead of this persistent one, silently masking the missing reset.
-    // Now correctly reached only when active/state==0 (the outer gate above), matching the real
-    // bytes exactly.
-    car.wallHitPending = 0
-  }
-  // The progress write comes BEFORE the dwell/hit-box logic on the solid path (563c vs 5659) and
-  // after the wallHitPending reset on the open path (5807 vs 57fb); a freshly written 0xFF exits
-  // through 5842 straight away, skipping everything below (docs/engine.md §9ah).
-  if (writeProgress(car, hit, ctx)) {
-    knockOut(car)
-    return hit
-  }
+  if (!solidHit) return openTail(car, hit, ctx) // 55E2/55FD/561A -> 57FB
+  return solidTail(car, world, ctx, hit) // 561D
+}
 
-  if (solidHit) {
-    // UNKNOWN_col_response_offtrack_branch resolved (docs/engine.md §9v, live disassembly of
-    // 1000:5659-56a3): the dwell branch is NOT "increment, maybe knock out, then always continue
-    // into hit-box detection" -- once offTrackTicks exceeds 0x32 the real function resets the
-    // counter to 0, sets state 0xD, and RETURNS EARLY (5671: JMP 5842, the function's own
-    // epilogue), skipping wall-hit-box detection (hitLeft/Right/Up/Down, wallHitPending,
-    // hit.blocked) entirely for that tick -- so a car knocked out this way does NOT also get
-    // bounceAndCommit's velocity-halving wall-bounce applied on the same tick, which the port's
-    // previous unconditional fall-through incorrectly did. The dwell==0 "rough" branch also resets
-    // offTrackTicks to 0 every call in the real bytes (the port never did, so ticks accumulated
-    // across intermittent dwell/no-dwell ticks instead of restarting each time dwell dropped), and
-    // plays a real, already-catalogued sfx (docs/sound.md id 6 default, id 4 for POWERBOATS/round
-    // 2 -- 1000:568c/569e, both drawn-gated) rather than being sound-only-and-out-of-scope.
-    if (car.offTrackDwell) {
-      car.offTrackTicks = (car.offTrackTicks + 1) & 0xff
-      if (car.offTrackTicks > 0x32) {
-        car.offTrackTicks = 0
-        knockOut(car) // 5671 JMP 5842: also records knockoutX/Y, not just the state
-        return hit
-      }
-    } else {
-      car.offTrackTicks = 0
-      if (car.drawnThisFrame) ctx.sound?.playSfx(ctx.round === 2 ? 4 : 6)
-    }
-    const l = queryWorldAt(world, car.posX - CELL_UNITS, car.posY).solid
-    const r = queryWorldAt(world, car.posX + CELL_UNITS, car.posY).solid
-    const u = queryWorldAt(world, car.posX, car.posY - CELL_UNITS).solid
-    const d = queryWorldAt(world, car.posX, car.posY + CELL_UNITS).solid
-    if (!l && !r && !u && !d) {
-      car.hitLeft = 1; car.hitUp = 1; car.hitRight = 0; car.hitDown = 0
-    } else {
-      car.hitLeft = l ? 1 : 0; car.hitRight = r ? 1 : 0; car.hitUp = u ? 1 : 0; car.hitDown = d ? 1 : 0
-    }
-    car.wallHitPending = 1
-    hit.blocked = true
+/**
+ * `5740-57F7`, round 3 (FORMULA ONE's pool table and bridges) only, docs/engine.md §9cc. After the
+ * common query (`5740-575F`, the same stores as `55BE-55DD`), `585B`'s carry is the collision mask:
+ * - solid: a `.DIR` byte with bits 0xE0 all set is treated as open (`5764-5770 -> 57FB`); anything
+ *   else takes the generic solid path at `561D` (no class-immunity test, `55E5-561A` is skipped);
+ * - open, leaving a bit-4 cell (`dirBytePrev & 0x10`, `5776 -> 57E6`) onto a cell whose high nibble
+ *   is 0: `683C` launches the car -- and leaves CX=12 from its own `DIV`, so `57FB`'s progress write
+ *   stores 12, not the cell's plane-2 byte (an original quirk, reproduced);
+ * - open, entering a bit-4 cell from a non-bit-4 one (`577E-5790`): if the new byte has 0xA0 bits,
+ *   it just becomes the new "previous" byte too (`57F3-57F7`); otherwise the step is a wall -- the
+ *   `.DIR` byte is put back (`5792-5796`), progress written (`579A-57CA`), `[138A]=1` and speed
+ *   capped at 0x100 (`57CF-57DD`), then the generic wall response from `5659`.
+ */
+function round3Collision(car, world, ctx, hit) {
+  if (hit.solid) {
+    if ((car.dirByte & 0xe0) === 0xe0) return openTail(car, hit, ctx) // 5770
+    return solidTail(car, world, ctx, hit) // 5773
   }
+  if (car.dirBytePrev & 0x10) { // 5776-577C -> 57E6
+    if (!(car.dirByte & 0xf0)) { // 57E6-57EC
+      h683c(car, { ...ctx, s: sar16(car.velX, 8) ** 2 + sar16(car.velY, 8) ** 2 }) // 57EE
+      return openTail(car, { ...hit, progress: 12 }, ctx) // CX=12 left by 685F-6862
+    }
+    return openTail(car, hit, ctx)
+  }
+  if (!(car.dirByte & 0x10)) return openTail(car, hit, ctx) // 577E-5784
+  if (car.dirByte & 0xa0) { // 5789-5790 -> 57F3
+    car.dirBytePrev = car.dirByte
+    return openTail(car, hit, ctx)
+  }
+  car.dirByte = car.dirBytePrev // 5792-5796
+  if (writeProgress(car, hit, ctx)) { knockOut(car); return hit } // 579A-57CA -> 5842
+  car.halveOnBounce = 1 // 57CF
+  if (car.speed >= 0x100) car.speed = 0x100 // 57D5-57DD (signed JL)
+  return wallResponse(car, world, ctx, hit) // 57E3: JMP 5659
+}
+
+/** `57FB-5840`: not a wall. `wallHitPending` reset every tick it isn't (re-)set, `[12E5]` cleared
+ * again, then the guarded progress write (a freshly written 0xFF knocks the car out, `5842`). */
+function openTail(car, hit, ctx) {
+  car.wallHitPending = 0
+  car.progressChanged = 0 // 5801
+  if (writeProgress(car, hit, ctx)) knockOut(car)
+  return hit
+}
+
+/** `561D-5656`: a wall. The guarded progress write comes first (a 0xFF exits through `5842`), then
+ * `5659`'s response. */
+function solidTail(car, world, ctx, hit) {
+  if (writeProgress(car, hit, ctx)) { knockOut(car); return hit }
+  return wallResponse(car, world, ctx, hit)
+}
+
+/** `5659-573D`: the off-track dwell, the collision sfx and the four-probe hit box. */
+function wallResponse(car, world, ctx, hit) {
+  // UNKNOWN_col_response_offtrack_branch resolved (docs/engine.md §9v, live disassembly of
+  // 1000:5659-56a3): once offTrackTicks exceeds 0x32 the real function resets the counter to 0, sets
+  // state 0xD, and RETURNS EARLY (5671: JMP 5842), skipping the hit-box detection for that tick. The
+  // dwell==0 branch resets offTrackTicks to 0 every call and plays sfx 6 (id 4 for POWERBOATS/round
+  // 2 -- 1000:568c/569e, both drawn-gated).
+  if (car.offTrackDwell) {
+    car.offTrackTicks = (car.offTrackTicks + 1) & 0xff
+    if (car.offTrackTicks > 0x32) {
+      car.offTrackTicks = 0
+      knockOut(car) // 5671 JMP 5842: also records knockoutX/Y, not just the state
+      return hit
+    }
+  } else {
+    car.offTrackTicks = 0
+    if (car.drawnThisFrame) ctx.sound?.playSfx(ctx.round === 2 ? 4 : 6)
+  }
+  const l = queryWorldAt(world, car.posX - CELL_UNITS, car.posY).solid
+  const r = queryWorldAt(world, car.posX + CELL_UNITS, car.posY).solid
+  const u = queryWorldAt(world, car.posX, car.posY - CELL_UNITS).solid
+  const d = queryWorldAt(world, car.posX, car.posY + CELL_UNITS).solid
+  if (!l && !r && !u && !d) {
+    car.hitLeft = 1; car.hitUp = 1; car.hitRight = 0; car.hitDown = 0
+  } else {
+    car.hitLeft = l ? 1 : 0; car.hitRight = r ? 1 : 0; car.hitUp = u ? 1 : 0; car.hitDown = d ? 1 : 0
+  }
+  car.wallHitPending = 1
+  hit.blocked = true
   return hit
 }
 
@@ -234,8 +271,8 @@ export function updateCarTileCollision(car, world, ctx) {
  *
  * Round 3 adds a skip (5622-563a/579f-57b0/580c-5824): a car NOT on a bridge ignores progress on a
  * tile `ROUND3_TILE_FLAGS` ([25CC]) marks as bridge-level, keyed by the NEW meta-tile (written at
- * 55c9 before the test). Not ported: the round-3-only bridge path 5740-57f7 (its own 57b2 write and
- * the 683c ramp-launch path that stores CX=12 instead of the plane-2 byte, docs/engine.md §9ah).
+ * 55c9/574b before the test). Round 3's own path (`round3Collision`, 5740-57f7) reaches all three,
+ * and its `683c` launch leaves CX=12 for the 5807 write (docs/engine.md §9cc).
  * @returns {boolean} true when the value just written is 0xFF (the 564e/57c4/5838 knockout test)
  */
 function writeProgress(car, hit, ctx) {

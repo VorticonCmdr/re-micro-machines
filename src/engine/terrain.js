@@ -167,7 +167,8 @@ function h67d8(car, ctx) { // HandleTerrainLeaveLevelLowHop
   if (car.terrainIdxPrev !== 6) car.zVel = Math.floor(ctx.s / 5) + 4
 }
 
-function h683c(car, ctx) { // ramp launch (unnamed); docs/engine.md §3 "Jump / airborne / Launch sources"
+/** Also called directly by round 3's own collision path (`57EE`, collide.js, docs/engine.md §9cc). */
+export function h683c(car, ctx) { // ramp launch (unnamed); docs/engine.md §3 "Jump / airborne / Launch sources"
   if (car.dirBytePrev & 0x10) {
     car.zVel = Math.floor(ctx.s / 12) + 4
     car.rampJumpActive = 1

@@ -750,7 +750,7 @@ docs, (6) commit.
 - [ ] **`UNKNOWN_fade_duration`.** The exit fade is unpaced. Measure it live (Part L) and pace it.
 - [ ] **`UNKNOWN_countdown_hud_digit`.** The HUD digit reads 3 during the start countdown and 4
   once racing. Capture the original's value live (Part L) and match it.
-- [ ] **`UNKNOWN_round3_bridge_path`.** `1000:5740-57f7` is unported, including the `683c` ramp path
+- [x] **`UNKNOWN_round3_bridge_path`.** **Done (§9cc, M3.83): `5740-57F7` is round 3's whole collision path; ported with the CX=12 quirk.** `1000:5740-57f7` is unported, including the `683c` ramp path
   that stores progress 12. This is round 3 physics. Port it and add a `check-step`/`check-rounds` test.
 - [x] **`DrawRound8ExtraAnim32 1000:843d`** (`DS:5EE3`) **Done (§9cb, M3.82): already ported in §9aj; the re-read fixed the counter (advances only when the body passed its clip) and the rotor's own fold.**: the CHOPPERS-only 32×32 extra animation
   (§9d). Disassemble it, find out what it draws, then port it.

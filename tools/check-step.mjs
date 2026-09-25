@@ -708,5 +708,62 @@ function newCar(fields) {
   }
 }
 
+// Round 3's own collision path, `5740-57F7` (docs/engine.md §9cc): every branch against a
+// synthetic world whose collision mask, .DIR byte and plane-2 byte are chosen per case. `onBridge`=1
+// keeps the round-3 bridge-level progress skip out of the way.
+{
+  const { updateCarTileCollision } = await import('../src/engine/collide.js')
+  const { MAP_SIDE, TILE_UNITS } = await import('../src/formats/track.js')
+  const world = (solid, dir, progress = 5) => ({
+    map: { tiles: new Uint8Array(MAP_SIDE * MAP_SIDE), attrs: new Uint8Array(MAP_SIDE * MAP_SIDE), plane2: new Uint8Array(MAP_SIDE * MAP_SIDE).fill(progress) },
+    colOf: () => new Uint8Array(144).fill(solid ? 1 : 0),
+    dirOf: () => new Uint8Array(36).fill(dir),
+    levOf: () => ({ raw: 0, unsafeRespawn: false, heading: 0x40, nudge: { dx: 0, dy: 0 }, lowBits: 0 }),
+  })
+  const mk = (fields) => newCar({ nextX: TILE_UNITS, nextY: TILE_UNITS, posX: TILE_UNITS, posY: TILE_UNITS, progress: 3, progressPrev: 0, dirByte: 0, offTrackDwell: 0, offTrackTicks: 0, state: 0, drawnThisFrame: 0, onBridge: 1, speed: 0x80, halveOnBounce: 0, rampJumpActive: 0, zVel: 0, velX: 0x300, velY: -0x400, wallHitPending: 7, ...fields })
+  const r3 = { round: 3 }
+
+  let car = mk({})
+  let hit = updateCarTileCollision(car, world(true, 0xe0), r3)
+  check('round 3: a solid cell whose .DIR byte has 0xE0 all set is open (5764-5770 -> 57FB)', !hit.blocked && car.wallHitPending === 0 && car.progress === 5)
+
+  car = mk({})
+  hit = updateCarTileCollision(car, world(true, 0x20), r3)
+  check('round 3: any other solid cell is a wall, progress written first (5773 -> 561D)', hit.blocked && car.wallHitPending === 1 && car.progress === 5 && car.progressPrev === 3)
+
+  car = mk({ dirByte: 0x10 })
+  hit = updateCarTileCollision(car, world(false, 0x00), r3)
+  // s = hi(0x300)^2 + hi(-0x400)^2 = 9 + 16 = 25 -> 25/12 + 4 = 6
+  check('round 3: leaving a bit-4 cell onto high nibble 0 launches (683C: zVel = s/12 + 4, [1384]=1)', car.zVel === 6 && car.rampJumpActive === 1 && !hit.blocked)
+  check('round 3: ...and 683C leaves CX=12, so progress becomes 12, not the cell\'s 5 (5807-5832)', car.progress === 12 && car.progressPrev === 3 && car.progressChanged === 1)
+
+  car = mk({ dirByte: 0x10 })
+  updateCarTileCollision(car, world(false, 0x40), r3)
+  check('round 3: leaving a bit-4 cell onto a nonzero high nibble: no launch, the cell\'s progress (57EC)', car.rampJumpActive === 0 && car.progress === 5)
+
+  car = mk({ dirByte: 0x00, speed: 0x180 })
+  hit = updateCarTileCollision(car, world(false, 0x10), r3)
+  check('round 3: entering a bit-4 cell without 0xA0 bits from below is a wall (5792-57E3 -> 5659)', hit.blocked && car.wallHitPending === 1)
+  check('round 3: ...the .DIR byte is put back (5792-5796)', car.dirByte === 0x00 && car.dirBytePrev === 0x00)
+  check('round 3: ...[138A]=1 and speed capped at 0x100 (57CF-57DD)', car.halveOnBounce === 1 && car.speed === 0x100)
+  check('round 3: ...progress still written (579A-57BE)', car.progress === 5)
+
+  car = mk({ dirByte: 0x00, speed: -0x200 })
+  updateCarTileCollision(car, world(false, 0x10), r3)
+  check('round 3: the speed cap is a signed JL -- reversing speed is left alone', car.speed === -0x200)
+
+  car = mk({ dirByte: 0x00 })
+  hit = updateCarTileCollision(car, world(false, 0x30), r3)
+  check('round 3: entering a bit-4 cell WITH 0xA0 bits is open and copies it to the previous byte (57F3-57F7)', !hit.blocked && car.dirByte === 0x30 && car.dirBytePrev === 0x30)
+
+  car = mk({ dirByte: 0x00, speed: 0x180 })
+  hit = updateCarTileCollision(car, world(false, 0x10), { round: 1 })
+  check('control: the same step in round 1 is open (55B4: only round 3 takes this path)', !hit.blocked && car.speed === 0x180 && car.dirByte === 0x10)
+
+  car = mk({ dirByte: 0x00 })
+  hit = updateCarTileCollision(car, world(false, 0x10, 0xff), r3)
+  check('round 3: a 0xFF progress on the bit-4 wall step knocks out at once (57C4 -> 5842), no wall response', car.state === 0xd && !hit.blocked)
+}
+
 console.log(bad ? `${bad} check(s) failed` : 'check-step: idle + driving runs clean (no NaN, world stays toroidal); checkpoint/lap rule holds (no lap counted with a checkpoint outstanding, counted once cleared); off-track collision response matches the real early-return/tick-reset/sfx bytes; tile-index overflow resolves to real partial data where the file has it and a defined zero fallback otherwise; shared col/dir/.BRK buffers replicate the real cross-race leftover-byte carry-over when a caller opts in; the no-throttle steer-floor/coast-decay speed jump replays exactly against the live capture, in isolation and through a real runStep')
 process.exitCode = bad ? 1 : 0
