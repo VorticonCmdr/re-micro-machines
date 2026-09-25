@@ -15,7 +15,7 @@
 
 import { updateCarVelocityTowardHeading } from './velocity.js'
 import { integrateCar, updateCarTileCollision, bounceAndCommit, resolveCarCarCollisions } from './collide.js'
-import { dispatchTerrain } from './terrain.js'
+import { dispatchTerrain, round2Current } from './terrain.js'
 import { updateCheckpointsAndLaps } from './checkpoints.js'
 import { updateCarAirborneLanding } from './airborne.js'
 import { updatePuffsAndSplashes } from './puffs.js'
@@ -316,6 +316,7 @@ export function runStep(world, cars, controls, raceState, ctx) {
       // `raceState` threaded in only for round 3's terrain-triggered drop-in entry (`terrain.js`'s
       // `h6ae5`, docs §9r) -- the other 23 terrain handlers ignore it.
       dispatchTerrain(car, { ...ctx, s, raceState })
+      round2Current(car, ctx, entryState) // 5EEC-5EFB, after the dispatch
       updateCheckpointsAndLaps(car, ctx, { cars, carIndex, raceState, entryState })
     }
     bounceAndCommit(car, ctx, world)

@@ -801,6 +801,14 @@ function newCar(fields) {
   h6231(car, { round: 9 })
   check('conveyor: ...and the lower bound too', DIR_COMPASS_TABLE[4] === 0xc0 && car.velX === -10)
 
+  const { round2Current } = await import('../src/engine/terrain.js')
+  car = mk({ dirByte: 0x1b, height: 5 })
+  const pushed = round2Current(car, { round: 2 }, 0)
+  ;[px, py] = push(DIR_COMPASS_TABLE[3])
+  check('round 2 current: .DIR & 0x18 in state 0 pushes, airborne too (5EF3-5EFB)', pushed && car.velX === px && car.velY === py)
+  check('round 2 current: no push without the 0x18 bits, in another state, or in another round',
+    !round2Current(mk({ dirByte: 0x03 }), { round: 2 }, 0) && !round2Current(mk({ dirByte: 0x1b }), { round: 2 }, 1) && !round2Current(mk({ dirByte: 0x1b }), { round: 1 }, 0))
+
   car = mk({ speed: 0x300 }); h6231(car, { round: 9 })
   const fast = car.speed
   car = mk({ speed: -0x300 }); h6231(car, { round: 9 })

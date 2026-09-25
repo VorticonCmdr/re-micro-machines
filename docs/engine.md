@@ -11596,6 +11596,10 @@ Both are fixed, `[STATIC]`.
 Not captured live. The fold case needs a chopper at a precise screen edge, and the counter's
 off-screen freeze has no easily visible effect.
 
+`markDrawn` now has a side effect, so a double call per tick would double the spin. Measured in
+headless round-8 races (four-car and two-car, all three races, every state reached: 0, 2, 7, A, B,
+C, D): no car's counter ever advanced more than once per step.
+
 ## 9cc. Round 3's own collision path (`5740-57F7`), ported (2026-09-25)
 
 GOAL-DOS-PARITY.md P5 (`UNKNOWN_round3_bridge_path`). The item described this as a bridge
@@ -11650,7 +11654,21 @@ The generic path's behaviour is unchanged (every existing check passes unmodifie
 - the round-1 control;
 - a 0xFF progress knocking out before the wall response.
 
-Three mutations are caught: no round-3 path, no CX=12, no `.DIR` restore. `check-rounds` and
+Three mutations are caught: no round-3 path, no CX=12, no `.DIR` restore.
+
+**CX=12 survives the sound call.** `683C`'s sfx call (`687C`, `AH=5`) goes to the driver slot. All
+three drivers preserve CX: `DRIVER1`/`DRIVER2` enter `+0` (`CALL 0x94`/`0xF7`), whose dispatcher
+does `PUSH CX … POP CX`, and `DRIVER0` is `MOV AX,0; RETF`. So 12 reaches `5807` under any sound
+setting, `[STATIC]` (`ndisasm`).
+
+**The change on real maps.** Headless, drones on the AI, before (`33653a0`) against after:
+- ROUND31 is identical in both formats.
+- ROUND32 takes 7988 steps instead of 7954, with the same order.
+- ROUND33 takes 9129 steps instead of 9498. The wall ticks per car went from 7/13/6/74 to 3/6/8/6,
+  so a drone that used to grind a wall no longer does. The order changed.
+- The two-car races are identical.
+
+That's a modest change, with no sign of drones stuck on bit-4 edges. `check-rounds` and
 `check-finish` (all 29 races resolve) pass.
 
 Not captured live: it needs a car driven onto a precise pool-table edge in DOSBox.
@@ -11673,10 +11691,25 @@ unclamped. `6231-62E2`, read in full, `[STATIC]`, differs in three places:
 The speed cap (0x100, signed `JL`, `62D4-62DC`) was already right. `589C` confirms `[12DE]` is the
 map byte `>> 6`, which is the port's `mapAttr`.
 
-**Where it runs.** Per the port's terrain table (`TERRAIN_ROWS` with its real row overflow), `6231`
-is dispatched for round 9 (RUFFTRUX) terrain 3–5 and, through the overflow, round 8 terrain 6–8.
+**Where it runs.**
+- `get_xrefs_to 6231` finds one direct call, `5EFB`, inside `5E4E`: in round 2 (POWERBOATS), whenever
+  `.DIR & 0x18` (`5EEC-5EF9`). That is the **water current**, and the reason for the round-2 `& 7`
+  mask.
+- It runs after the terrain dispatch, for a car that entered `5E4E` in state 0, airborne or not (the
+  dispatch's own `5EDB` height gate doesn't cover it).
+- **This call was not ported at all** (the port's `h6231` was reachable only through its terrain
+  table, round 9 terrain 3–5 and, via the row overflow, round 8 terrain 6–8). It is now
+  `terrain.js`'s `round2Current`, called by `step.js` right after `dispatchTerrain`.
+- Measured headless: 0 car-steps on current cells in ROUND21 (so the trace baselines are unchanged,
+  as §9ab already found), and 96, 454 and 204 in ROUND22–24.
 
 **Port.** `terrain.js`'s `h6231` has been rewritten to the bytes and exported for the tests.
+
+**Also found, not ported: the bathtub plughole** (`62E3`, called at `60C0-60C7` on every `5E4E` call
+in round 2). For a state-0 car within ±60px of world (0x650, 0xB70), it pulls velocity toward the
+centre by `min((60−|dx|)·4 + 0x28, (60−|dy|)·4 + 5)` per axis. Within ±12px it sets state 1 with
+`[1382]=0x46`, a 4-step drift of `(centre − pos) >> 2` and next position = the centre. Recorded as a
+new P5 item.
 
 **Tests.** `check-step.mjs` covers, against hand-computed pushes from the real tables:
 - no remap with bit 1 clear;
@@ -11684,7 +11717,9 @@ is dispatched for round 9 (RUFFTRUX) terrain 3–5 and, through the overflow, ro
 - the reversal;
 - the round-2 mask;
 - both clamp bounds;
-- the signed speed cap.
+- the signed speed cap;
+- `round2Current`'s gate: it pushes in round 2, state 0, `.DIR & 0x18`, even airborne; it doesn't
+  push without the bits, in another state, or in another round.
 
 Three mutations are caught, including the old always-remap. `check-rounds`, `check-finish`,
 `trace` (13/20) and `ai` (59/60) are unchanged.

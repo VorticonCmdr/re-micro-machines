@@ -755,6 +755,10 @@ docs, (6) commit.
 - [x] **`DrawRound8ExtraAnim32 1000:843d`** (`DS:5EE3`) **Done (§9cb, M3.82): already ported in §9aj; the re-read fixed the counter (advances only when the body passed its clip) and the rotor's own fold.**: the CHOPPERS-only 32×32 extra animation
   (§9d). Disassemble it, find out what it draws, then port it.
 - [x] **`UNKNOWN_conveyor_push_formula`** **Done (§9cd, M3.84): the remap is gated on map attribute bit 1, bit 0 reverses, each component is clamped.** (`src/engine/terrain.js:85`). Re-derive it byte-exactly.
+- [ ] **The bathtub plughole (`62E3`, round 2).** Called at `60C0-60C7` on every `5E4E` call in round
+  2, and unported. It pulls state-0 cars within ±60px of world (0x650, 0xB70) toward the centre, and
+  inside ±12px drops them in (state 1, `[1382]=0x46`, a 4-step drift). Read in full in §9cd. Port it
+  with a `check-step` test.
 - [ ] **The smoothness 2–4 state/ranking cadence** (§9ah): only the drawn-flag write honours
   `ctx.drawnTick` today. Port the full cadence.
 - [ ] **The BX-quirk garbage carries over between races** in DOS, because car records are not

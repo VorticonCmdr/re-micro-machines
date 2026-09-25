@@ -107,6 +107,15 @@ export function h6231(car, ctx) { // FUN_1000_6231 (conveyor/current)
   if (car.speed >= 0x100) car.speed = 0x100
 }
 
+/** `5EEC-5EFB`: POWERBOATS' water current -- `6231` whenever `.DIR & 0x18`, for a car that entered
+ * `5E4E` in state 0 (`5E8F`), airborne or not (the terrain dispatch's own `5EDB` height gate doesn't
+ * cover it), called after the dispatch (docs/engine.md §9cd). Returns whether it pushed. */
+export function round2Current(car, ctx, entryState) {
+  if (ctx.round !== 2 || entryState !== 0 || !(car.dirByte & 0x18)) return false
+  h6231(car, ctx)
+  return true
+}
+
 function h63d6(car) { car.puffSrcWet = 1 } // HandleTerrainWetPuffTrigger
 
 function h63dd(car, ctx) { // HandleTerrainGroundedZVel
