@@ -15,7 +15,7 @@
 
 import { updateCarVelocityTowardHeading } from './velocity.js'
 import { integrateCar, updateCarTileCollision, bounceAndCommit, resolveCarCarCollisions } from './collide.js'
-import { dispatchTerrain, round2Current } from './terrain.js'
+import { dispatchTerrain, round2Current, plughole } from './terrain.js'
 import { updateCheckpointsAndLaps } from './checkpoints.js'
 import { updateCarAirborneLanding } from './airborne.js'
 import { updatePuffsAndSplashes } from './puffs.js'
@@ -318,6 +318,7 @@ export function runStep(world, cars, controls, raceState, ctx) {
       dispatchTerrain(car, { ...ctx, s, raceState })
       round2Current(car, ctx, entryState) // 5EEC-5EFB, after the dispatch
       updateCheckpointsAndLaps(car, ctx, { cars, carIndex, raceState, entryState })
+      plughole(car, ctx) // 60C0-60C7: every 5E4E exit but the two-car preamble's, current state
     }
     bounceAndCommit(car, ctx, world)
     car.carCarHit = 0

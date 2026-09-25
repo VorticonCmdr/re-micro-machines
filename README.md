@@ -132,6 +132,9 @@ and stays local to your machine.
   (portraits, win/lose poses, vehicle icons and their slides, pixel-checked against DOSBox,
   `docs/engine.md` §9bz), the tournament board screen, the interactive opponent picker, and the
   elimination/replacement screen.
+- The hazard/knockout fall animations' length right after a race start: DOS reuses a stale
+  animation timer there, so a fall into the bathtub plughole takes ~12 ticks in DOS and 81 in the
+  port (`docs/engine.md` §9ce). The plughole itself is implemented.
 - Gamepad/mouse input during a race (keyboard only) -- mouse input elsewhere (the logo intro's
   click-to-skip) is implemented. The GAME OPTIONS screen's own F7 (joystick calibration) is gated
   correctly (never shown without a joystick) but its analog-read body isn't ported, same reason.

@@ -116,6 +116,33 @@ export function round2Current(car, ctx, entryState) {
   return true
 }
 
+/** `62E3`, called at `60C0-60C7` at the end of every `5E4E` call in round 2: the bathtub plughole at
+ * world (0x650, 0xB70) (docs/engine.md §9ce). Gated on the car's CURRENT state (`62E3` tests
+ * `[12AE]` itself, after the terrain dispatch and the lap body). Inside the inclusive ±60px box one
+ * magnitude `m = min((60-|dx|)*4+0x28, (60-|dy|)*4+5)` is added to both velocity axes, its sign per
+ * axis from the unsigned borrow of `pos - centre` (so exactly on the centre line the pull is -m).
+ * Then, inside the inclusive ±12px box, the car drops in: state 1, `[1382]=0x46`, next position the
+ * centre, a 4-step drift of `(centre - pos) >> 2`; animTimer/animStep are not touched. Returns
+ * 'drop', 'pull' or null. */
+export function plughole(car, ctx) {
+  if (ctx.round !== 2 || car.state !== 0) return null
+  const x = toI16(car.posX), y = toI16(car.posY)
+  if (x < 0x614 || x > 0x68c || y < 0xb34 || y > 0xbac) return null // 62ED-6316
+  const ax = Math.abs(x - 0x650), ay = Math.abs(y - 0xb70)
+  const m = Math.min((60 - ax) * 4 + 0x28, (60 - ay) * 4 + 5) // 6319-6357
+  car.velX = toI16(car.velX + (x < 0x650 ? m : -m)) // 635A-6365
+  car.velY = toI16(car.velY + (y < 0xb70 ? m : -m)) // 636B-6376
+  if (x < 0x644 || x > 0x65c || y < 0xb64 || y > 0xb7c) return 'pull' // 637B-6399
+  car.subState = 0x46 // 639B
+  car.state = 1 // 63A1
+  car.nextX = 0x650 // 63A7
+  car.nextY = 0xb70 // 63AD
+  car.driftSteps = 4 // 63B3
+  car.driftDX = (0x650 - x) >> 2 // 63B9-63C3
+  car.driftDY = (0xb70 - y) >> 2 // 63C7-63D1
+  return 'drop'
+}
+
 function h63d6(car) { car.puffSrcWet = 1 } // HandleTerrainWetPuffTrigger
 
 function h63dd(car, ctx) { // HandleTerrainGroundedZVel

@@ -190,7 +190,7 @@ In `5e4e` (`5e8f–5eea`), **state-0 cars only**: `idx = [12DA] >> 5` for rounds
 | 8 | 60CB 6169 618C |
 | 9 | 60CB 66ED 6768 6231 6231 6231 6622 64F5 |
 
-Handlers (`s = vxi² + vyi²`): `35BE`/`683B` RET · `60CB` normal: `[1390]=0`; leaving a raised level (`[138E]≠0`) → `[138E]=0`, `zVel = s/15+4` (round 1 prev idx 4: `/7+4`, idx 3: `/12+8`) · `6169` knock-out tile → state D, `[1382]=0x46` · `618C` off-track dwell 1→2, then `vx += 0xC8` if `vx ≥ 0` · `61B0` rough: leave-level hop; else halve vx,vy (unless prev idx 3 in round 5 / 4 elsewhere), sfx 6, speed cap 0x200 · `6231` (`FUN_1000_6231`) conveyor/current: push v along the `.DIR` heading (`191B`/`18FB`) ×2, speed cap 0x100 **(made exact in §9cd: the `191B` remap only with map attribute bit 1, bit 0 reverses, each `2·sin` clamped to `[reverseLimit, maxSpeedCur]`)** · `63D6` wet puff · `63DD` on ground: `zVel = max(s,0x1C)/8+5`, `[12D8]=0` · `641A` prev idx ≠ 6 and `s ≥ 0xE`: `zVel = max(s,0x1C)/10+5` · `6456`/`64F5` hazard (if `[12F9]`): state 1, glide to the 16-px cell centre in 4 steps (A also zeroes velocity) · `657E` leave-level hop; skidding → `[1288]=1` · `6622` leave-level hop; moving → `[128A]=1`, sfx 18 · `6674` `HandleTileResetSteerFlags`: prev idx 0/2 → `[12D0]=0, [12A8]=1, [12C4]=[12C8]=1` (barrier bounce) · `669B` `HandleTileLowGripSfx12`: `[1284]=0x14`, sfx 18 · `66B2` hop; `[1286]=0x14` · `66ED` hop (+6); prev ≠ 6: `zVel = s/9 + 0xB` (round 2) or `+2` · `6768` hop; `s ≥ 0xE`: `zVel = max(s,0x1C)/7` (+7 round 2) · `67D8` hop; prev ≠ 6: `s/5+4` · `683C` ramp launch · `6882` stepped levels (rounds 4/5): `level = idx − 4` (0xD → −1, 0xE → 4 with launch `s/7+4`); `Δ = level − [138E]`; `Δ > 2` → wall probes + `[12A8]=1`; `|Δ| ≤ 1` nothing; else drop `s/18+4` · `69C5` TANKS levels: `level = idx` (8 → 2), hop `/15+4`, then `6AC2` · `6AC2` `.DIR` bit 4 → `[1388]=1, [1386]=0` else `[1388]=0, [1386]=1` · `6AE5` state-E sequencer (round 3 idx 4). Round-2 extras in `5e4e`: `.DIR & 0x18` → `6231`; every step → `62e3` **plughole** at world (0x650, 0xB70): within ±60 px pull velocity toward the centre by `min((60−|dx|)·4+40, (60−|dy|)·4+5)`; within ±12 → state 1, `[1382]=70`, 4-step glide. `docs/sound.md` §3b's "6622/669B present in every dispatch row" is wrong: `6622` is in rows 4, 5, 9 and `669B` in rows 1 and 6; only `60CB` is in every row.
+Handlers (`s = vxi² + vyi²`): `35BE`/`683B` RET · `60CB` normal: `[1390]=0`; leaving a raised level (`[138E]≠0`) → `[138E]=0`, `zVel = s/15+4` (round 1 prev idx 4: `/7+4`, idx 3: `/12+8`) · `6169` knock-out tile → state D, `[1382]=0x46` · `618C` off-track dwell 1→2, then `vx += 0xC8` if `vx ≥ 0` · `61B0` rough: leave-level hop; else halve vx,vy (unless prev idx 3 in round 5 / 4 elsewhere), sfx 6, speed cap 0x200 · `6231` (`FUN_1000_6231`) conveyor/current: push v along the `.DIR` heading (`191B`/`18FB`) ×2, speed cap 0x100 **(made exact in §9cd: the `191B` remap only with map attribute bit 1, bit 0 reverses, each `2·sin` clamped to `[reverseLimit, maxSpeedCur]`)** · `63D6` wet puff · `63DD` on ground: `zVel = max(s,0x1C)/8+5`, `[12D8]=0` · `641A` prev idx ≠ 6 and `s ≥ 0xE`: `zVel = max(s,0x1C)/10+5` · `6456`/`64F5` hazard (if `[12F9]`): state 1, glide to the 16-px cell centre in 4 steps (A also zeroes velocity) · `657E` leave-level hop; skidding → `[1288]=1` · `6622` leave-level hop; moving → `[128A]=1`, sfx 18 · `6674` `HandleTileResetSteerFlags`: prev idx 0/2 → `[12D0]=0, [12A8]=1, [12C4]=[12C8]=1` (barrier bounce) · `669B` `HandleTileLowGripSfx12`: `[1284]=0x14`, sfx 18 · `66B2` hop; `[1286]=0x14` · `66ED` hop (+6); prev ≠ 6: `zVel = s/9 + 0xB` (round 2) or `+2` · `6768` hop; `s ≥ 0xE`: `zVel = max(s,0x1C)/7` (+7 round 2) · `67D8` hop; prev ≠ 6: `s/5+4` · `683C` ramp launch · `6882` stepped levels (rounds 4/5): `level = idx − 4` (0xD → −1, 0xE → 4 with launch `s/7+4`); `Δ = level − [138E]`; `Δ > 2` → wall probes + `[12A8]=1`; `|Δ| ≤ 1` nothing; else drop `s/18+4` · `69C5` TANKS levels: `level = idx` (8 → 2), hop `/15+4`, then `6AC2` · `6AC2` `.DIR` bit 4 → `[1388]=1, [1386]=0` else `[1388]=0, [1386]=1` · `6AE5` state-E sequencer (round 3 idx 4). Round-2 extras in `5e4e`: `.DIR & 0x18` → `6231`; every step → `62e3` **plughole** at world (0x650, 0xB70): within ±60 px pull velocity toward the centre by `min((60−|dx|)·4+40, (60−|dy|)·4+5)`; within ±12 → state 1, `[1382]=70`, 4-step glide **(ported in §9ce; the pull is ONE magnitude, the min of the two terms, applied to both axes, not a per-axis value)**. `docs/sound.md` §3b's "6622/669B present in every dispatch row" is wrong: `6622` is in rows 4, 5, 9 and `669B` in rows 1 and 6; only `60CB` is in every row.
 
 ## 6. Input → control byte; the drone AI `[STATIC]`
 
@@ -5932,6 +5932,8 @@ TANKS/a cheat spot actually lets a shot fire. The release tick's own speed jump 
   wasn't re-examined against this explanation.)
 
 ## 10. Open items
+
+**2026-09-25 (§9ce):** the round-2 bathtub plughole (`62E3`) is ported and live-proven. New open item: `UNKNOWN_stale_animtimer_port` -- `[12B0]` is not bumped in state 0 (`309F`) and not zeroed by the 0→1/0→D entries `62E3`/`6169`/`5FAC`, so those animations start from the value the car entered state 0 with (94 after the countdown, live); the port starts them from 0 (GOAL P5).
 
 `UNKNOWN_tile_index_overflow` **resolved 2026-09-22 (§9ac): three real cases across all 29 races,
 not just the two on record -- round 8 (tile 58, `.COL` only) and round 9 (tile 60, `.COL`+`.DIR`)
@@ -11707,7 +11709,7 @@ map byte `>> 6`, which is the port's `mapAttr`.
 
 **Also found, not ported: the bathtub plughole** (`62E3`, called at `60C0-60C7` on every `5E4E` call
 in round 2). For a state-0 car within ±60px of world (0x650, 0xB70), it pulls velocity toward the
-centre by `min((60−|dx|)·4 + 0x28, (60−|dy|)·4 + 5)` per axis. Within ±12px it sets state 1 with
+centre by `min((60−|dx|)·4 + 0x28, (60−|dy|)·4 + 5)` per axis **(CORRECTED, §9ce: one magnitude, that min, added to both axes with a per-axis sign; now ported)**. Within ±12px it sets state 1 with
 `[1382]=0x46`, a 4-step drift of `(centre − pos) >> 2` and next position = the centre. Recorded as a
 new P5 item.
 
@@ -11725,3 +11727,78 @@ Three mutations are caught, including the old always-remap. `check-rounds`, `che
 `trace` (13/20) and `ai` (59/60) are unchanged.
 
 Not captured live.
+
+## 9ce. The bathtub plughole (`62E3`, round 2), ported and live-proven (2026-09-25)
+
+GOAL-DOS-PARITY.md P5. `[STATIC]` from a full re-disassembly of `62E3-63D5` and its call site, and
+`[PROVEN]` where marked by a live DOSBox run of ROUND22 (BERMUDA BATHTUB).
+
+**Call site.** `5E4E` ends at `60C0`: `CMP [28BF],2 / JNZ / CALL 62E3`. Every path through `5E4E`
+reaches `60C0` except the two-car preamble's early `RET`s (`5E71`, `5E8E`: both cars in state 1, or
+both in 5). That includes the path for a car not in state 0 (`5E96`), and it includes the paths
+after the terrain dispatch, the current push (`5EFB`) and the lap body. `5E4E` is called only from
+`UpdateCarPositionCommitAndBounce 5C6D`.
+
+**`62E3`.**
+- **State gate** (`62E3`): `[12AE]==0`, the car's state **now**, after the dispatch and the lap
+  body. A car the lap body has just set to 0xD (`5FAC`) is not pulled.
+- **Outer box** (`62ED-6316`, inclusive, signed): posX in [0x614, 0x68C] and posY in [0xB34, 0xBAC],
+  i.e. ±60px around (0x650, 0xB70).
+- **One magnitude** (`6319-6357`):
+  `m = min((60−|dx|)·4 + 0x28, (60−|dy|)·4 + 5)`. This is a single value; the X term's +0x28 makes
+  the pull weakest along the Y edges.
+- **Signs** (`635A-6376`): `velX += m` when `posX − 0x650` borrows (posX < 0x650), otherwise `−m`.
+  Y is the same around 0xB70. So exactly on a centre line the pull is `−m`. It is a plain 16-bit
+  add: no clamp, and `speed` is untouched.
+- **Drop** (`637B-63D1`), after the pull, inside the inclusive ±12px box
+  (posX in [0x644, 0x65C], posY in [0xB64, 0xB7C]):
+  - `[1382]=0x46`, state 1, nextX/nextY = the centre;
+  - `[12C2]=4`, with `[12BE]/[12C0] = (centre − pos) SAR 2`.
+  - `animTimer` `[12B0]` and `animStep` `[12B6]` are **not** written.
+
+**Live `[PROVEN]`.** Car 0 was poked to (0x648, 0xB6C) in state 0 during a ROUND22 race:
+- The next tick showed state 1, `[1382]=0x46`, `[12C2]=4`, drift (2, 1) and next = (0x650, 0xB70).
+- vy was 229, exactly `m` (min(248, 229)). vx was 423 (the same m plus 194 from something else on
+  that cell, most likely the water current).
+- The drift walked the car to (0x650, 0xB70) in 4 ticks.
+
+**Found live: the state-1 fall is short in DOS.** `animTimer` was 94 at the drop: the value it had
+when the car entered state 0 after the start countdown.
+- `RunRaceMainLoop`'s per-car pass calls `73E7` (the `[12B0]` bump) only for cars **not** in state 0
+  (`309F-30A6`), so the timer is frozen in state 0.
+- Of the `[12B0]` writers (a byte scan for disp16 `0x12B0`: `42D2`, `6468`, `6507`, `6D06`, `6F6A`,
+  `7282`, `76A6`, `76BE`, `7F57`, `7FC5`, `8310`, `8924`), none is on the `62E3` path.
+- So `880A` walked the round-2 table one step per tick (`astep` 0→7 in 7 ticks) and reached state 7
+  about 12 ticks after the drop. The port, whose `animTimer` is 0 here, takes 81 steps.
+- The same holds for the other 0→1/0→D entries that don't zero `[12B0]`: the knockout tile `6169`
+  and the missed checkpoint `5FAC`. `82BE` also steps its `[12B8]` cursor once per call.
+- This is not the plughole's own logic. It is recorded as the new P5 item
+  `UNKNOWN_stale_animtimer_port`: the port needs the `73E7` bump for every non-0 state (state A
+  included) and `82BE`'s one-step cursor.
+
+**Drones don't fall in at real speeds.**
+- Live: over two windows (84 s and 100 s) of the ROUND22 race, the three drones passed through the
+  ±60px box on every lap (124–134 samples each in the first window) and none dropped. Their line
+  runs 35–50px south of the centre, where the pull is small (`(60−|dy|)·4+5`).
+- Port at the same tournament index (8, drone max speed 1371): 0 drops, the same line. At
+  `tournamentIndex` 0, which the headless checks use (drone max speed 1014–1146), the slower drones
+  are bent into the hole and loop: 30–70 drops per ROUND22–24 race, and those races run 50% longer
+  in `check-finish`. At ROUND24's real index 12, 1 drop in 6000 steps.
+- ROUND21 (the qualifier) never enters the box, so the trace baselines (13/20, 59/60) are unchanged.
+
+**Port.** `terrain.js`'s `plughole(car, ctx)`, called by `step.js` after `updateCheckpointsAndLaps`,
+inside the existing two-car-preamble guard.
+
+**Tests.** `check-step.mjs` covers:
+- the single magnitude, and the Y term winning the min;
+- the `−m` sign on the centre line;
+- the unclamped 16-bit add;
+- both boxes' inclusive edges;
+- the drop's fields, including the drop tick's own pull;
+- the arithmetic-shift negative drift;
+- animTimer/animStep left alone;
+- the round and current-state gates;
+- a `runStep` on ROUND22.
+
+Six mutations are caught: `<=` for the centre sign, max for min, zeroing animTimer, dropping the
+state gate, the inner box edge, and removing the call.

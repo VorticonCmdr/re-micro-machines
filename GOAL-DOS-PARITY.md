@@ -755,10 +755,18 @@ docs, (6) commit.
 - [x] **`DrawRound8ExtraAnim32 1000:843d`** (`DS:5EE3`) **Done (§9cb, M3.82): already ported in §9aj; the re-read fixed the counter (advances only when the body passed its clip) and the rotor's own fold.**: the CHOPPERS-only 32×32 extra animation
   (§9d). Disassemble it, find out what it draws, then port it.
 - [x] **`UNKNOWN_conveyor_push_formula`** **Done (§9cd, M3.84): the remap is gated on map attribute bit 1, bit 0 reverses, each component is clamped.** (`src/engine/terrain.js:85`). Re-derive it byte-exactly.
-- [ ] **The bathtub plughole (`62E3`, round 2).** Called at `60C0-60C7` on every `5E4E` call in round
+- [x] **The bathtub plughole (`62E3`, round 2).** **Done (§9ce, M3.85): ported and live-proven in ROUND22; the pull is one magnitude on both axes.** Called at `60C0-60C7` on every `5E4E` call in round
   2, and unported. It pulls state-0 cars within ±60px of world (0x650, 0xB70) toward the centre, and
   inside ±12px drops them in (state 1, `[1382]=0x46`, a 4-step drift). Read in full in §9cd. Port it
   with a `check-step` test.
+- [ ] **`UNKNOWN_stale_animtimer_port`** (§9ce, found live). `73E7` bumps `[12B0]` only for cars not
+  in state 0 (`309F`), and the 0→1/0→D entries `62E3`, `6169` and `5FAC` don't zero it. Their
+  animations start from the value the car entered state 0 with: 94 after the countdown, 0 after a
+  respawn. In DOS a plughole fall right after the start takes about 12 ticks, and the port takes 81.
+  Port the `73E7` bump for every non-0 state, state A included, with its round-9 exclusion, and
+  drop the per-state inline bumps. Port `82BE`'s one-step `[12B8]` cursor (the port's `findIndex`
+  rescan would jump straight to the end with a big timer). Then re-check trace/ai and the
+  tournament flow.
 - [ ] **The smoothness 2–4 state/ranking cadence** (§9ah): only the drawn-flag write honours
   `ctx.drawnTick` today. Port the full cadence.
 - [ ] **The BX-quirk garbage carries over between races** in DOS, because car records are not

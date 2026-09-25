@@ -815,5 +815,47 @@ function newCar(fields) {
   check('conveyor: speed capped at 0x100, signed (62D4-62DC)', fast === 0x100 && car.speed === -0x300)
 }
 
+// The bathtub plughole `62E3` (docs/engine.md §9ce), called at `60C0-60C7` in round 2 on every
+// `5E4E` exit but the two-car preamble's: the ±60px pull (one magnitude, two signs), the ±12px drop.
+{
+  const { plughole } = await import('../src/engine/terrain.js')
+  const mk = (f) => ({ state: 0, posX: 0x630, posY: 0xb70, nextX: 0, nextY: 0, velX: 0, velY: 0, subState: 0, driftSteps: 0, driftDX: 0, driftDY: 0, animTimer: 94, animStep: 3, ...f })
+  const r2 = { round: 2 }
+  let car = mk()
+  let r = plughole(car, r2)
+  // |dx|=32, |dy|=0: min((60-32)*4+0x28, 60*4+5) = min(152, 245) = 152
+  check('plughole: one magnitude m = min((60-|dx|)*4+0x28, (60-|dy|)*4+5) on both axes (6319-6357)', r === 'pull' && car.velX === 152 && car.state === 0)
+  check('plughole: exactly on the centre line the pull is -m, from the unsigned borrow (636B-6376)', car.velY === -152)
+  car = mk({ posX: 0x650, posY: 0xb34 }); plughole(car, r2)
+  check('plughole: the Y term wins the min when it is smaller (|dy|=60: m=5), and x==0x650 also pulls -m', car.velX === -5 && car.velY === 5)
+  car = mk({ velX: 0x7fc0 }); plughole(car, r2)
+  check('plughole: the velocity add is a plain 16-bit add, no clamp (6365)', car.velX === -0x8000 + 0x58)
+  check('plughole: the outer box is inclusive (62ED-6316)',
+    plughole(mk({ posX: 0x614 }), r2) === 'pull' && plughole(mk({ posX: 0x68c }), r2) === 'pull' && plughole(mk({ posX: 0x613 }), r2) === null &&
+    plughole(mk({ posX: 0x650, posY: 0xbac }), r2) === 'pull' && plughole(mk({ posX: 0x650, posY: 0xbad }), r2) === null && plughole(mk({ posX: 0x650, posY: 0xb33 }), r2) === null)
+
+  car = mk({ posX: 0x648, posY: 0xb6c })
+  r = plughole(car, r2)
+  // m = min((60-8)*4+40, (60-4)*4+5) = min(248, 229) = 229, applied before the drop test
+  check('plughole: inside ±12px the car drops in: state 1, [1382]=0x46, next = the centre (639B-63AD)', r === 'drop' && car.state === 1 && car.subState === 0x46 && car.nextX === 0x650 && car.nextY === 0xb70)
+  check('plughole: the drop tick still gets its pull (637B comes after 6376)', car.velX === 229 && car.velY === 229)
+  check('plughole: a 4-step drift of (centre - pos) >> 2 (63B3-63D1)', car.driftSteps === 4 && car.driftDX === 2 && car.driftDY === 1)
+  check('plughole: animTimer and animStep are left alone (no 12B0/12B6 write in 62E3)', car.animTimer === 94 && car.animStep === 3)
+  car = mk({ posX: 0x65c, posY: 0xb7c }); plughole(car, r2)
+  check('plughole: the inner box is inclusive; a negative drift is an arithmetic shift (63C0)', car.state === 1 && car.driftDX === -3 && car.driftDY === -3)
+  check('plughole: just outside the inner box is a pull only', plughole(mk({ posX: 0x65d, posY: 0xb70 }), r2) === 'pull' && plughole(mk({ posX: 0x643, posY: 0xb70 }), r2) === 'pull' &&
+    plughole(mk({ posX: 0x644, posY: 0xb64 }), r2) === 'drop' && plughole(mk({ posX: 0x650, posY: 0xb63 }), r2) === 'pull' && plughole(mk({ posX: 0x650, posY: 0xb7d }), r2) === 'pull')
+  check('plughole: nothing outside round 2 (60C0) or in a state other than 0 -- the CURRENT state, so a car the lap body just set to 0xD is left alone (62E3)',
+    plughole(mk({ posX: 0x650 }), { round: 1 }) === null && plughole(mk({ posX: 0x650, state: 0xd }), r2) === null && plughole(mk({ posX: 0x650, state: 1 }), r2) === null)
+
+  // Wired into runStep: a ROUND22 car parked on the plughole drops in on the next step.
+  const world = await loadWorld(read, 2, 2)
+  const strt = parseStrtPos(await read('GAME1/STRT_POS.BIN'))
+  const cars = spawnCars(strt, 2, 2)
+  Object.assign(cars[0], { state: 0, posX: 0x64c, posY: 0xb6e, nextX: 0x64c, nextY: 0xb6e, velX: 0, velY: 0 })
+  runStep(world, cars, [0, 0, 0, 0], {}, roundCtx(2, 2))
+  check('plughole: runStep calls it (ROUND22, a car on the plughole drops in)', cars[0].state === 1 && cars[0].subState === 0x46 && cars[0].driftSteps <= 4)
+}
+
 console.log(bad ? `${bad} check(s) failed` : 'check-step: idle + driving runs clean (no NaN, world stays toroidal); checkpoint/lap rule holds (no lap counted with a checkpoint outstanding, counted once cleared); off-track collision response matches the real early-return/tick-reset/sfx bytes; tile-index overflow resolves to real partial data where the file has it and a defined zero fallback otherwise; shared col/dir/.BRK buffers replicate the real cross-race leftover-byte carry-over when a caller opts in; the no-throttle steer-floor/coast-decay speed jump replays exactly against the live capture, in isolation and through a real runStep')
 process.exitCode = bad ? 1 : 0
