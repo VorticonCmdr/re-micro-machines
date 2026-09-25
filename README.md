@@ -49,7 +49,8 @@ when you RELEASE it (a fire key also works on a fresh press), and after ~10 s th
 themselves. A fire key held into one of these screens has to be let go first. The ONE LIFE LOST /
 EXTRA LIFE messages are the exception: they don't respond until the ~2 s lives slide ends, then a
 key released during it still counts, and fire held at that point leaves at once. The champion
-screen still takes plain Space/Enter.
+screen still takes plain Space/Enter; the original waits for any control key once its text has
+slid in (an open item in `GOAL-DOS-PARITY.md` P3).
 
 ## Setting up the game files for development
 

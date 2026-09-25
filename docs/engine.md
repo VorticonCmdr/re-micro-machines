@@ -7172,7 +7172,7 @@ architecture every P1/P2 phase already uses), `src/data/frontend-tables.js` (`BO
 SAME `enterTwoItemMenu`-style real-time RAF driver every other P2 menu phase uses -- combined P1|P2
 reader, shared `menuReleaseTracker`, `forceBoardSteps` debug hook). `tools/check-board.mjs`
 (`npm run board`): `shouldShowBoard`'s real three-way gate (qualifier, last race, two-car format),
-including the pending-bonus-race `effectiveRaceIndex` correction; the `AWAIT_RELEASE` debounce; the
+including the pending-bonus-race `effectiveRaceIndex` correction; the `AWAIT_RELEASE` debounce (**replaced by the real `17FF`, M3.72, §9br**); the
 blink toggling at exactly `0x24`=36 ticks (not 35, and not one early/late either); a fresh fire
 press or any release exiting immediately mid-blink; and the idle timeout firing at the real 720-tick
 cycle boundary (not 700). `tools/check-screens.mjs` gained two `drawTournamentBoard` smoke cases.
@@ -10703,7 +10703,8 @@ simplified it: the tournament board (`DrawTournamentBoard 1000:18D8`) and the re
 `18D8` (`1908`, `1919`, `196C`, `1988`), `164B` in `13E4`, `1E0C` in `1C1B` (part 2), `26BA` in
 `ShowHeadToHeadRaceWinnerTune8` (two-human, P4, not reachable from `flow.js` yet), and `2166` in
 `ShowHeadToHeadResultUnreferenced` (no callers). After this commit every `17FF` call reachable in
-one-player play runs the real `17FF`.
+one-player play runs the real `17FF` -- that is, every call site Ghidra's own xrefs know of; code
+Ghidra never disassembled is not covered by that statement.
 
 **The disassembly, all `[STATIC]`:**
 - **Results (`1618-164E`).** `1618` `[0x261F]=0`; loop at `161E`: XOR the blink bit on the rows at
@@ -10768,3 +10769,18 @@ a triggered bonus race); it is covered by the unit tests. Its own drawing stays 
 before. The timing assumptions (b) and (c) from §9bq apply here too: DOS zeroes `[0x261F]` only
 after the entry draws, and each draw group is assumed to fit in one tick. `26BA` (two-human, P4)
 already runs `raceResultWaitStep` in `twoHuman.js`, but that flow is not wired into `flow.js` yet.
+
+**Added after the commit (2026-09-25): P3 is NOT closed -- the champion screen has its own real
+wait.** A final review of the `[0x2]`-spin sweep's remaining hits found `ShowChampionScreenTune3
+1000:1AAD` (disassembled in full, 127 instructions, `[STATIC]`): a per-tick loop (`1B2B`) that
+slides the two text lines in (`[0x3AA]` from `0xFF50` up to `0x28`, `[0x3AC]` from `0x100` down to
+`0x68`, 2px per iteration, blinking the character every 15 ticks of `[0x2]`) with NO input poll;
+once both lines are in place (`1BD8-1BE4`) every further iteration sets `[0x1080]=0` (`1BF8`,
+both players combined), waits one tick (`1BFE-1C05`), polls (`2D5B`) and leaves when `[0x108B]!=0`
+(`1C0B`) -- ANY control bit held (left/right/accelerate/brake/fire, either player), not the
+release latch, and with no timeout at all. The port's CHAMPION phase instead takes a Space/Enter
+keydown at any time (neither is a control key in the original). Tracked as a new, unticked P3
+bullet in GOAL-DOS-PARITY.md. The other unidentified `[0x261F]` user from part 2's sweep,
+`FUN_1000_0CD3` (`0CFE-0D09`), is the character-select carousel's own one-tick scroll step, not a
+timeout, so it is not a gap.
+

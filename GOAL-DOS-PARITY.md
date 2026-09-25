@@ -333,6 +333,7 @@ docs, (6) commit.
   and times out at 10.29s; RESULTS times out at 10.05s; a fresh fire press dismisses RESULTS into
   ONE LIFE LOST, which then leaves at its first poll. Every `17FF` call reachable in one-player play
   now runs the real `17FF`; `26BA` (two-human) is P4's, and `2166` has no callers.
+  **P3 is not closed by this: see the champion-screen bullet below, added after this one.**
 - [x] **Tournament board** (`1000:18d8`): the `CASE.CHR` map with `MINATURE` icons at the
   positions in `DS:0312` (26 words, §9t). It is gated on `[43A]=1`. Find exactly when it is shown
   in `RunTournamentLoop 1000:10a0`.
@@ -592,6 +593,14 @@ docs, (6) commit.
   Confirmed by reintroducing an off-by-one on both tick counts (58/120), and separately a version of
   `raceIntroParticipants` with no qualifier/bonus-race guard, and re-running the suite each time:
   the targeted assertions fail, pass again once reverted.**
+- [ ] **The champion screen's own wait** (`ShowChampionScreenTune3 1000:1AAD`, docs/engine.md
+  §9br's closing note). Found 2026-09-25 right after the wait-screen bullet was ticked, so P3 was
+  NOT actually closed by M3.72. DOS: the two text lines slide in with no input poll (`1B2B-1BE4`);
+  then, every tick, `[0x1080]=0` and the screen leaves when `[0x108B]!=0` (`1C0B`): any control bit
+  held, either player; no release latch, no timeout. The port takes a Space/Enter keydown at any
+  time (flow.js's CHAMPION branch of `confirm()`), and README.md still says so. Port the slide-in's
+  length (the ticks until both lines are in place) and the any-control-bit exit, test it, and
+  live-check it.
 
 ### P4: two-human Head to Head
 - [ ] Port `FUN_1000_1e20` → `1ef1` / `RunHeadToHeadTournament 1000:1faf` / `2329` / `256e`: the WON/LOST
