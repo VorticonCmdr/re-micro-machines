@@ -6472,7 +6472,27 @@ DOSBox read). `2329` confirmed to be the SINGLE RACE entry (`get_xrefs_to`: call
 `altTuningFieldsFor`'s own `3F3B` path (closing P4 item 2's own stale-`[0x28C1]` tuning worry).
 Deliberately not modelled, scoped to the screens/flow commit: the handicap screen itself (`0B51`,
 called only from character select, not this loop), the WINNER!/LOSER!/champion screens, `2216`'s
-own race-intro slide, and the source of `v` feeding `nextTrack`.
+own slide (a SHARED UI primitive, called from both `1FAF` and `2193` -- not race-intro-specific,
+corrected §9bi), and the source of `v` feeding `nextTrack`. §9bi also answers this section's own
+two carried-forward flow-commit checklist items (the `256E` xref, and the `"A5 08"` sweep).
+
+**Added 2026-09-25 (§9bi).** P4's own 2nd checklist item, logic ported (flow wiring still owed,
+step 4, same as item 1): `selectSingleRaceTrack` ported (`SelectSingleRaceTrack 1000:2193`,
+`SINGLE_RACE_TRACK_TABLE`/`DS:09D9`, both wrap directions, the two PRO-class remaps, plus
+`vehicleClass` -- the pre-remap value `2216`'s own shared slide needs to draw the two PRO classes'
+own distinct names, via the ALREADY-EXISTING `TITLE_CLASS_NAMES`/`DS:002F`). Where it's reachable
+from settles a bigger, unexpected finding: `2329` (`RunHeadToHeadVehicleSelectTune2`, exactly 2
+callers of `2193`, no other caller anywhere) is not merely "the single-race entry" -- its own full
+body IS single race's own complete, self-contained racing loop, calling `256E` too (`get_xrefs_to`:
+`256E`'s only 2 callers are `2077`/tournament and `2402`/here) -- so single race credits the SAME
+win tally and lifetime stats as tournament mode (though `DrawH2HWinRecordDigits`'s own `[0x8A5]`
+gate means it never DISPLAYS the tally), but `256E`'s own full body (`256E-26BF`) has no champion
+check at all, so single race runs until ESC, never to a champion. `[0x8A5]` confirmed as the real
+tournament-vs-single-race flag (both its real
+readers traced). GOAL's own "LEFT and RIGHT both step +1" note confirmed mechanically (`BX=1` set
+once, before either test). `[0x8A3]`'s own track-select cursor has no reset site, `[PROVEN]` at `0`
+by a live read of its own real word-sized field -- the same session-lifetime shape as the lifetime
+win/loss counters.
 
 ## 9as. P1's first item: the logo intro's real per-frame animation (2026-09-24)
 
@@ -8917,13 +8937,23 @@ its own state into a `twoHumanSessionState`
 (the lifetime counters, created once) and a `twoHumanMatchState(session)` (the win tally, used-track
 bitmap, and race number -- created fresh per match, holding a reference to the session it credits),
 proven directly: a second match, sharing the same session object, keeps the first match's own
-lifetime counts while its own win tally and used-track bitmap start fresh. A harmless inconsistency
-noted, not modelled: `2481`'s own DISPLAY-only read of the SAME fields masks P1's own character
-index with `&0x1F` and P2's with `&0xF` (vs. `256E`'s own `&0xF` for both) -- both masks are no-ops
-for any real character index 0-10 ON THEIR OWN, though `[0xC16]`/`[0xC31]` (the fields being masked)
-are shared portrait-frame fields that also get `0x200`/`0x300` ORed into them elsewhere (`2609`/
-`260D`), so the two masks would genuinely diverge if bit 4 of those fields were ever set -- not
-chased further here, a note for the screens commit's own `2481` port. Champion detection matches
+lifetime counts while its own win tally and used-track bitmap start fresh. A NOT-hypothetical
+inconsistency noted, not modelled: `2481`'s own DISPLAY-only read of the SAME fields masks P1's own
+character index with `&0x1F` and P2's with `&0xF` (vs. `256E`'s own `&0xF` for both) -- both masks
+are no-ops for any real character index 0-10 ON THEIR OWN, but `[0xC16]`/`[0xC31]` (the fields being
+masked) are shared portrait-frame fields whose own bit 4 is genuinely TOGGLED, not just ORed once:
+`256E`'s own tail (`26A0-26BD`, the WINNER!/LOSER! banner's own blink loop) `XOR`s `0x10` into
+`[0xC03+0x13]`/`[0xC1E+0x13]` (== `[0xC16]`/`[0xC31]`) once per `17FF` timeout iteration, until a
+key is pressed -- and BOTH re-entries into `2481` (tournament, via `2092` looping back through the
+per-race setup to `203A`; single race, via `2405: JMP 234B` to `2397`) happen AFTER this blink has
+already run at least once. So whether P1's own display index comes out as `c` or `c+16` genuinely
+depends on the blink's own exit PARITY (how many `XOR`s landed before a key was pressed) -- not
+chased further here (what `c+16` actually displays, and whether anything clears the bit between
+races, are both open), a concrete note for the screens commit's own `2481` port, not merely a
+theoretical divergence. `262F-26BF` itself (`256E`'s own tail, beyond the tally/message drawing):
+a palette fade-up (`CALL 32CE`), a slide of the two message boxes (`[0xCDB]`/`[0xCF6]`) until
+`[0xCDD]==0x58`, then this SAME blink loop until `17FF` returns no-carry (a keypress). Champion
+detection matches
 `2081`/`208B` exactly: first tally to reach `H2H_WINS_TO_CHAMPION` (4) ends the match; since exactly
 one tally increments per `reportRace` call, only one side's own tally can possibly BE 4 immediately
 after any single call, so "whoever just won, if their new total is 4" is unambiguous and requires
@@ -9008,4 +9038,124 @@ own explicit call, made because the static checks above answer the same question
 completely). Not yet done, unchanged: the handicap screen, the WINNER!/LOSER!/champion screens,
 `2216`'s own slide, and `flow.js` wiring (one shared `controllerTypes` array, a real P2 keyboard
 reader, `enterSelectGame`'s TWO PLAYER branch) -- step 4 of 4, its own commit. P4's own second
-checklist item (`SelectSingleRaceTrack 1000:2193`) remains fully separate, its own commit.
+checklist item (`SelectSingleRaceTrack 1000:2193`) has its own logic ported in §9bi, below --
+flow wiring for it is owed in the same step-4 commit as item 1.
+
+## 9bi. P4's 2nd item: `selectSingleRaceTrack`, ported and confirmed reachable (2026-09-25)
+
+**Where it's reachable from, settled.** GOAL-DOS-PARITY.md's own P4 2nd item asked to "find where
+it is reachable from, and port it if it is reachable" -- `SelectSingleRaceTrack 1000:2193` is
+reachable, from `RunHeadToHeadVehicleSelectTune2 1000:2329`, via exactly TWO call sites
+(`get_xrefs_to 1000:2193`, no other caller anywhere): `23BF`, the initial draw with `BX=0`; `23F4`,
+reached from either LEFT or RIGHT, both with `BX=1`. This settled a larger, unexpected finding:
+`2329`'s own name notwithstanding, it is NOT merely "a vehicle-select screen" or "the single-race
+entry point" -- its full body (`2329-2409`, disassembled this session) IS single race's own
+COMPLETE gameplay loop: reset `[0x8A5]`/`[0x988]` to `0` (the SAME two flags `RunHeadToHeadTournament`
+sets to `1` at its own entry -- see below), draw the skill-label/lifetime-stat screen (`CALL 2481`,
+the SAME function §9bh's own `skillLabel` derivation used -- but NOT the win-tally digits, see
+below), `CALL 2193` for the initial track pick, wait for input, run the race (`CALL 216C`) once
+FIRE is pressed, THEN `CALL 256E` (`2402`) -- `get_xrefs_to 1000:256E`: exactly 2 callers total,
+`2077` (`RunHeadToHeadTournament`) and `2402` (here) -- and loop back to redraw (`2405: JMP 234B`)
+indefinitely, exiting only on `[0x107E]`'s own ESC-release latch (`23DC`).
+
+**Single race credits, but does not DISPLAY, the win tally -- and has no champion condition of its
+own.** `2371: CALL 240A` is `DrawH2HWinRecordDigits` (`FUN_1000_240a`, `get_function_by_address`:
+body `240A-2480`); its own `[0x8A5]` gate (`2447: CMP [0x8A5],0 / JZ 2480`) jumps STRAIGHT to its
+own `RET` (`2480` IS the function's own body end) when `[0x8A5]==0` -- so in single race, this call
+draws NOTHING for the win tally at all; `2481`'s own separate call (unconditional) still draws the
+skill label and lifetime WON/LOST. Because single race reaches `256E` too, it still CREDITS the
+SAME `[0x98A]`/`[0x98C]` match-win tally and the SAME per-character `[0x9A4+c]`/`[0x9AF+c]` lifetime
+stats as tournament mode even though it never shows the former -- `twoHuman.js`'s own `reportRace`/
+`twoHumanSessionState` apply unchanged, sharing ONE session object across whichever mode the player
+is in. `256E`'s own TRUE full body is `256E-26BF` (`get_function_by_address`, NOT `256E-262F` as an
+earlier pass in this same session stopped at -- the remaining `262F-26BF`, re-disassembled this
+session, is the WINNER!/LOSER! banner's own slide-in animation, sharing `2216`'s own general shape)
+and has NO `[0x98A]`/`[0x98C]`-vs-4 comparison anywhere in EITHER half -- that check lives
+exclusively inside `RunHeadToHeadTournament`'s own post-`256E` code (`2081-2098`), which single
+race's own loop never reaches (it goes straight from `256E` back to its own redraw at `234B`) --
+`[STATIC]`, confirmed by reading the function's own true full range this time. So single race has
+NO first-to-4/champion end condition: it runs until the player quits via ESC. `twoHuman.js` does
+not model an "end the session" concept, matching this -- a future flow commit should call
+`reportRace` for its tally/lifetime-stat side effects in single-race mode too (even though nothing
+displays the tally there), but must NOT act on its `matchOver`/`champion` return value.
+
+**`[0x8A5]` confirmed as a genuine tournament-vs-single-race mode flag.** `search_byte_patterns
+"A5 08"`: exactly 4 hits total -- the 2 known writers (`1FB4`=1, tournament; `2329`=0, single race)
+plus 2 real readers this session traced for the first time: `256E`'s own outcome-message picker
+(`2611` draws "RESULTS!!" -- `DS:095C` -- unconditionally as the FIRST line; `2621` then picks the
+SECOND line, either "SINGLE RACE" (`DS:093A`, when `[0x8A5]==0`) or "TOURNAMENT RACE" (`DS:0975`,
+when nonzero -- `[PROVEN]` this session: a live read confirms `DS:0975` is literally `"TOURNAMENT
+RACE "`, the SAME string `1FAF` itself draws at `2046` and the title on M3.61's own live screenshot))
+and `DrawH2HWinRecordDigits`'s own gate (`2447`, above -- deciding whether to draw the win-tally
+digits at all). Not modelled as explicit state in `twoHuman.js` -- none of its own
+exported functions need to branch on it -- but recorded here since it settles the flag's own
+meaning for the flow commit, and this fully answers §9bh's own two carried-forward checklist items
+(the `256E` xref and the `"A5 08"` sweep -- both answered here, §9bi).
+
+**`SelectSingleRaceTrack 1000:2193` itself, fully ported (`selectSingleRaceTrack`).** Small and
+pure: a persistent `cursor` (`[0x8A3]`, 0-9) plus a `delta` parameter (the real `BX`) selects a
+`SINGLE_RACE_TRACK_TABLE` entry (`data/frontend-tables.js`, `DS:09D9`, 10 words). The wrap (`21B1`/
+`21B9`: negative wraps to slot 9, past-9 wraps to slot 0) and the two PRO-class remaps (`roundRaw`
+10/11 -> round 3/1, `21D3-21DD`, CLAUDE.md's own already-documented "vehicle class index == round"
+mechanism's fourth site) are both ported exactly. The PRE-remap `roundRaw` (1-11) is ALSO returned,
+as `vehicleClass`: `2216` (the shared slide, called from BOTH `1FAF` and here -- not race-intro-
+specific presentation) draws the vehicle-CLASS name from `DS:002F` indexed by `[0x9D8]-1` (`225A`,
+confirmed by disassembly: `MOV CL,[0x9D8]; DEC CL; MOV SI,0x2F`), and `[0x9D8]` holds the PRE-remap
+value -- so the two PRO entries need `vehicleClass` (10/11) to draw "PRO FORMULA ONE"/"PRO
+SPORTSCARS" rather than plain "FORMULA ONE"/"SPORTSCARS" once a screens commit reaches this. `DS:0913`
+confirmed live this session to be `"SELECT VEHICLE\0..."`, matching `2329`'s own `239D: MOV SI,0x913`
+string draw. `[STATIC]` derivation, `[PROVEN]` by construction: the table's own byte order (`[race,
+roundRaw]` per entry, NOT `[roundRaw, race]`) was worked out from `2193`'s own `XCHG AH,AL` swap
+before the two stores (`[0x9D8]`/`[0x28C0]` get the swapped AL/AH, and separately `[0x28BF]` --
+confirmed elsewhere to be `round` -- gets the SAME swapped-AL, post-remap) and confirmed the only
+way that actually matters: ALL 10 table entries, decoded this way, land DIRECTLY on a round 1-8/
+race 1-3 pair (asserted as explicit bounds, not merely "has a non-empty `trackName()`" -- `trackName`
+does not itself bound `race`, so an out-of-range race can still land on the NEXT round's own named
+slot and pass a looser check; a direct mutation test -- swapping the destructure order -- confirms
+the bounds check catches it, 11 of 86 failures) -- and that its own `roundRaw` values are every
+vehicle class 1-11 EXCEPT 9 (RUFFTRUX), each exactly once (single race never offers RUFFTRUX) --
+both proven directly in the test suite, not just asserted in this paragraph. `DS:09D9` is
+`[PROVEN]`: read live this session (segment `0xB7A`) byte-identical to the static Ghidra read:
+`[2,3, 3,10, 1,7, 2,4, 2,6, 2,2, 1,5, 2,8, 1,1, 3,11]`.
+
+**`LEFT and RIGHT both step +1`, GOAL's own note, confirmed mechanically, not just cited.**
+Re-disassembling `23E3-23F7` (the input dispatch inside `2329`'s own wait loop) shows `BX=1` is set
+ONCE, at `23E9`, BEFORE either the LEFT (`0x80`) or RIGHT (`0x40`) bit test, and NEITHER branch
+modifies `BX` again before both converge on the SAME `CALL 2193` at `23F4` -- so the real UI
+genuinely never sends a `delta=-1` in practice (confirmed above: `2193` has only these 2 callers,
+no third site could send one either), even though `selectSingleRaceTrack`'s own wrap logic (ported
+faithfully from the bytes) supports it.
+
+**`[0x8A3]`'s own cursor has no reset site, the SAME session-lifetime shape as the lifetime win/loss
+counters.** `search_byte_patterns "A3 08"`: exactly 2 hits, both `SelectSingleRaceTrack`'s own
+read-modify-write of the cursor itself (`21AC`/`21BE`) -- no OTHER writer anywhere. Its own default
+is `0` -- `[PROVEN]`: a live DOSBox `mem_read` of the real field (`[0x8A3]` is read/written as a
+16-bit `AX` at `21AC`, a WORD, not a byte -- read as 2 bytes this time) matched the static Ghidra
+read, both `0` -- so a fresh game starts the cursor at slot 0 (`SINGLE_RACE_TRACK_TABLE[0]` = round
+3, race 2 -- "PITFALL POCKETS") and it persists across every single race for as long as the game
+runs, never resetting, matching the lifetime win/loss counters' own already-established shape
+(§9bh) rather than the win tally's own per-match reset.
+
+**Tests.** `tools/check-twohuman.mjs` gained 40 new assertions (86 total): all 10 real table
+entries decode to a round-1-8/race-1-3 pair with a named track (round/race bounds asserted
+directly, not just a non-empty `trackName()` -- see above); `vehicleClass` covers every class 1-11
+except 9 exactly once; `delta=0` re-reads the current entry unchanged; both wrap directions; both
+PRO-class remaps. Reintroduction-proven: removing the wrap logic makes the function CRASH (an
+uncaught `TypeError` indexing `undefined`, since `SINGLE_RACE_TRACK_TABLE[-1]` is `undefined` in
+JS, not a wrapped index) -- an even louder failure signal than a graceful check failure, still a
+valid catch (nonzero exit code); removing the PRO-class remap fails 4 checks; swapping the
+destructure order (the byte-order claim's own direct mutation test) fails 11. All restored and
+reconfirmed at 86/86. `SINGLE_RACE_TRACK_TABLE` also checked byte-exact against `game/MICROU.EXE`
+by `check-tables.mjs` (43/43). Full 30-script regression suite re-run clean.
+
+**Verification status.** `[PROVEN]`: `DS:09D9` and `[0x8A3]`'s own default (both a static Ghidra
+read and a live DOSBox `mem_read`, byte-identical for each). `[STATIC]`: the control-flow
+derivation itself (the wrap, the remap, the byte-order reasoning, `256E`'s own lack of a champion
+check across its TRUE full body, `2329`'s own full-loop shape, the `[0x8A5]`-gated tally display).
+Nothing live-exercised end to end (no DOSBox drive of an actual single race). P4's own 2nd
+checklist item's own LOGIC is ported in full -- `SelectSingleRaceTrack` is ported, and where it's
+reachable from is settled -- but the item itself stays unticked, same as item 1: not yet wired into
+`flow.js`, which belongs to the same screens/flow-wiring commit P4's
+1st item's own step 4 still needs, now with a clearer picture of what that commit must cover for
+BOTH two-human modes at once (one shared session object, `reportRace`'s own `matchOver` ignored in
+single-race mode, `selectSingleRaceTrack` for track choice instead of `nextTrack`).

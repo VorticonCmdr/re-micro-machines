@@ -4,10 +4,10 @@
 // (D1). `[STATIC]` by default (CLAUDE.md) -- a Ghidra `read_memory`, not an executed trace; entries
 // with their own additional live DOSBox `mem_read` confirmation say so at their own definition.
 //
-// NOT here, deliberately: the SINGLE-RACE track list (DS:09D9, `SelectSingleRaceTrack 1000:2193`,
-// GOAL-DOS-PARITY.md P4's own 2nd item, not yet ported) -- the two-human H2H TOURNAMENT list
-// (DS:09BA) IS here now (`H2H_TRACK_TABLE`, §9bh); its own track *selection* is still `DS:0002 & 7`,
-// the vsync tick counter, so it isn't input-deterministic and can't be driven by this port's
+// NOT here, deliberately: the two-human H2H TOURNAMENT list (DS:09BA, `H2H_TRACK_TABLE`, §9bh) and
+// the SINGLE-RACE list (DS:09D9, `SINGLE_RACE_TRACK_TABLE`, §9bi, GOAL-DOS-PARITY.md P4's own 2nd
+// item) are BOTH here now; the tournament list's own track *selection* is still `DS:0002 & 7`, the
+// vsync tick counter, so it isn't input-deterministic and can't be driven by this port's
 // tape/replay model either -- `twoHuman.js`'s own `nextTrack(state, v)` takes that sample as an
 // explicit parameter instead, matching this project's established pattern for other non-
 // deterministic real-game values; the roster table (DS:0164) -- confirmed live to be zero at rest
@@ -72,6 +72,23 @@ export const H2H_SKILL_INDEX_TABLE_ADDR = 0x8b0
 export const H2H_SKILL_INDEX_TABLE = [0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 5, 5, 6, 6, 6, 7, 7]
 export const H2H_SKILL_LABELS_ADDR = 0x8cd
 export const H2H_SKILL_LABELS = ['  GRANNY', '   BAD', '   POOR', ' ORDINARY', '   GOOD', 'VERY GOOD', 'EXCELLENT', ' EXPERT']
+
+// --- The single-race track list, DS:09D9 (10 words) -- `SelectSingleRaceTrack 1000:2193`,
+// GOAL-DOS-PARITY.md P4's 2nd item, docs/engine.md §9bi. Each entry is `[race, roundRaw]` --
+// `[STATIC]` byte-order derivation: `2193`'s own code reads the raw LE word then `XCHG AH,AL`
+// (swapping it), storing swapped-AL to `[0x28BF]` (round, after a remap below) and swapped-AH to
+// `[0x28C0]` (race) -- swapped-AL is the word's ORIGINAL high byte (the second byte on disk),
+// swapped-AH is the original low byte (the first byte on disk), so `[race, roundRaw] = [byte0,
+// byte1]` per entry. Confirmed by construction, not just asserted: EVERY one of the 10 entries
+// decodes (after the remap) to a round 1-8/race 1-3 pair with a real, non-empty `trackName()`.
+// `roundRaw` 10/11 are vehicle-class sentinels for the two PRO classes (matching CLAUDE.md's own
+// "vehicle class index == round" note, its own 4th site) -- `2193`'s own remap: 10 -> round 3
+// (PRO FORMULA ONE), 11 -> round 1 (PRO SPORTSCARS); `selectSingleRaceTrack` applies this.
+// `[PROVEN]`: read live this session (segment 0xB7A), byte-for-byte matching the static read. ---
+export const SINGLE_RACE_TRACK_TABLE_ADDR = 0x9d9
+export const SINGLE_RACE_TRACK_TABLE = [
+  [2, 3], [3, 10], [1, 7], [2, 4], [2, 6], [2, 2], [1, 5], [2, 8], [1, 1], [3, 11],
+]
 
 // --- Track names, DS:0460 (36 NUL-terminated strings, walked in order; docs/engine.md §7's
 // "one contiguous block... NUL-walked with index (round-1)*4 + (race-1)") -----------------------

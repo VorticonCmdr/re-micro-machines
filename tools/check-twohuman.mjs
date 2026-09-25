@@ -11,10 +11,14 @@
 //  - the per-character lifetime stats (session state) SURVIVE a new match (match state), matching
 //    the real bytes having no reset site for them anywhere;
 //  - skillLabel matches DS:08B0/DS:08CD's own live-read bytes, including the live-captured
-//    TOURNAMENT RACE screen's own "ORDINARY" tie case (M3.61, docs/engine.md §9bg).
+//    TOURNAMENT RACE screen's own "ORDINARY" tie case (M3.61, docs/engine.md §9bg);
+//  - selectSingleRaceTrack (GOAL-DOS-PARITY.md P4's 2nd item, docs/engine.md §9bi): all 10
+//    SINGLE_RACE_TRACK_TABLE entries decode (after the PRO-class remap) to a real, named track;
+//    both wrap directions; the two remaps (10->round 3, 11->round 1); delta=0 re-reads the
+//    current entry without moving the cursor, matching 2329's own initial CALL 2193.
 //   node tools/check-twohuman.mjs
-import { twoHumanSessionState, twoHumanMatchState, nextTrack, reportRace, skillLabel, H2H_TRACK_TABLE, H2H_WINS_TO_CHAMPION } from '../src/frontend/twoHuman.js'
-import { CHARACTER_NAMES, H2H_SKILL_INDEX_TABLE, H2H_SKILL_LABELS } from '../src/data/frontend-tables.js'
+import { twoHumanSessionState, twoHumanMatchState, nextTrack, reportRace, skillLabel, selectSingleRaceTrack, H2H_TRACK_TABLE, H2H_WINS_TO_CHAMPION, SINGLE_RACE_TRACK_TABLE } from '../src/frontend/twoHuman.js'
+import { CHARACTER_NAMES, H2H_SKILL_INDEX_TABLE, H2H_SKILL_LABELS, trackName } from '../src/data/frontend-tables.js'
 
 let bad = 0
 let asserted = 0
@@ -139,5 +143,50 @@ check('CHARACTER_NAMES has 11 entries (0-10, the valid lifetime-stat index range
 check('H2H_SKILL_INDEX_TABLE has 21 entries (DS:08B0, index range 0-20)', H2H_SKILL_INDEX_TABLE.length === 21)
 check('H2H_SKILL_LABELS has 8 entries (DS:08CD)', H2H_SKILL_LABELS.length === 8)
 
-console.log(bad ? `${bad} of ${asserted} executed check(s) failed` : `check-twohuman: ${distinct.size} distinct assertions (${asserted} executed) pass -- two-human H2H's own tournament state (track pick with no repeats, win tally, session-level lifetime per-character stats that survive a new match, first-to-4 champion detection, and the skill label formula) matches the disassembly (GOAL-DOS-PARITY.md P4, docs/engine.md §9bh)`)
+// 7. selectSingleRaceTrack (GOAL-DOS-PARITY.md P4's 2nd item, docs/engine.md §9bi).
+{
+  check('SINGLE_RACE_TRACK_TABLE has 10 entries (DS:09D9)', SINGLE_RACE_TRACK_TABLE.length === 10)
+
+  // Every one of the 10 real entries decodes (after the PRO-class remap) to a round 1-8/race 1-3
+  // pair with a real, non-empty track name -- the byte-order/remap derivation's own proof, not a
+  // re-assertion of a hand-typed expectation. The round/race bounds are asserted DIRECTLY (not just
+  // "trackName() is non-empty"), because trackName() doesn't bound race itself -- an unbounded race
+  // spills into the NEXT round's own TRACK_NAMES slots and can still return a real string, so a
+  // swapped [round, race] destructure would only be caught on the entries whose swapped values
+  // happen to fall outside 1-8/1-3 (proven below by mutating the destructure order directly).
+  const seenClasses = new Set()
+  for (let cursor = 0; cursor < 10; cursor++) {
+    const t = selectSingleRaceTrack(cursor, 0) // delta=0: read this slot without moving
+    check(`SINGLE_RACE_TRACK_TABLE[${cursor}]: round ${t.round} is in range 1-8`, t.round >= 1 && t.round <= 8)
+    check(`SINGLE_RACE_TRACK_TABLE[${cursor}]: race ${t.race} is in range 1-3`, t.race >= 1 && t.race <= 3)
+    const name = trackName(t.round, t.race)
+    check(`SINGLE_RACE_TRACK_TABLE[${cursor}] (round ${t.round}, race ${t.race}) has a real track name`, typeof name === 'string' && name.length > 0)
+    seenClasses.add(t.vehicleClass)
+  }
+  // The 10 vehicleClass values (the PRE-remap roundRaw) are every one of the 11 real vehicle
+  // classes EXCEPT 9 (RUFFTRUX) -- single race never offers it.
+  const expectedClasses = new Set([1, 2, 3, 4, 5, 6, 7, 8, 10, 11])
+  check('vehicleClass covers every class 1-11 except 9 (RUFFTRUX), each exactly once', seenClasses.size === 10 && [...expectedClasses].every((c) => seenClasses.has(c)))
+  check('vehicleClass never includes 9 (RUFFTRUX)', !seenClasses.has(9))
+
+  // delta=0 re-reads the CURRENT entry without moving the cursor -- 2329's own initial CALL 2193
+  // (23BC: MOV BX,0) -- proven by calling it twice in a row and getting the identical cursor/track.
+  const first = selectSingleRaceTrack(3, 0)
+  const second = selectSingleRaceTrack(first.cursor, 0)
+  check('delta=0 re-reads the current entry: cursor unchanged', first.cursor === 3 && second.cursor === 3)
+  check('delta=0 re-reads the current entry: same track both times', first.round === second.round && first.race === second.race)
+
+  // Both wrap directions (21B1: JNS wraps negative to 9; 21B9: JLE 9 wraps past-9 to 0).
+  check('wrap: cursor 0, delta -1, wraps to 9 (the LAST slot)', selectSingleRaceTrack(0, -1).cursor === 9)
+  check('wrap: cursor 9, delta +1, wraps to 0 (the FIRST slot)', selectSingleRaceTrack(9, 1).cursor === 0)
+  check('no wrap: cursor 3, delta +1, lands on 4 (an ordinary step)', selectSingleRaceTrack(3, 1).cursor === 4)
+
+  // The two PRO-class remaps: SINGLE_RACE_TRACK_TABLE[1]=[3,10] and [9]=[3,11] are the ONLY two
+  // entries whose raw second byte is 10 or 11 -- both must come out as round 3 / round 1
+  // respectively, not literal "round 10"/"round 11" (which don't exist -- CAR_TYPE_INFO has 9 rows).
+  check('PRO FORMULA ONE remap: roundRaw 10 -> round 3', selectSingleRaceTrack(1, 0).round === 3)
+  check('PRO SPORTSCARS remap: roundRaw 11 -> round 1', selectSingleRaceTrack(9, 0).round === 1)
+}
+
+console.log(bad ? `${bad} of ${asserted} executed check(s) failed` : `check-twohuman: ${distinct.size} distinct assertions (${asserted} executed) pass -- two-human H2H's own tournament state (track pick with no repeats, win tally, session-level lifetime per-character stats that survive a new match, first-to-4 champion detection, the skill label formula, and single race's own track select) matches the disassembly (GOAL-DOS-PARITY.md P4, docs/engine.md §9bh/§9bi)`)
 process.exitCode = bad ? 1 : 0

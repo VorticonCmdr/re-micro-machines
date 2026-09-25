@@ -479,9 +479,31 @@ docs, (6) commit.
   `DS:0002 & 7` without repeats. Reproduce `DS:0002` as a 70 Hz tick counter that runs from boot,
   so the choice is as non-deterministic as the original's. P2 input is KEYS 1. The race engine
   already runs two-car races (`twocar.js`). Check what it assumes about car 1 being a drone.
+  **In progress, 3 of 4 planned commits done (M3.60/M3.61/M3.62, docs/engine.md §9bf/§9bg/§9bh):**
+  `car.isDrone` reflects real controller type; the alternate tuning path two-human H2H actually uses
+  is ported and live-proven; `twoHuman.js` (track pick with no repeats, win tally, session-scoped
+  per-character lifetime stats, first-to-4 champion detection, skill labels) is ported and tested.
+  **Remaining (step 4, its own commit):** the handicap question screen (`0B51`), the WINNER!/LOSER!/
+  champion screens, `2216`'s own slide, and `flow.js` wiring (a real P2 keyboard reader,
+  `enterSelectGame`'s TWO PLAYER branch, one shared `controllerTypes` array feeding both
+  `spawnCars` and `raceCtx.controllerTypes`) -- now scoped for BOTH two-human modes at once, since
+  P4's 2nd item below turned out to share `twoHuman.js`'s own session state (§9bi).
 - [ ] **The single-race select** (`SelectSingleRaceTrack 1000:2193`, the 10-entry list at
   `DS:09D9`; LEFT and RIGHT both step +1). Find where it is reachable from, and port it if it is
   reachable.
+  **Logic ported, §9bi; flow wiring in step 4 (same as item 1 above -- nothing in `game.html`
+  reaches single race yet, so this stays unticked until that lands).** Reachable from
+  `RunHeadToHeadVehicleSelectTune2 1000:2329`, confirmed via `get_xrefs_to 1000:2193` (exactly 2
+  callers, no others) -- `2329` turned out to be single race's own COMPLETE gameplay loop (not just
+  an entry point), calling the SAME `256E` post-race screen tournament mode uses (`get_xrefs_to`:
+  only 2 callers total), crediting the SAME win tally and lifetime stats (though never displaying
+  the tally -- `DrawH2HWinRecordDigits`'s own `[0x8A5]` gate skips it in this mode), but with no
+  first-to-4/champion condition of its own -- it runs until ESC. `selectSingleRaceTrack` ported:
+  the cursor wrap, the two PRO-class round remaps (`roundRaw` 10/11 -> round 3/1, also returned as
+  `vehicleClass` for the eventual screen's own class-name draw), `SINGLE_RACE_TRACK_TABLE`
+  (`data/frontend-tables.js`, `DS:09D9`, `[PROVEN]` live). GOAL's own "LEFT and RIGHT both step +1"
+  confirmed mechanically, not just cited. `tools/check-twohuman.mjs` gained 40 assertions (86
+  total), reintroduction-proven.
 
 ### P5: in-race behaviour that differs from DOS
 - [ ] **ESC during a race.** The port quits to the title, which is port-only (`flow.js:424`,
