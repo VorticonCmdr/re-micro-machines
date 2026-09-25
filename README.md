@@ -132,9 +132,15 @@ and stays local to your machine.
   (portraits, win/lose poses, vehicle icons and their slides, pixel-checked against DOSBox,
   `docs/engine.md` §9bz), the tournament board screen, the interactive opponent picker, and the
   elimination/replacement screen.
-- The hazard/knockout fall animations' length right after a race start: DOS reuses a stale
-  animation timer there, so a fall into the bathtub plughole takes ~12 ticks in DOS and 81 in the
-  port (`docs/engine.md` §9ce). The plughole itself is implemented.
+- The length of a fall into the bathtub plughole, and of knockouts from a knockout tile or a
+  missed checkpoint: DOS reuses a stale animation timer there. A plughole fall right after the start
+  takes ~12 ticks in DOS (live-measured) and 81 in the port; the knockouts are read from the
+  disassembly only (`docs/engine.md` §9ce). Hazard-tile falls zero the timer and are unaffected.
+  The plughole itself is implemented.
+- Four small draw differences found in Part R (`docs/engine.md` §9cf): the wheel puffs' and
+  splashes' frame cadence and splash slot/offset, the car layer's paint order (the original draws
+  every shadow, then every puff, then every projectile, then every body), and when the projectile's
+  tail icon switches. The pause's cheat-gated F1+F2 / F2+F3 key combos aren't ported either.
 - Gamepad/mouse input during a race (keyboard only) -- mouse input elsewhere (the logo intro's
   click-to-skip) is implemented. The GAME OPTIONS screen's own F7 (joystick calibration) is gated
   correctly (never shown without a joystick) but its analog-read body isn't ported, same reason.

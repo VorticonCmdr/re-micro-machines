@@ -11772,8 +11772,8 @@ when the car entered state 0 after the start countdown.
   `7282`, `76A6`, `76BE`, `7F57`, `7FC5`, `8310`, `8924`), none is on the `62E3` path.
 - So `880A` walked the round-2 table one step per tick (`astep` 0→7 in 7 ticks) and reached state 7
   about 12 ticks after the drop. The port, whose `animTimer` is 0 here, takes 81 steps.
-- The same holds for the other 0→1/0→D entries that don't zero `[12B0]`: the knockout tile `6169`
-  and the missed checkpoint `5FAC`. `82BE` also steps its `[12B8]` cursor once per call.
+- The same holds for every 0→D entry, none of which zeroes `[12B0]` (`5852`, `5842`, `5B52`/`5B83`,
+  `5CA6`, `5FAC`, `6169`, `74C0`, `7A57`); only the hazard entries `6468`/`6507` zero it. `82BE` also steps its `[12B8]` cursor once per call.
 - This is not the plughole's own logic. It is recorded as the new P5 item
   `UNKNOWN_stale_animtimer_port`: the port needs the `73E7` bump for every non-0 state (state A
   included) and `82BE`'s one-step cursor.

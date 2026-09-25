@@ -760,7 +760,8 @@ docs, (6) commit.
   inside ±12px drops them in (state 1, `[1382]=0x46`, a 4-step drift). Read in full in §9cd. Port it
   with a `check-step` test.
 - [ ] **`UNKNOWN_stale_animtimer_port`** (§9ce, found live). `73E7` bumps `[12B0]` only for cars not
-  in state 0 (`309F`), and the 0→1/0→D entries `62E3`, `6169` and `5FAC` don't zero it. Their
+  in state 0 (`309F`), and the 0→1 entry `62E3` and every 0→D entry (`5852`, `5842`, `5B52`/`5B83`, `5CA6`, `5FAC`, `6169`,
+  `74C0`, `7A57`) don't zero it; only the hazard entries `6468`/`6507` do. Their
   animations start from the value the car entered state 0 with: 94 after the countdown, 0 after a
   respawn. In DOS a plughole fall right after the start takes about 12 ticks, and the port takes 81.
   Port the `73E7` bump for every non-0 state, state A included, with its round-9 exclusion, and
