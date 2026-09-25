@@ -87,9 +87,20 @@ export function createPauseKeyReader(target = window) {
  * menu screen that isn't reading a specific player's LEFT/RIGHT/FIRE bits (title's ESC-vs-other
  * test, `attract.js`) reads THIS instead: exactly one key is tracked at a time -- whichever is
  * pressed while nothing is already tracked -- and only THAT key's own release latches a result
- * (`'esc'` if its scancode is 1, `'other'` for anything else); a key already held before `reset()`
- * is never tracked (no fresh keydown fires for it), so its eventual release is correctly ignored,
- * matching the real ISR's own `[107f]==0` gate. `reset()` mirrors the real code's many screen-entry
+ * (`'esc'` if its scancode is 1, `'other'` for anything else). **A key already HELD before `reset()`
+ * LIKELY eventually gets tracked in the real game, correcting an earlier claim here that it never
+ * does (docs/engine.md §9bn, GOAL-DOS-PARITY.md P3 regression) -- but this is an INFERENCE, not
+ * itself observed live:** the ISR's own press handler (`2F65: CMP [0x107F],0` / `2F6C: MOV
+ * [0x107F],AH`) re-tracks a key into `[0x107F]` on the next make code it sees once that cell is `0`
+ * -- STATIC fact, direct from the disassembly -- and a real PC keyboard is ASSUMED to send
+ * typematic AUTO-REPEAT make codes for a continuously-held key, which WOULD re-trigger that handler
+ * shortly after `[0x107F]` is reset -- neither the auto-repeat timing nor a live capture of this
+ * exact sequence was checked. With that inference, `tournament.js`'s own documented claim ("DOS
+ * exits `179B` on that key's own later release") is the one that was right. This implementation's
+ * own `onDown` below does NOT filter `e.repeat`, so a physically-held key's own OS-level auto-repeat
+ * `keydown` events already re-populate `trackedCode` here the same way (once it's `null`), likely
+ * matching DOS's real behaviour in practice, though at different timing constants and not itself
+ * measured this session either. `reset()` mirrors the real code's many screen-entry
  * `[107e]=0;[107f]=0` writes (title, both menu levels, character select).
  */
 export function createMenuReleaseTracker(target = window) {

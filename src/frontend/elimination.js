@@ -60,8 +60,9 @@ export function eliminationInitialState() {
 }
 
 /** No input parameter: the real loop never polls input (see header). Returns `{ done }` -- once
- * `done`, the caller (`flow.js`) waits for a player confirm (matching `1000:179B`'s own indefinite
- * second-stage wait, see docs/engine.md §9ba) before entering the replacement picker.
+ * `done`, the caller (`flow.js`) waits for a player confirm OR `1000:179B`'s own real ~700-tick
+ * timeout (`src/frontend/keyWait.js`, docs/engine.md §9ba/§9bn) before entering the replacement
+ * picker.
  *
  * `state.done` latches (checked first, before the tick-counting logic) so a call after the bounce
  * finishes returns `done` immediately rather than waiting another full `WOBBLE_STEP_TICKS`.

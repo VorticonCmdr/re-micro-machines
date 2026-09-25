@@ -170,7 +170,13 @@ export function hasRaceIntro(state) {
  * exits `179B` on that key's own later release (`17C9`), while this port's own `confirm()` needs a
  * fresh `keydown` -- the same release-vs-keydown mismatch already recorded as
  * `UNKNOWN_outcome_screen_timeout` (docs/engine.md §10, under the §9bb registry entry), not
- * re-fixed here.
+ * re-fixed here. **Mechanism INFERRED, not observed, docs/engine.md §9bn/`input.js`: the ISR's own
+ * press handler (`2F65-2F6C`) re-tracks a key into `[0x107F]` on the next make code it sees after
+ * the reset, and a real PC keyboard sends typematic auto-repeat make codes for a continuously-held
+ * key -- so a key held past the typematic delay should get re-tracked this way, matching this
+ * claim (not `input.js`'s own now-corrected earlier comment). Not itself observed live -- inferred
+ * from the ISR's own code plus assumed keyboard hardware behaviour, and only applies once the key
+ * has been held past the real typematic delay following `179B`'s own entry.**
  *
  * **What this does NOT cover.** `12BD` runs three things BEFORE this tick loop even starts: the
  * portrait panel (`19F2`), a one-shot decorative draw (`01DE` -- its OWN 18 instructions show no

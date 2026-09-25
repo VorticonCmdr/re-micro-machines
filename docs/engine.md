@@ -5376,7 +5376,11 @@ decided match with `[2630]=1`. `trace` (13/20), `ai` and `live` (0) are unchange
   §9ar d/e/f**: `[0xBC5]`'s high byte is dead (two writers, both 0-8); `93C2` and `A329` are each a
   `CS:`-relative read of a permanently-zero constant with no writer anywhere, so the "wait" is by
   design (a race-intro screen that just waits for a key) and the F12 pause screen-dump is unreachable
-  dead code.
+  dead code. **REVERSED 2026-09-25, §9bn: `93C2`/`A329` are `DS:[0x2]`/`DS:[0x0F69]` under a segment
+  alias the sweep missed -- `179B` has a real ~700-tick timeout (a P3 regression, `GOAL-DOS-PARITY.md`)
+  and the F12 dump is very likely reachable with the `25011968` cheat active (`[STATIC]`, not
+  live-tested; the gate's own third condition, `AL==0x58`, is untraced). `[0xBC5]`'s own closure is
+  unaffected (its own two writers are DS-relative, no CS-alias question there).**
 
 **Method notes.**
 1. The request's premise was checked before building it. "No RESULTS/OUTCOME screens" would have
@@ -6208,6 +6212,37 @@ byte for A329), making an apparently "unknown writer" resolve to "no writer, by 
 code" rather than a missed trace. Worth remembering next time an item is phrased as "X has no writer"
 -- check whether X is a `CS:`-relative constant before assuming a search gap.
 
+**REVERSED 2026-09-25 (M3.68, §9bn): both (e) and (f), and this Method note's own lesson, are
+WRONG.** `CS:[0x93C2]` and `CS:[0xA329]` are NOT "fixed, never-written bytes sitting in inert data"
+-- they are `DS:[0x2]` and `DS:[0x0F69]` respectively, reached under a real segment alias
+(`CS:[X]`≡`DS:[X-0x93C0]` for any `X>=0x93C0`, since CS's own segment value is `0x1000` and DS's is
+`0x193C` -- `0x93C2-0x93C0=0x2`, `0xA329-0x93C0=0xF69`; confirmed via `list_segments`, cross-checked
+against the identical, already-`[PROVEN]`-live `CS:[0x9C62]`≡`DS:[0x8A2]` alias, §9bf/§9bg, and
+against this session's own live `cpu_read_registers` read). Both `search_byte_patterns` sweeps that
+closed these items searched ONLY for the literal `CS:[0x93C2]`/`CS:[0xA329]` byte encodings and
+correctly found no OTHER instruction using THOSE encodings -- but that is a different question from
+"does anything write the SAME PHYSICAL BYTE via a completely different encoding," which neither
+sweep asked. `DS:[0x2]` has 13 immediate-store writers already tracked at length elsewhere in this
+file (§9bh/§9bl/§9bm). `DS:[0x0F69]` has a real writer too: `1000:2911: MOV byte[0xF69],1`, the
+`25011968` cheat's own real activation site (confirmed also by `[0xF69]==1` gating the cheat's
+"10 lives" effect at `11B3`, matching CLAUDE.md's own already-documented behaviour). **(e)'s real
+correction:** `179B` has a genuine, combined ~700-tick (~10s) timeout across BOTH its own stages,
+not an inert bookkeeping step -- this port's `RACE_INTRO` phase and the elimination screen's own
+wait are both missing it, a real regression tracked as its own `GOAL-DOS-PARITY.md` P3 item.
+**(f)'s real correction:** the F12 pause screen-dump is very likely REACHABLE, not dead code, when
+the `25011968` cheat is active (and round 9/RUFFTRUX isn't current, and F12 itself is pressed,
+`CheckCheatSpotsThenPause`'s own remaining two gate conditions, unaffected by this correction) --
+`[STATIC]` only: the cheat's own writer and the `==1` gate are both confirmed statically, but no
+live DOSBox run with the cheat active and F12 pressed was attempted, and the gate's own third
+condition (`AL==0x58`, the F12 scancode itself) has its own source untraced.
+`docs/track-graphics.md` re-corrected in place (the (f)-era "correction" there is now itself struck
+through, with this finding superseding it). **Also wrong: this Method note's own stated lesson.**
+The real lesson is the opposite: a `CS:`-relative operand is NOT more likely to be a genuinely dead
+constant than a `DS:`-relative one -- for any offset `>=0x93C0`, it may be the EXACT SAME byte as a
+`DS:`-relative address already tracked elsewhere, under a real, load-time segment alias, and a
+no-writer sweep restricted to the `CS:`-relative encoding is empty by construction in that case,
+proving nothing about the physical byte. New `PLAN.md` §8 pitfall entry below.
+
 **Added 2026-09-24 (§9ay).** GOAL-DOS-PARITY.md P3's first item resolved and ported: the tournament
 board screen (`DrawTournamentBoard 1000:18d8`), including its own real when-shown gate (re-derived
 from `SetupTournamentRace 1000:115c`, not `18d8` alone: Challenge format only, never the qualifier,
@@ -6259,7 +6294,10 @@ bounce icon is `FCSAD.CHR`, not `FCNORMAL.CHR` (confirmed live via `DS:0A3A`'s o
 arithmetic); the shared wait function `1000:179B` has no real timeout past its own initial
 debounce (`CS:[0x93C2]` is the same dead constant §9ar e already found, so the "press any key" step
 waits indefinitely, matching the existing `RACE_INTRO` idiom rather than `PRESS_ANY_KEY`'s own
-timer); and `faceFrame`'s branch priority (P2's own item 3, §9ax) had eliminated/taken backwards --
+timer) **-- CORRECTED 2026-09-25, M3.68/§9bn: `CS:[0x93C2]` is NOT a dead constant, it is `DS:[0x2]`
+under a segment alias §9ar e's own sweep missed; `179B` has a real, combined ~700-tick (~10s)
+timeout, currently missing from this screen's own port -- see the P3 regression bullet,
+`GOAL-DOS-PARITY.md`**; and `faceFrame`'s branch priority (P2's own item 3, §9ax) had eliminated/taken backwards --
 `0DB0` tests `0x20` (eliminated) before `0x40` (taken), fixed. An advisor review of the SYNTHESIZED
 PLAN, before any code was written, caught three real bugs the plan would otherwise have shipped
 with, all in the eviction trigger's own timing/ordering (a pre/post-increment miscount that would
@@ -7509,6 +7547,18 @@ handling ALREADY matches this exactly (a plain `confirm()`-driven wait, no `setT
 elimination screen's own "press any key to continue" step reuses that SAME established idiom rather
 than `PRESS_ANY_KEY`'s own `pressAnyKeyTimer` (which WOULD be wrong here -- there is no real
 auto-timeout to replicate).
+
+**REVERSED 2026-09-25, M3.68/§9bn: `CS:[0x93C2]` is NOT a permanently-zero dead constant -- it is
+`DS:[0x2]`, the SAME shared tick counter used throughout this file, reached under a segment alias
+this section's own §9ar(e) citation missed (`CS:[X]`≡`DS:[X-0x93C0]` for `X>=0x93C0`; confirmed via
+`list_segments` and this session's own live `cpu_read_registers` read). `179B` therefore has a real,
+combined ~700-tick (~10s) timeout spanning BOTH its own stages from entry (stage 1's own timeout,
+`17BB: JNC 17FA`, EXITS THE WHOLE FUNCTION if it fires -- it does not fall through into stage 2 as
+this paragraph's own "stage 2's own timeout branch is NEVER taken" framing assumed; stage 2 is only
+reached by a genuine release, and then continues counting the SAME shared `[0x2]`, not a fresh
+budget). This port's own RACE_INTRO handling and the elimination screen's "press any key" step are
+therefore BOTH missing a real DOS behaviour, not correctly matching an inert one -- tracked as its
+own `GOAL-DOS-PARITY.md` P3 regression item, fixed in a dedicated commit, not here.**
 
 **`FUN_1000_0DB0`'s own branch priority, re-verified: ELIMINATED (`0x20`) is tested BEFORE taken
 (`0x40`).** `1000:0DBC: TEST CL,0x20 / JZ 0DC5` (eliminated -> frame 12) comes before
@@ -9783,9 +9833,15 @@ tail (`26BA`, `CX=0x14`, the one call this file already ports as `raceResultWait
 `ShowRaceOutcomeMessageTune8or6` (`1E0C`, `CX=0xF`, for outcome codes 0/1/4/5 -- the OTHER branch
 from the inline loop above), `ShowRaceResultsScreenTune8or6` (`164B`), `ShowHeadToHeadResultUnreferenced`
 (`2166` -- already CONFIRMED DEAD CODE by M3.62/§9bh, `2099-216B` unreachable, so this
-xref exists in the binary but never actually executes), and an undocumented function
-`FUN_1000_18D8` which calls it FOUR times (`1908`/`1919`/
-`196C`/`1988`). None of these other 6 call sites, nor `FUN_1000_18D8` itself, nor
+xref exists in the binary but never actually executes), and -- **CORRECTED 2026-09-25, M3.68: NOT
+an undocumented function** -- `DrawTournamentBoard 1000:18D8`, GOAL-DOS-PARITY.md P3's own first
+item, already ported (`board.js`, `npm run board`, §9ay), whose own `17FF` use that item's own text
+already flags as "simplified to the existing AWAIT_RELEASE idiom" -- which calls it FOUR times
+(`1908`/`1919`/
+`196C`/`1988`), renamed in Ghidra this session. `164B`/`1E0C`/`18D8` are three more simplified
+`17FF` callers alongside `256E`'s own `26BA`; whether a single CX-parameterised
+`raceResultWaitStep` covering all of them is worth its own commit is undecided, not chased further
+here. None of these other 6 call sites, nor `DrawTournamentBoard` itself, nor
 `ShowRaceOutcomeMessageTune8or6`'s own undebounced dismiss/`]`-zeroes-lives path, has been read or
 ported this session (`UNKNOWN_17ff_other_callers`) -- a lead for later, not part of M3.66's own
 scope. `DS:0002` is therefore NOT a from-boot free-running counter, contrary
@@ -10260,3 +10316,148 @@ separate from this one's own scope** (GOAL-DOS-PARITY.md carries a new P3 regres
 meantime so it survives a compaction). Not attempted: `256E`'s own screen,
 still fully `[STATIC]`/pending from §9bl -- the session was left mid-race (round 4, TURBO WHEELS),
 not at its own planned race-info starting point, for whenever a dedicated future attempt happens.
+
+## 9bo. P3 regression closed: `179B`'s own real ~700-tick timeout, ported (2026-09-25)
+
+**Purpose.** §9bn's own investigation left a real, previously-mis-read `[STATIC]` finding open: `179B`
+(the shared "wait for a key, with a timeout" primitive behind the race-intro hold, the elimination
+screen, and the unwired H2H race-info screen) has a genuine ~700-tick (~10s) combined timeout that
+this port was entirely missing, because an earlier session's own `UNKNOWN_93c2_writer`/
+`UNKNOWN_a329_writer` closures (§9ar items e/f) misread two `CS:`-segment-override reads as
+permanently-dead constants. This session ports the fix and forward-corrects every already-committed
+citation of the wrong conclusion.
+
+**Every already-committed citation of the wrong conclusion, forward-corrected in place (not
+silently rewritten):** §9ar items (e) and (f) and their own shared "Method note" (its own stated
+lesson REVERSED -- a `CS:`-relative operand is not more likely to be a dead constant than a
+`DS:`-relative one; for an offset `>=0x93C0` it may be the exact same physical byte, and a
+no-writer sweep restricted to the `CS:`-relative encoding proves nothing about that byte); the
+`UNKNOWN_93c2_writer`/`UNKNOWN_a329_writer` summary line (~line 5374); §9ba's own two `179B`
+paragraphs (its own summary mention and its own full 27-instruction re-disassembly); `docs/
+track-graphics.md`'s own F12-dump-is-dead-code correction (re-corrected, the earlier "correction"
+struck through rather than deleted, matching this file's own established convention); CLAUDE.md's
+own "waiting for a keypress with no real timeout" wording for the elimination screen.
+`DrawTournamentBoard 1000:18D8` (§9bl's own "an undocumented function `FUN_1000_18D8`," actually
+GOAL-DOS-PARITY.md P3's own first item, already ported, §9ay) renamed in Ghidra and its own §9bl
+citation corrected.
+
+**The held-key-across-entry disagreement, resolved -- `[STATIC]`/INFERRED, not directly observed.**
+`tournament.js`'s own header (`179B`'s entry clears `[0x107E]`/`[0x107F]`, but "DOES NOT cover a key
+still HELD when the hold ends: DOS exits `179B` on that key's own later release") and `input.js`'s
+own `createMenuReleaseTracker` docstring ("a key already held before `reset()` is never tracked...
+so its eventual release is correctly ignored") directly contradicted each other. `KeyboardIsr
+1000:2EFD`, re-disassembled in full (61 instructions): the PRESS handler (`2F65-2F6C`) only
+re-tracks a key into `[0x107F]` when `[0x107F]==0` at that instant. This is STATIC, direct evidence
+for the ISR's own code. The conclusion that a HELD key gets re-tracked this way is an INFERENCE on
+top of it, not itself observed: it additionally assumes a real PC keyboard's own typematic
+auto-repeat sends a fresh make code for that SAME key while it's still held, AND that this happens
+AFTER `179B`'s own entry-time reset but still within the same hold -- neither the auto-repeat timing
+nor a live capture of this exact sequence was checked this session. With that inference,
+`tournament.js`'s own claim is the accurate one; `input.js`'s own comment was corrected to match (not
+its code -- `createMenuReleaseTracker`'s own `onDown` already doesn't filter `e.repeat`, so a
+physically-held key's own OS-level auto-repeat `keydown` events likely already reproduce the same
+effective re-tracking in the browser, at different timing constants, not itself measured this
+session either).
+
+**Written (an unwired reference model): `keyWaitStep`/`keyWaitInitialState` (`src/frontend/keyWait.js`, a new shared module).**
+Deliberately NOT a `raceResultWaitStep` reuse -- three real differences: the timeout check
+(`ticks>=KEY_WAIT_TIMEOUT_TICKS`) runs BEFORE that tick's own increment (`raceResultWaitStep`
+increments first, checks `>` after); the comparator is `>=` (`JNC` on `CMP ticks,0x2BC`), not `>`;
+and stage 1/stage 2 have OPPOSITE fire-held exit conditions (stage 1 stays waiting while fire is
+HELD, exits when it's released into stage 2; stage 2 stays waiting while fire is NOT held, exits on
+a fresh press) -- `raceResultWaitStep`'s own two phases both exit on the SAME condition class
+(fire-not-held / a fresh fire). `keyWaitStep(state, input)` takes `{ fireHeld, anyKeyReleased }`
+(combined P1|P2 bits, matching `[0x1080]=0` at `179B`'s own entry) and returns `{ exit: null |
+'dismiss' | 'timeout' }` -- the real code doesn't distinguish these two exits at its own three call
+sites (neither branches on `179B`'s own return value), so the distinction here is caller
+convenience only, not a DOS behaviour.
+
+**`keyWaitStep` itself is NOT wired into `flow.js` -- it is an unwired reference model, the same
+shape as `handicapStep` before its own later wiring commit.** `flow.js` imports only
+`KEY_WAIT_TIMEOUT_TICKS` (the constant); nothing calls `keyWaitStep`/`keyWaitInitialState`
+anywhere. What IS shipped in `flow.js`'s `RACE_INTRO` and `ELIMINATED` phases is a plain
+`setTimeout(fn, KEY_WAIT_TIMEOUT_TICKS * INTRO_TICK_MS)` -- the SAME pattern
+`PRESS_ANY_KEY`'s own already-proven `pressAnyKeyTimer` uses (`0C15`'s identical "any key, or
+~10s with no input" shape) -- armed once the screen's own pre-`179B` portion finishes (the slide
+hold for RACE_INTRO, the bounce animation for ELIMINATED, via a shared `armEliminatedTimeout()` used
+by both the real RAF loop and `forceEliminationSteps`' own fast-forward path so neither can arm it
+twice -- a genuine double-arm was possible if the debug hook finished the bounce while a real RAF
+callback was still pending, restarting the 10s budget each time; guarded with an
+`eliminatedTimer != null` check, nulled on every clear), cleared on a real manual confirm, firing
+`confirm()`/`leaveEliminatedScreen()` directly if nothing arrives within that duration. This closes
+the REGRESSION itself (a player who never presses anything was stuck on either screen forever, now
+auto-advances after the real ~10s) using ONLY the timeout CONSTANT `keyWaitStep` also encodes --
+none of `keyWaitStep`'s own modelled distinctions (`>=` vs `>`, check-before-increment, the
+per-stage fire-held logic) affect a plain `setTimeout`, so shipping it does not itself depend on
+`keyWaitStep` being wired. **Still open, NOT closed by this commit: neither screen's own real
+`fireHeld`/`anyKeyReleased` release-latch exit or stage-1 debounce is modelled at all** -- both
+screens still dismiss ONLY via the existing keydown-edge-triggered `onKeydown`->`confirm()` path
+(unaffected by this commit), the SAME release-vs-keydown mismatch already tracked as
+`UNKNOWN_outcome_screen_timeout` for other screens, now ALSO true here. Driving `keyWaitStep` from a
+real per-tick loop (fed by P1|P2 fire bits and the existing `menuReleaseTracker`, replacing the
+keydown-only dismiss for these two phases) is real, un-scoped follow-up work, not part of this
+commit.
+
+**Tests.** `tools/check-keywait.mjs` (new, `npm run keywait`): 69 distinct assertions (all 69
+executed) validating `keyWaitStep`'s own REFERENCE MODEL against the disassembly -- the timeout's
+own exact boundary (fires at the timeout tick count exactly, never one past it, and only on the
+CALL AFTER reaching it -- proving the check-before-increment order), the shared-budget stage
+transition, and stage1/stage2's own opposite exit conditions. Reintroduction-proven with four
+mutations: incrementing before the timeout check fails 4/69; `>` instead of `>=` fails 5/69;
+resetting `ticks` at the stage transition fails 1/69; swapping stage 2's own exit condition fails
+2/69. All four restored, 69/69 confirmed clean. These tests validate the UNWIRED model, not the
+shipped `setTimeout` fix directly (the fix uses only `KEY_WAIT_TIMEOUT_TICKS`, none of the other
+distinctions these tests check). Full 31-script regression suite (30 plus the new `keywait`) plus `build` re-run clean.
+
+**Verification status.** `[STATIC]`, mechanically derived and unit-tested: `keyWaitStep`'s own
+logic matches the disassembly exactly (comparator, check order, exit conditions all cross-checked
+instruction-by-instruction against `179B-17FE`) -- but it is an unwired reference model, so this
+tells us nothing live about `flow.js` itself. **The shipped fix (the `setTimeout`-based regression
+close) is `[PROVEN]` live for `RACE_INTRO` specifically, NOT for `ELIMINATED`:** a fresh browser
+session (`window.mmGame`'s own debug hooks -- `forceIntroSteps`/`forceTitleSteps`/`forceMenuSteps`/
+`forceCharSelectSteps` fast-forwarding to `PRESS_ANY_KEY`, `confirm()` into a real `RACE_INTRO`)
+sent NO further input and polled `getPhase()` every 200ms via a single in-page `await` loop
+(sidestepping the `computer` tool's own click/key flakiness entirely, root-caused below) -- the
+phase auto-advanced to `RACING` on its own, with no console errors, proving `raceIntroTimer` really
+arms and really fires with no input. **The measured `~8.6s` does NOT itself confirm the `~10s`
+duration** -- `performance.now()` was captured in a SEPARATE tool call, after an EARLIER
+`confirm()` and an explicit 300ms wait, so an unmeasured gap sits before the poll's own start; the
+duration itself is simply the `KEY_WAIT_TIMEOUT_TICKS * INTRO_TICK_MS` code literal, not something
+this measurement bounds. `ELIMINATED` was NOT exercised live at all this session -- the
+`armEliminatedTimeout()`/`forceEliminationSteps` refactor is `[STATIC]` only, unit-untested-live,
+resting on sharing the exact same code shape as the tested `RACE_INTRO` path. **The earlier failed
+attempt at this same live test, using the `computer` tool's own `key` action, has TWO real causes,
+not one:** (1) `computer key` presses intermittently stopped reaching the page after a reload at
+all -- confirmed by an EMPTY capture-phase keylog across several such attempts, cause not
+identified, not reproduced via a straightforward retry; (2) that attempt also only sent 2 Enters at
+CODECARD, which needs 3 (prompt -> "correct" -> round-2 prompt -> leave) plus 1 more at OPTIONS, 4
+total -- confirmed by this pass's own working JS dispatch loop, which logged phase after each of
+exactly 4 dispatched Enters and matched CODECARD/CODECARD/OPTIONS/TITLE precisely. Both causes are
+recorded; neither alone fully explains the earlier failure. `keyWaitStep`'s own `fireHeld`/
+`anyKeyReleased` handling (the STAGE1 debounce, the release-latch exit) is NOT exercised by the
+shipped fix at all (it uses only the timeout constant) -- still `[STATIC]` only, and genuinely
+UNTESTED against real input for these two screens, tracked as its own new, unticked
+`GOAL-DOS-PARITY.md` P3 bullet ("wait-screen input parity"), not buried inside this now-closed one.
+`UNKNOWN_a329_writer`'s own "F12 dump is genuinely reachable" conclusion is `[STATIC]` too, NOT
+live-tested: the cheat's own `MOV byte[0xF69],1` writer and the gate's own `==1` compare are both
+confirmed statically, but the gate ALSO requires `AL==0x58` (the F12 scancode itself, its own
+source not traced this session) and no live DOSBox run with the cheat active and F12 pressed was
+attempted. A live DOSBox breakpoint read of `[0x2]`≈`0x2BC` at `179B`'s own `RET` would confirm the
+REAL game's own exact timeout value (this session's own live confirmation is of the PORT's timer
+only, at the same nominal duration, not a DOS-side read) -- flagged as a good next live-verification
+target alongside §9bl's own four pending `256E` predictions, not attempted this session.
+
+**A reusable debug entry point, worth recording so a future session doesn't rediscover it the hard
+way:** `game.html` (via `flow.js`'s own `stop()`-returning init call) exposes `window.mmGame` with
+`getPhase()`/`getTournament()`/`getCars()`/`getRaceState()`/`confirm()` and a `force*Steps(n, input)`
+per menu-shaped phase (`forceIntroSteps`/`forceTitleSteps`/`forceMenuSteps`/`forceCharSelectSteps`/
+`forceBoardSteps`/`forceEliminationSteps`) -- ALWAYS prefer `getPhase()` over scraping DOM text for
+state (a stale/misleading text node cost real time this session); the `computer` tool's own
+`left_click` can miss the LOGO screen's own level-polled mouse check (a fast synthetic
+mousedown+mouseup can land between `introTick`'s own RAF-frame samples of `introMouseDown`) --
+`forceIntroSteps(n, {mousePresent:true, mouseDown:true})` sidesteps it entirely; the `computer`
+tool's own `key` action ALSO intermittently stopped reaching the page entirely this session
+(confirmed via an empty capture-phase `keydown` listener across several attempts, cause not
+identified) -- driving `window.dispatchEvent(new KeyboardEvent('keydown',{bubbles:true,
+code:'Enter'}))` directly worked reliably every time it was tried instead; reaching TITLE from LOGO
+costs exactly 4 real `Enter` presses/dispatches (3 for CODECARD, 1 for OPTIONS), not 2.

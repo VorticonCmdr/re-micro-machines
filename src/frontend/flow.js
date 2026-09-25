@@ -47,6 +47,7 @@ import { twoItemMenuInitialState, twoItemMenuStep } from './frontMenu.js'
 import { charSelectInitialState, charSelectStep } from './charSelect.js'
 import { boardInitialState, boardStep } from './board.js'
 import { eliminationInitialState, eliminationStep } from './elimination.js'
+import { KEY_WAIT_TIMEOUT_TICKS } from './keyWait.js'
 import { composeCodeCardScreen, fontbinPalette, targetFromTickByte, moveCursor, CURSOR_X0, CURSOR_Y0, CODECARD_W, CODECARD_H } from '../formats/fontbin.js'
 import { cycleControl, cycleSound, cycleSmoothness, advanceCheatCursor, redefineKeyAccepted, redefineGroupOf, redefineSlotInGroup, REDEFINE_TOTAL_SLOTS, REDEFINE_SLOTS_PER_GROUP } from './options.js'
 
@@ -582,10 +583,10 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
    * (`tournament.js`'s own `checkElimination`/`pendingElimination`, wired into `nextAfterOutcome`
    * below, ahead of `needsOpponentPick`/`shouldShowBoard` -- `13E4`'s own call order). The bounce
    * itself (`elimination.js`) takes no input and always runs to completion (the real loop never
-   * polls input); once done, this phase waits for a plain confirm (matching `1000:179B`'s own
-   * indefinite second-stage wait -- no auto-timeout, unlike `PRESS_ANY_KEY`'s own `pressAnyKeyTimer`,
-   * see `elimination.js`'s own header) before clearing `pendingElimination` and entering the
-   * replacement picker. */
+   * polls input); once done, this phase waits for a plain confirm OR `1000:179B`'s own real
+   * ~700-tick timeout (`eliminatedTimer`, the SAME `pressAnyKeyTimer`-style `setTimeout`, closing a
+   * real regression this port had -- docs/engine.md §9bn, GOAL-DOS-PARITY.md P3) before clearing
+   * `pendingElimination` and entering the replacement picker. */
   let eliminationState = null
   let eliminationRafId = null
   let eliminationLast = 0
@@ -604,11 +605,20 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     phase = 'ELIMINATED'
     eliminationState = eliminationInitialState()
     eliminationBounceDone = false
+    clearTimeout(eliminatedTimer); eliminatedTimer = null // matches startNextRace's own clearTimeout(raceIntroTimer) -- no stale timer from a previous elimination
     eliminatedMusic(sound)
     paintEliminated()
     eliminationLast = performance.now()
     eliminationAcc = 0
     eliminationRafId = requestAnimationFrame(eliminationTick)
+  }
+  // Once the bounce is done, the screen waits for onKeydown/confirm() OR 179B's own real ~700-tick
+  // (KEY_WAIT_TIMEOUT_TICKS) timeout (docs/engine.md §9bn, GOAL-DOS-PARITY.md P3 regression, closed
+  // here), the SAME setTimeout pattern pressAnyKeyTimer/raceIntroTimer use. One shared function so
+  // BOTH the real RAF loop and forceEliminationSteps' own fast-forward path arm it identically.
+  function armEliminatedTimeout() {
+    if (eliminatedTimer != null) return // already armed -- avoids forceEliminationSteps() finishing the bounce while a real eliminationTick RAF is still pending, which would otherwise re-arm (and so restart) the same timeout
+    eliminatedTimer = setTimeout(() => { eliminatedTimer = null; if (phase === 'ELIMINATED') leaveEliminatedScreen() }, KEY_WAIT_TIMEOUT_TICKS * INTRO_TICK_MS)
   }
   function eliminationTick(now) {
     if (phase !== 'ELIMINATED') return
@@ -620,11 +630,12 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       if (r.done) { eliminationBounceDone = true; break }
     }
     paintEliminated()
-    if (!eliminationBounceDone) eliminationRafId = requestAnimationFrame(eliminationTick)
-    // once done, the RAF loop simply stops -- the screen now just waits for onKeydown/confirm()
+    if (!eliminationBounceDone) { eliminationRafId = requestAnimationFrame(eliminationTick); return }
+    armEliminatedTimeout()
   }
   function leaveEliminatedScreen() {
     if (eliminationRafId != null) { cancelAnimationFrame(eliminationRafId); eliminationRafId = null }
+    clearTimeout(eliminatedTimer); eliminatedTimer = null
     tournament.pendingElimination = null
     enterOpponentPick()
   }
@@ -689,6 +700,8 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   // for the first of the 3, then each opponent's own for the next.
   const lastPick = { player: 10, opponent: 9, challengeOpponent: null }
   let pressAnyKeyTimer = null
+  let raceIntroTimer = null
+  let eliminatedTimer = null
   let tournament = null
   let lastStandings = null
   let lastPassed = null
@@ -968,12 +981,19 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
    * regular race's own intro runs a real per-tick loop (the portrait/icon reveal, not ported here --
    * see that export's own header) whose own successor stage (179B) clears the key-release latch at
    * its own entry, discarding anything latched during the loop -- so a confirm during this window
-   * is ignored, matching the real hardware. */
+   * is ignored, matching the real hardware. Once the slide hold ends, `179B` itself has a real
+   * ~700-tick (`KEY_WAIT_TIMEOUT_TICKS`) timeout (docs/engine.md §9bn, GOAL-DOS-PARITY.md P3
+   * regression, closed here) -- `raceIntroTimer` below auto-advances after that same real-world
+   * duration if no key ever arrives, the SAME `setTimeout` pattern `pressAnyKeyTimer` already uses
+   * for `0C15`'s own identical shape. */
   function startNextRace() {
     raceIntroMusic(sound)
     if (hasRaceIntro(tournament)) {
       phase = 'RACE_INTRO'
-      raceIntroHoldUntil = performance.now() + raceIntroHoldTicks(tournament) * INTRO_TICK_MS
+      const holdMs = raceIntroHoldTicks(tournament) * INTRO_TICK_MS
+      raceIntroHoldUntil = performance.now() + holdMs
+      clearTimeout(raceIntroTimer)
+      raceIntroTimer = setTimeout(() => { if (phase === 'RACE_INTRO') confirm() }, holdMs + KEY_WAIT_TIMEOUT_TICKS * INTRO_TICK_MS)
       return
     }
     advanceRace()
@@ -1003,6 +1023,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       return
     } else if (phase === 'RACE_INTRO') {
       if (performance.now() < raceIntroHoldUntil) return // a press during the hold is discarded, not queued: 179B's own entry clears the release latch unconditionally before its own wait starts (raceIntroHoldTicks' own header)
+      clearTimeout(raceIntroTimer)
       advanceRace()
       return
     } else if (phase === 'RESULTS') {
@@ -1109,6 +1130,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       if (charSelectRafId != null) cancelAnimationFrame(charSelectRafId)
       if (boardRafId != null) cancelAnimationFrame(boardRafId)
       if (eliminationRafId != null) cancelAnimationFrame(eliminationRafId)
+      clearTimeout(pressAnyKeyTimer); clearTimeout(raceIntroTimer); clearTimeout(eliminatedTimer); eliminatedTimer = null
       titleReader?.dispose()
       twoItemReaders?.p1.dispose(); twoItemReaders?.p2.dispose()
       charSelectReader?.dispose()
@@ -1179,11 +1201,13 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     // outside that phase.
     forceEliminationSteps: (n) => {
       if (phase !== 'ELIMINATED') return
+      const wasDone = eliminationBounceDone
       for (let i = 0; i < n; i++) {
         const r = eliminationStep(eliminationState)
         if (r.done) { eliminationBounceDone = true; break }
       }
       paintEliminated()
+      if (!wasDone && eliminationBounceDone) armEliminatedTimeout() // matches eliminationTick's own arm-on-completion
     },
   }
 }

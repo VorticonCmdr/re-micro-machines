@@ -22,6 +22,7 @@
     "charselect": "node tools/check-charselect.mjs",
     "board": "node tools/check-board.mjs",
     "elimination": "node tools/check-elimination.mjs",
+    "keywait": "node tools/check-keywait.mjs",
     "step": "node tools/check-step.mjs",
     "trace": "node tools/check-trace.mjs",
     "ai": "node tools/check-ai.mjs",

@@ -223,53 +223,87 @@ docs, (6) commit.
   into any reachable screen, since two-human H2H itself is P4.
 
 ### P3: tournament screens and rules
-- [ ] **REGRESSION, found 2026-09-25 (M3.68, docs/engine.md §9bn): `1000:179B`'s own real ~700-tick
-  (~10s) combined timeout was misdiagnosed as a dead constant and needs porting.** `179B` has
-  exactly three real callers (`get_xrefs_to`): TWO already-ticked items below (the elimination
-  screen's wait, the race-intro hold) plus the unported H2H race-info screen. Root cause: `179B`'s own stage-2 timeout compare
-  (`17D7: CMP word ptr CS:[0x93C2],0x2BC`) reads a `CS:`-segment-override address that an earlier
-  session's own sweep (`UNKNOWN_93c2_writer`, docs/engine.md §9ar item e) concluded was a
-  permanently-zero dead constant -- but `CS:[0x93C2]` is the SAME PHYSICAL BYTE as `DS:[0x2]` (the
-  shared tick counter with dozens of already-documented writers elsewhere in this file), reached
-  under a segment alias the sweep never accounted for (`CS:[X]`≡`DS:[X-0x93C0]` for any
-  `X>=0x93C0`, confirmed both statically via `list_segments` and against a live
-  `cpu_read_registers` read this session; independently cross-checked against the ALREADY-correct
-  `CS:[0x9C62]`≡`DS:[0x8A2]` alias, §9bf, via the identical formula). `179B` therefore has ONE
+- [x] **REGRESSION, found 2026-09-25 (M3.68, docs/engine.md §9bn), FIXED 2026-09-25 (M3.69, docs/engine.md
+  §9bo): `1000:179B`'s own real ~700-tick (~10s) auto-advance is ported (the discovery and the
+  timeout NUMBER, not the full input model -- see the new, separate P3 bullet below for that).**
+  Root cause: `179B`'s own stage-2 timeout compare (`17D7: CMP word ptr
+  CS:[0x93C2],0x2BC`) reads a `CS:`-segment-override address that an earlier session's own sweep
+  (`UNKNOWN_93c2_writer`, docs/engine.md §9ar item e) concluded was a permanently-zero dead
+  constant -- but `CS:[0x93C2]` is the SAME PHYSICAL BYTE as `DS:[0x2]` (the shared tick counter
+  with dozens of already-documented writers elsewhere in this file), reached under a segment alias
+  the sweep never accounted for (`CS:[X]`≡`DS:[X-0x93C0]` for any `X>=0x93C0`, confirmed both
+  statically via `list_segments` and against a live `cpu_read_registers` read; independently
+  cross-checked against the ALREADY-correct `CS:[0x9C62]`≡`DS:[0x8A2]` alias, §9bf). `179B` has ONE
   real, combined ~700-tick budget from its own entry-time reset, spanning BOTH its own stages
-  (stage 1's own timeout, `17BB: JNC 17FA`, exits the WHOLE function if it fires -- it does NOT
-  fall through into stage 2, correcting an additional misreading); it also combines both players'
-  own input (`17A5: MOV [0x1080],0`). **Also likely affects `UNKNOWN_a329_writer`
-  (docs/engine.md §9ar item f, `docs/track-graphics.md`'s own F12 screen-dump claim) via the exact
-  same alias class -- `CS:[0xA329]` arithmetic-checks out to `DS:[0x0F69]`, the real, live
-  `25011968` cheat flag, not a separate dead byte as currently documented; NOT yet independently
-  verified with a fresh disassembly this session, flagged here so it isn't lost. §9ar(f)'s own
-  dismissal of the `289D`->`A329` Ghidra xref as "stale" should be revisited too -- that xref is
-  Ghidra correctly resolving the SAME linear byte from two different segment:offset spellings,
-  corroborating the alias from the tool side rather than contradicting it; still genuinely open:
-  what VALUE the `25011968` cheat actually writes to `DS:0F69` (the F12 gate needs exactly `1`).**
-  **`FUN_1000_18D8` (docs/engine.md §9bl, called "an undocumented function") is actually the
-  ALREADY-PORTED tournament board (P3's own first item below, `npm run board`, §9ay) -- forward-correct
-  §9bl's own text and rename the function in Ghidra; its own `17FF` use, the board item's own
-  "simplified to the existing AWAIT_RELEASE idiom" note, plus `ShowRaceResultsScreenTune8or6`
-  (`164B`) and the outcome screen's own `CX=0xF` call (`1E0C`) are three more simplified `17FF`
-  callers -- consider whether a CX-parameterised `raceResultWaitStep` covering all of them deserves
-  its own bullet, separate from this regression.** **A held key across `179B`'s own entry has two
-  disagreeing port-side descriptions that need reconciling before this port: `tournament.js:168-173`
-  says DOS exits on that key's own LATER release, while `input.js`'s `createMenuReleaseTracker`
-  says such an already-held key is never tracked at all (and its own `onDown` doesn't filter
-  `e.repeat`, so a browser's own keyboard auto-repeat could behave differently from DOS's own
-  typematic make codes here too) -- pick one behaviour, document why, and test it as part of the
-  `179B` port below, since the port inherits whichever choice is made across all three screens.**
-  Fix, next
-  commit: forward-correct §9ar (e)/(f) and their own Method note, §9ba, `docs/track-graphics.md`,
-  and CLAUDE.md's "no real timeout" wording for the elimination screen; port `179B` as its own step
-  function (its own comparator/check-order/exit conditions differ from `raceResultWaitStep`, do not
-  reuse it) and wire it into `RACE_INTRO` (both formats) and the elimination screen's wait, closing
-  the release-vs-keydown mismatch `tournament.js`'s own header already documents for both; add a
-  new `PLAN.md` §8 pitfall (a CS-relative operand `>=0x93C0` is a DS alias; a no-writer sweep on
-  the CS-only encoding is empty by construction; a static read of `0` cannot distinguish an alias
-  from a genuinely dead byte); sweep the docs for any OTHER `CS:[0x9…]`/`CS:0x…` "dead
-  constant"/"no writer" conclusion with an offset `>=0x93C0` and recheck it.
+  (stage 1's own timeout exits the WHOLE function, does NOT fall through into stage 2); it also
+  combines both players' own input. `UNKNOWN_a329_writer` (§9ar item f, `docs/track-graphics.md`'s
+  F12 screen-dump claim) had the SAME bug: `CS:[0xA329]` is `DS:[0x0F69]`, the real
+  `25011968` cheat flag (`[STATIC]`: `1000:2911: MOV byte[0xF69],1`, gate wants
+  `==1` -- but the gate ALSO needs `AL==0x58`, the F12 scancode itself, whose own source wasn't
+  traced, and no live DOSBox run with the cheat active plus F12 pressed was attempted) -- the F12
+  pause screen-dump is likely reachable, probably not dead code, not yet live-confirmed. `FUN_1000_18D8`
+  (docs/engine.md §9bl, wrongly called "an undocumented function") is the ALREADY-PORTED tournament
+  board (P3's own first item below, §9ay) -- renamed `DrawTournamentBoard` in Ghidra. A held key
+  across `179B`'s own entry (`tournament.js` vs `input.js`'s own disagreeing descriptions) is
+  resolved -- INFERRED, not itself observed live: DOS's real typematic auto-repeat is ASSUMED to
+  re-track a held key after the reset (the ISR's own `[0x107F]==0` re-track gate is `[STATIC]`
+  fact; that a real keyboard's own auto-repeat actually triggers it here is the inferred part), and
+  `input.js`'s own `onDown` (not filtering `e.repeat`) likely already produces the same effective
+  behaviour via the browser's own key-repeat -- correcting `createMenuReleaseTracker`'s own comment
+  to match the inference, not its code.
+  Written: `keyWaitStep`/`keyWaitInitialState` (`src/frontend/keyWait.js`, a new shared reference
+  module -- NOT wired into `flow.js`, same status as `handicapStep` before its own later wiring
+  commit), matching `179B`'s own real comparator (`>=`, not `>`), check order (timeout checked
+  BEFORE that tick's own increment), and opposite stage1/stage2 fire-held exit conditions --
+  deliberately NOT a `raceResultWaitStep` reuse, which differs in all three; `npm run keywait`, 69
+  assertions, reintroduction-proven (4 mutations, 4/69, 5/69, 1/69, 2/69 failures, all restored) --
+  validates this reference model, not `flow.js` directly. **The actual regression fix shipped is
+  simpler: a plain `setTimeout(KEY_WAIT_TIMEOUT_TICKS * INTRO_TICK_MS)`** (the SAME pattern
+  `PRESS_ANY_KEY`'s own `pressAnyKeyTimer` already uses) wired into `flow.js`'s `RACE_INTRO` and
+  `ELIMINATED` phases (`raceIntroTimer`/`eliminatedTimer`), using only the timeout CONSTANT
+  `keyWaitStep` also encodes -- none of that model's other distinctions affect a plain timer. Still
+  open, NOT fixed by this commit: neither screen models `179B`'s own real `fireHeld`/
+  `anyKeyReleased` release-latch exit or stage-1 debounce at all -- both still dismiss only via the
+  existing keydown-edge-triggered path, the SAME release-vs-keydown mismatch already tracked as
+  `UNKNOWN_outcome_screen_timeout` elsewhere, now also true here; driving `keyWaitStep` for real
+  (per-tick, fed by P1|P2 fire bits and `menuReleaseTracker`) is un-scoped follow-up work. **The
+  shipped `setTimeout` fix is `[PROVEN]` live for `RACE_INTRO` specifically, NOT for `ELIMINATED`:**
+  a browser session using `window.mmGame`'s own exposed debug hooks (`getPhase`/`confirm`/
+  `force*Steps` -- a reusable fast-forward API, not previously documented here) reached a real
+  `RACE_INTRO`, sent NO further input, and polled `getPhase()` until it auto-advanced to `RACING` on
+  its own, no console errors -- this proves the timer ARMS and FIRES with no input, NOT the ~10s
+  duration itself (the measured ~8.6s was taken from a poll that started well after the timer's own
+  real arm instant, across separate tool calls, so it bounds nothing; the duration is simply the
+  `KEY_WAIT_TIMEOUT_TICKS * INTRO_TICK_MS` code literal). `ELIMINATED` was NOT exercised live at all
+  this session. An earlier attempt at this same live test via the `computer` tool's own `key` action
+  appeared to fail, for TWO real causes, not one: `computer key` presses intermittently stopped
+  reaching the page at all after a reload (confirmed via an empty capture-phase keylog across
+  several attempts, cause not identified), AND that attempt separately sent only 2 Enters at
+  CODECARD, which needs 3, plus 1 more at OPTIONS (4 total, confirmed by the working JS-dispatch
+  retry). H2H race-info's own `179B` use remains unwired
+  (that screen isn't reachable from `flow.js` at all yet, P4's own remaining scope).
+- [ ] **Wait-screen input parity.** `179B`'s own real `fireHeld`/`anyKeyReleased` release-latch exit
+  and stage-1 debounce are NOT modelled anywhere in this port -- `RACE_INTRO`/`ELIMINATED` still
+  dismiss ONLY via the existing keydown-edge-triggered `onKeydown`->`confirm()` path, the timeout
+  fix above adds only the auto-advance NUMBER, not the real input shape (`keyWaitStep`,
+  `src/frontend/keyWait.js`, is already written and unit-tested for exactly this, just not wired,
+  docs/engine.md §9bo). Scope: (1) drive `keyWaitStep` from a real per-tick loop for `RACE_INTRO`
+  and `ELIMINATED`, fed by P1|P2 fire bits and the existing `menuReleaseTracker`, with a real
+  `reset()` at `179B`'s own entry point (matching the carousel's own held-fire trap already
+  documented elsewhere, §9bk) -- replacing the keydown-only dismiss for these two phases, not just
+  adding to it; (2) fold in `UNKNOWN_outcome_screen_timeout` (`1000:1C1B`'s own SEPARATE, already-
+  documented (`[STATIC]`) 700-tick timeout and release-vs-keydown mismatch, docs/engine.md §10, under §9bb) while
+  touching this same input shape (note: `17FF` is a DIFFERENT function from `179B` -- `keyWaitStep`
+  models `179B` only and stays separate regardless of how this decision goes); (3) `17FF` (the
+  function `raceResultWaitStep` already models, for its own `256E`/`26BA` call site) turns out to
+  have three OTHER simplified callers found this session (`DrawTournamentBoard 1000:18D8`,
+  `ShowRaceResultsScreenTune8or6 164B`, the outcome screen's own `CX=0xF` call at `1E0C`) -- settle
+  whether a single CX-parameterised `raceResultWaitStep` covering all four `17FF` call sites is
+  worth building, replacing each screen's own current simplification -- a decision that fell out of
+  GOAL during the M3.69 rewrite and now lives only in docs/engine.md §9bl, recorded here so it isn't
+  lost again. Live-verify the release-latch exit and
+  the stage-1 debounce specifically (neither was exercised by M3.69's own live pass, which only
+  confirmed the timeout number).
 - [x] **Tournament board** (`1000:18d8`): the `CASE.CHR` map with `MINATURE` icons at the
   positions in `DS:0312` (26 words, §9t). It is gated on `[43A]=1`. Find exactly when it is shown
   in `RunTournamentLoop 1000:10a0`.
