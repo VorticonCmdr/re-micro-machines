@@ -37,7 +37,7 @@ import { raceStart, updateEngines, createRaceJitter, raceOverSequence, raceOverS
 import { lapLineSegments, nearestPaletteIndex } from '../engine/lapLine.js'
 import { Si2Player } from '../audio/si2Player.js'
 import { RUFF_TRUCK_TIMES } from '../data/engine-tables.js'
-import { initTournament, isInQualifier, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, raceIntroHoldTicks, raceIntroParticipants, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, resultsPassed, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, OUTCOME } from './tournament.js'
+import { initTournament, isInQualifier, applyRaceSkip, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, raceIntroHoldTicks, raceIntroParticipants, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, resultsPassed, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, OUTCOME } from './tournament.js'
 import { CHARACTER_NAMES, OUTCOME_MESSAGES, resolveSmoothnessForPlay } from '../data/frontend-tables.js'
 import { drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawOpponentPanel, drawEliminatedScreen, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
 import { createSmoothnessGate } from '../engine/smoothness.js'
@@ -159,8 +159,8 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
    * is the release latch. */
   function readWaitInput() {
     const bits = waitReaders.p1.read() | waitReaders.p2.read()
-    const { escReleased, otherReleased } = menuReleaseTracker.read()
-    return { fireHeld: (bits & 0x08) !== 0, anyKeyReleased: escReleased || otherReleased }
+    const { escReleased, otherReleased, code } = menuReleaseTracker.read()
+    return { fireHeld: (bits & 0x08) !== 0, anyKeyReleased: escReleased || otherReleased, releasedCode: code } // releasedCode: [0x107E]'s own scancode, for the race skip
   }
 
   const sound = new Si2Player()
@@ -1236,7 +1236,21 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   function raceIntroWaitTick(input) {
     const r = waitScreenStep(raceIntroWait, input, raceIntroPreStep)
     if (r.entered) menuReleaseTracker.reset() // 17AB/17B0: 179B's own entry clears the release latch
-    if (r.exit) { leaveRaceIntro(); return true }
+    if (r.exit) {
+      // 1398-13E0 (tournament.js's applyRaceSkip, docs/engine.md §9bu): with the 25011968 cheat on,
+      // the key whose RELEASE ended 179B can skip to the next/previous race -- 179B's own release
+      // exit is checked before its fire exit, so a release on this tick is what ended it. A timeout
+      // or a fresh fire press leave [0x107E] at 0 (no skip).
+      const releasedCode = r.exit === 'dismiss' && input.anyKeyReleased ? input.releasedCode : null
+      if (applyRaceSkip(tournament, releasedCode, cheatActive)) {
+        if (raceIntroRafId != null) { cancelAnimationFrame(raceIntroRafId); raceIntroRafId = null }
+        startNextRace() // 13E0: JMP 11F8 -- the tune, the intro and its hold, a fresh 179B; not the board
+        paintMenu()
+        return true
+      }
+      leaveRaceIntro()
+      return true
+    }
     return false
   }
   function raceIntroTick(now) {
@@ -1426,6 +1440,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       if (phase !== 'PRESS_ANY_KEY') return
       for (let i = 0; i < n; i++) if (pressAnyKeyWaitTick(input)) return
     },
+    getCheatActive: () => cheatActive, // DS:0F69/0F6A, the 25011968 cheat (both flags set together at 2911/2916)
     getPressAnyKeyWait: () => (phase === 'PRESS_ANY_KEY' ? { ...pressAnyKeyState } : null),
     getChampionWait: () => (phase === 'CHAMPION' ? { ...championState } : null),
     getResultsWait: () => (phase === 'RESULTS' ? { ticks: resultsWait.ticks, windows: resultsWait.windows, stage: resultsWait.wait.phase } : null),

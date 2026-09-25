@@ -107,7 +107,8 @@ and stays local to your machine.
   and persists SETTINGS.DAT's own 32-byte layout to `localStorage` (seeded from the real
   `game/SETTINGS.DAT`, written only when something was actually touched, matching the original's
   own dirty-flag rule exactly), ESC quits for real, immediately, no confirmation. The
-  `25011968` cheat code works too (10 lives after every race).
+  `25011968` cheat code works too (10 lives after every race, and on a race intro, releasing
+  keypad `+`/`-` jumps to the next/previous race, as the original's developers left it).
 - **Two "polish" settings**, both faithful to the original rather than added for their own sake:
   - **Smoothness** (1–4, or AUTO on `game.html`'s own OPTIONS screen): the original's own
     display-vs-physics-rate tradeoff — physics always runs at 35 Hz, this only controls how often

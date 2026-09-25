@@ -6116,7 +6116,7 @@ design; mouse/joystick fire preempt (disassembly only, not live-checked).
 iterations before the champion screen's first poll wait on nothing, so their DOS duration is
 CPU-bound; the port runs one per tick. A GOAL-DOS-PARITY.md Part L item. PRESS ANY KEY's own wait
 (`FUN_1000_0C15`) is ported in §9bt. `UNKNOWN_f6a_reader` (§9au) is traced in §9bt: the `25011968`
-cheat's keypad `+`/`-` race skip at the race intro, a real, still unported parity item.
+cheat's keypad `+`/`-` race skip at the race intro -- **ported and closed in §9bu.**
 
 ## 9ar. Six small named globals/writers, chased (2026-09-24)
 
@@ -6718,7 +6718,7 @@ original mistake was a scope gap (checked the display side, not the input side) 
 display side again would not have caught.
 
 New open items, not blocking: `UNKNOWN_f6a_reader` (`[0xF6A]`'s own effect at `1000:1398`, inside
-the shared race-intro wait helper -- found, not traced); `UNKNOWN_joystick_calibration_body`
+the shared race-intro wait helper -- found, not traced; **traced and ported 2026-09-25, §9bt/§9bu: the cheat's keypad +/- race skip**); `UNKNOWN_joystick_calibration_body`
 (`2B8B`/`2B8F`'s own real analog-port-timing reads, deferred to P6 with the rest of joystick
 input); `UNKNOWN_options_pixel_diff` (same shape as codecard's own, left for Part F).
 
@@ -10866,7 +10866,7 @@ fixed elsewhere.** Disassembled in full (`[STATIC]`): `[0x261F]=0`, the release 
 (`0C96`, which does not wait), one tick (`0C42-0C49`), `2D5B`, and leave on any key RELEASE
 (`0C4E`, `[0x107E]!=0`) or on fire HELD (`0C55-0C5A`, `[0x108B]&8`, no debounce; whose reader
 `[0x1080]` selects there is not yet traced). The port leaves on any keydown and uses a
-`setTimeout`. Tracked as a new unticked P3 bullet, so P3 is still open.
+`setTimeout`. Tracked as a new unticked P3 bullet, so P3 is still open. **(Ported the same day, same section; P3 closed in §9bu.)**
 
 ## 9bt. PRESS ANY KEY's own wait (`0C15`), and the sweep that finds every one-player wait (2026-09-25)
 
@@ -10978,3 +10978,91 @@ here: the race's own control byte comes from the same readers, so in DOS a held 
 F1-F3) also sets its low three bits during a race; whether anything in the race reads them beyond
 the SPACE pause is `UNKNOWN_race_reader_low_bits` (P5).
 
+
+## 9bu. The `25011968` cheat's race skip (`1398-13E0`), `UNKNOWN_f6a_reader` closed; P3 closed (2026-09-25)
+
+**Purpose.** GOAL-DOS-PARITY.md P3's last bullet, found by §9bt's input-poll sweep.
+
+**The disassembly (`ShowNextRaceIntroScreenTune4or5 1000:11F8-13E3`), all `[STATIC]`.** Right after
+the intro's own `CALL 179B` (`1395`): if `[0xF6A]==0`, return. `[0xF6A]`'s only writer is the
+cheat (`2916`, beside `2911`'s `[0xF69]=1`), and nothing clears it, the same lifetime as the port's
+`cheatActive`. Otherwise AH=`[28C1]`, AL=`[0x107E]` (the scancode of the key whose release ended
+`179B`, or 0 after a timeout or a fire press). `0x4E` (keypad `+`): return if AH is already `0x19`,
+else AH+1. `0x4A` (keypad `-`): AH-1, or `[0x439]` if AH was 0. `[0x439]` is 0x19 in the image, and
+all five of its references (`1101`, `1131`, `118F`, `13C1`, `1880`) are reads. Any other key:
+return. Then `[28C1]`=AH, `[28BF]`/`[28C0]` from `ORDER_TABLE[AH]` (`13CB-13DC`), and `JMP 11F8`:
+the function's own start, so the tune query/restart, the intro for the new race, its hold and a
+fresh `179B` all run again, and skips chain. The board (`18D8`, called from `115C` before `11F8`)
+is not re-run. After `11F8` returns, `115C` runs whatever race `[28BF]`/`[28C0]` now name.
+
+**What the skip does NOT move.** `RunTournamentLoop 1000:10A0` decides several things by where it
+is, not by `[28C1]`:
+- The qualifier is the fixed prologue `10AF-10F6`: `[28C1]=0`, `[0x310]=0`, the qualifier's drones
+  (`10B9`/`10BF`), the first `CALL 115C`, then the qualifier's own judging (`10CB-10E9`, top 1 in
+  H2H, top 2 in Challenge) and, in Challenge, the picker (`10F6: CALL 1A4A`).
+- The loop is `10F9-1153`: `INC [28C1]` (`10F9`), `INC [0x310]` (`10FD`), past `[0x439]` means
+  champion (`1101`), `CALL 115C`, `CALL 13E4` (results, its own `[28C1]==0x19` last-race rule), and
+  so on.
+- A bonus race runs inside `TriggerBonusRace 1A82` (`[343]=1`, `CALL 115C`), which then judges it by
+  `[0x291D]`: 1 is EXTRA_LIFE, else NO_BONUS. `[0x291D]` is cleared at race init (`3CBB`) and set
+  only by RUFFTRUX's 1-up state (`HandleCarStateFBannerSfx10 86A1`), so a regular race substituted
+  by a skip always resolves as NO_BONUS, with no life and no `[0x342]` increment.
+- The elimination schedule reads `[0x310]` (`1676-1681`, `% 3`), while the first-eviction set-up
+  tests `[28C1]==3` (`1683`). `[0x310]`'s only writers are `0FD1`/`1042`/`10B6` (zero) and `10FF`
+  (the increment).
+
+So a skip from the Challenge qualifier's intro (H2H's qualifier has no `179B`: `1274-127B` returns
+before it) still gets the qualifier's judging and picker for whatever race ran. A loop race
+skipped to 0 is judged as a regular race. A skip from a bonus intro runs a regular race judged as
+NO_BONUS. And `[0x310]` keeps counting races run, not the index.
+
+**What changed (two commits).**
+- **Step 1, no behaviour change (`77fdd59`).** `tournament.js` gains `isInQualifier(state)` and
+  `raceCountOf(state)`, derived exactly as before (`raceIndex===0 && !pendingBonusRace`; the race
+  index) unless a skip set `qualifierOverride`/`raceCountOffset`. The position-keyed reads now use
+  them: the qualifier branch of `reportRaceResult`, `opponentCharactersFor`'s fixed trio,
+  `needsOpponentPick` (now "past the qualifier, nobody picked, not over"), `checkElimination`'s
+  `% 3` (`[0x310]`), and `flow.js`'s `wasQualifier`/`wasBonus` (the latter from `pendingBonusRace`,
+  not `round === 9`). The data-keyed reads follow `11F8` itself: `hasRaceIntro`,
+  `raceIntroHoldTicks` and `raceIntroParticipants` use `currentRace().round === 9` and
+  `effectiveRaceIndex`. Every existing check passed with the test files unedited.
+- **Step 2, the skip.** `applyRaceSkip(state, releasedCode, cheatActive)`: the new index from
+  `effectiveRaceIndex` (`[28C1]`, including during a pending bonus); a plain skip sets `raceIndex`
+  and pins the loop position; a skip from a bonus intro keeps `pendingBonusRace` (the "inside 1A82"
+  position) but with `ORDER_TABLE`'s round/race; `[0x310]` is kept via the offset. `flow.js`:
+  `readWaitInput` also carries the released code; `raceIntroWaitTick` passes the released code (only
+  when a release ended `179B`) to `applyRaceSkip` and, on a skip, re-runs `startNextRace()` (tune,
+  intro, hold, fresh `179B`; for H2H index 0, straight into the race). New debug hook
+  `getCheatActive()`.
+
+**Tests.** `tools/check-raceskip.mjs` (new, `npm run raceskip`): the gates (no cheat, another key, no
+release); `+`/`-`, the stop at 0x19, the wrap from 0, chaining, the track; a qualifier-prologue skip
+still judged by the qualifier rule (2nd place passes) and followed by the picker, and `-` from the
+qualifier to 0x19 then a pass going straight to the champion (`1101`); an H2H loop race skipped to
+0 judged as ONE_LIFE_LOST and keeping the loop position across the re-run; a bonus-intro skip
+giving a regular intro and NO_BONUS; `[0x310]` staying put (index 3 with count 2: no elimination).
+Reintroduction-proven with six mutations: the position moving with the index (the test crashes),
+`[0x310]` moving with it (3 fail), `+` allowed past 0x19 (1), `-` clamping instead of wrapping (3),
+the bonus skip abandoning the bonus position (4), no cheat gate (3). All restored, clean. Full
+regression suite plus `build` clean.
+
+**Live verification, `[PROVEN]` in the port.** `game.html`, the Web Worker RAF shim and worker
+sleeps (§9bq), fresh page loads, console tracking on from the start. Race intros were reached by
+setting `raceIndex` at PRESS ANY KEY.
+- Without the cheat: keypad `+` released at race 3's intro just started race 3.
+- With `25011968` typed on OPTIONS (`getCheatActive()` true), H2H: `+` released at race 3's intro
+  showed race 4's intro (a new hold, not yet waiting), `+` again gave 5, `-` gave 4, then a fresh
+  `S` press started race 4 with no skip. An ESC release at race 5's intro started race 5 with no
+  skip. `-` at race 1's intro went straight into race 0's race, no intro, in the loop position.
+- Challenge: `+` at the qualifier's own intro (index 0, no hold) showed race 1's intro, still in
+  the qualifier position.
+- No console errors.
+
+**Not covered live:** a skip from a bonus race's intro (it needs a triggered bonus race), and the
+judging of a skipped qualifier race (unit-tested).
+
+**P3 closed.** Every GOAL-DOS-PARITY.md P3 item is ticked. §9bt's sweep (every `2D5B` call, every
+`[0x107E]` read, the `[0x107C]` word, BIOS keyboard, the keyboard port, mouse and game port) finds no
+other one-player screen or input path that differs from DOS outside P5 (the race and the pause),
+P6 (joystick and mouse) and the open `UNKNOWN_race_reader_low_bits`, within what byte-pattern
+searches can see.

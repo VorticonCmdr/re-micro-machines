@@ -120,7 +120,7 @@ Don't read `docs/engine.md` from start to finish. It is 6,000 lines. Jump to sec
 ## Regression suite (run before every commit; all must pass)
 
 ```bash
-for s in catalog lz chrtable tables car intro codecard options title mainmenu charselect board elimination keywait outcomewait windowedwait champion pressanykey step trace ai play sound rounds finish twocar twohuman tournament \
+for s in catalog lz chrtable tables car intro codecard options title mainmenu charselect board elimination keywait outcomewait windowedwait champion pressanykey raceskip step trace ai play sound rounds finish twocar twohuman tournament \
          menu screens opl-toggle smoothness si2 live smoke; do npm run -s $s || echo "FAIL $s"; done
 npm run build
 ```
@@ -334,7 +334,7 @@ docs, (6) commit.
   ONE LIFE LOST, which then leaves at its first poll. Every `17FF` call reachable in one-player play
   now runs the real `17FF`; `26BA` (two-human) is P4's, and `2166` has no callers.
   **P3 is not closed by this: see the champion-screen, PRESS ANY KEY and race-skip bullets below,
-  added after this one.**
+  added after this one.** (All three done by M3.75; P3 closed, docs/engine.md §9bu.)
 - [x] **Tournament board** (`1000:18d8`): the `CASE.CHR` map with `MINATURE` icons at the
   positions in `DS:0312` (26 words, §9t). It is gated on `[43A]=1`. Find exactly when it is shown
   in `RunTournamentLoop 1000:10a0`.
@@ -620,14 +620,20 @@ docs, (6) commit.
   release or P1 fire held leaves, timeout on tick 700; `npm run pressanykey`; `[PROVEN]` live in the
   port. §9bt also classifies every input poll in the game (all 18 `2D5B` calls, all `[0x107E]`
   reads); it found one more one-player gap, the next bullet.
-- [ ] **The `25011968` cheat's race skip at the race intro** (`UNKNOWN_f6a_reader`, docs/engine.md
+- [x] **The `25011968` cheat's race skip at the race intro** (`UNKNOWN_f6a_reader`, docs/engine.md
   §9bt). With the cheat typed (`[0xF6A]=1`, `2916`), right after the race intro's `179B` ends on a
   key release (`1398-13E0`): keypad `+` (scancode `0x4E`) moves to the next race unless it is the
   last (`[0x28C1]==0x19`), keypad `-` (`0x4A`) to the previous, wrapping 0 to `[0x439]`; round and
   race are re-derived from `ORDER_TABLE` and the race setup (`11F8`) runs again. The port has none
   of it. After this, the §9bt sweep (widened to the key word `[0x107C]`, BIOS keyboard, the
   keyboard port, the mouse and the game port) leaves nothing else in one-player play outside P5,
-  within what byte patterns can see.
+  within what byte patterns can see. **DONE 2026-09-25 (M3.75, docs/engine.md §9bu), closing
+  `UNKNOWN_f6a_reader` and P3:** the skip moves only `[28C1]`, so the loop position (qualifier
+  prologue, loop, inside `1A82`) and `[0x310]` are now kept apart from the race index
+  (`isInQualifier`/`raceCountOf`, a no-behaviour-change step first); `applyRaceSkip`; `npm run
+  raceskip`; `[PROVEN]` live in the port (chained `+`/`-` skips, no skip without the cheat or on a
+  fire press or ESC release, H2H `-` to 0 straight into the race, a Challenge qualifier-intro skip
+  keeping the qualifier position).
 
 ### P4: two-human Head to Head
 - [ ] Port `FUN_1000_1e20` → `1ef1` / `RunHeadToHeadTournament 1000:1faf` / `2329` / `256e`: the WON/LOST

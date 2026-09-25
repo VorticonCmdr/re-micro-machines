@@ -157,6 +157,49 @@ export function raceCountOf(state) {
   return state.raceIndex + (state.raceCountOffset ?? 0)
 }
 
+/**
+ * The `25011968` cheat's own race skip (`ShowNextRaceIntroScreenTune4or5 1000:1398-13E0`, docs/engine.md
+ * §9bu, `UNKNOWN_f6a_reader`): the cheat also sets `[0xF6A]` (`2916`), and right after the race
+ * intro's own `179B` returns, a RELEASED keypad `+` (scancode `0x4E`) moves `[28C1]` on by one --
+ * unless it is already `0x19`, the last race, in which case nothing happens and the race runs -- and
+ * keypad `-` (`0x4A`) moves it back, wrapping 0 to `[0x439]` (a constant 0x19, only ever read).
+ * Round and race are re-read from `ORDER_TABLE` and `11F8` runs again from the top (tune, intro,
+ * hold, a fresh `179B`), so skips chain; the board (before `11F8`, in `115C`) is not re-run.
+ * Nothing else changes: not `[0x310]`, not the loop position. So a skip from the qualifier's own
+ * intro (Challenge only -- H2H's qualifier has no `179B`) still gets the QUALIFIER's judging and
+ * picker, a loop race skipped to index 0 is judged as a regular race, and a skip from a bonus
+ * race's intro runs a regular race that `TriggerBonusRace 1A82` still judges as a bonus: `[0x291D]`
+ * is set only by RUFFTRUX's own 1-up state (`HandleCarStateFBannerSfx10 86A1`, cleared at race init
+ * `3CBB`), so that is always NO_BONUS.
+ * `releasedCode`: the `KeyboardEvent.code` of the key whose release ended `179B`, or null (a
+ * timeout or a fresh fire press leave `[0x107E]` at 0). Returns whether a skip happened; the caller
+ * then re-runs the intro. Mutates `state`.
+ */
+export const RACE_SKIP_NEXT_CODE = 'NumpadAdd' // scancode 0x4E
+export const RACE_SKIP_PREV_CODE = 'NumpadSubtract' // scancode 0x4A
+export function applyRaceSkip(state, releasedCode, cheatActive) {
+  if (!cheatActive) return false // 1398: [0xF6A]==0
+  const from = effectiveRaceIndex(state) // [28C1]
+  let to
+  if (releasedCode === RACE_SKIP_NEXT_CODE) {
+    if (from === ORDER_TABLE_LAST_INDEX) return false // 13AA: CMP AH,0x19 / JZ RET
+    to = from + 1
+  } else if (releasedCode === RACE_SKIP_PREV_CODE) {
+    to = from === 0 ? ORDER_TABLE_LAST_INDEX : from - 1 // 13B7-13BF
+  } else return false
+  const inQualifier = isInQualifier(state)
+  const count = raceCountOf(state)
+  if (state.pendingBonusRace) {
+    state.raceIndex = to + 1 // the port's own index runs one ahead of [28C1] while a bonus is pending (effectiveRaceIndex)
+    state.pendingBonusRace = { ...ORDER_TABLE[to] } // [28BF]/[28C0] now name a regular race; still judged inside 1A82
+  } else {
+    state.raceIndex = to
+    state.qualifierOverride = inQualifier // the loop position does not move with [28C1]
+  }
+  state.raceCountOffset = count - state.raceIndex // [0x310] does not move either
+  return true
+}
+
 /** Whether the next race gets its intro screen: every race except the Head-to-Head qualifier, whose
  * intro routine (11F8) starts tune 4 and returns without drawing anything (126D-127B). */
 export function hasRaceIntro(state) {
