@@ -12066,3 +12066,58 @@ after the start is 12 steps. `trace` (13/20), `ai` (59/60), `rounds`, `finish`, 
 - `check-play`'s state tests now run the pass after `runStates` (the real order), and its
   expectations moved by the one tick the old inline bump was early.
 - `check-twocar` shows the commit lag through the pass instead of a flag.
+
+## 9ch. Puffs and splashes (`8083`, `8386`), made byte-exact (2026-09-25)
+
+GOAL-DOS-PARITY.md P5, from §9cf 6 (a)–(d). `[STATIC]` from a full re-read of `8083-82BD` and
+`8386-848F`.
+
+**Splash `8386`.** It is called before the puffs (`DrawRaceCarLayer 7D01`).
+- The cursor `[1298]` > 0 gates the 5-slot draw/advance loop (`838D`).
+- Each live slot is drawn at pos − cam − 12 (`847E`: `8486`/`8489`).
+- Its frame advances only when the **puff** cooldown `[12B2]` ≤ 0 (`83CB`); at 5 it becomes −1.
+- A spawn needs the trigger `[128C]` and the splash cooldown `[12B4]` ≤ 0. It then sets
+  `[12B4]=6`, clears the trigger, and writes **slot 0**: x, y, frame 0 (`8410-8418`, no cursor
+  added).
+- The cursor then walks +6, wrapping 0x1E → 6. It gates the loop and nothing else, so at most one
+  splash is ever live per car.
+
+**Puffs `8083`.**
+- The cursor `[1296]` > 0 gates an 8-slot loop that draws both 8×8 sprites (`8CD0`, centred −4).
+  If `[12B2]` ≤ 0 it advances the frame (`80F5`); at 8 the frame becomes −1. This happens **before**
+  any spawn.
+- Then, only if `[12B2]` ≤ 0 (`811B`), `[12B2]=3` is set (`8125`) **whether or not anything
+  spawns**.
+- Then the trigger chain:
+  - low grip `[1284]`: on a stopped car (vx = vy = 0) it exits at once and tries nothing else
+    (`8151`);
+  - otherwise skid `[1288]`, then wet `[128A]`.
+- **The spray angle:** heading − 0x1E / + 0x1E outside round 2. In round 2 it is heading + the
+  offset `[128E]`/`[1292]` from **before** this spawn's step (`8186-8194`); the offset then moves by
+  `[1290]`/`[1294]`, whose sign flips once |offset| ≥ 0x1E.
+- **The spawn point:** + 0x80, then the byte sine at `DS:10A0` SAR 4. The wrap is asymmetric
+  (`81CB-81ED`): X gets +0xC00 at ≤ −1, but Y only at ≤ −0xC; both get −0xC00 at ≥ 0xC00.
+- Cursor +12, wrapping 0x60 → 0x0C (the known skip-slot-0 quirk).
+
+**What the port did.** It spawned first and advanced after. With the cooldown already reset by the
+spawn, a continuous trigger froze every puff on frame 0. With no trigger, the puffs advanced every
+step instead of every 3rd. It spawned splashes into a 5-slot ring, advanced them on `[12B4]`, and
+drew them at −16. It stepped the round-2 offset before using it, used the offset fields outside
+round 2, and wrapped symmetrically. It also tried skid/wet after a stopped car's low grip.
+
+**Port.** `puffs.js`'s `updatePuffsAndSplashes` follows the bytes in order (splash first, then the
+puffs), and `raceView.js` draws the splash at −12. The per-physics-step call is unchanged. That is
+the port's documented smoothness divergence: the original runs this from the draw.
+
+**Tests.** `check-play` has nine new cases, all failing on the old code:
+- the continuous-trigger animation;
+- the re-arm with nothing spawned;
+- the stopped low-grip exit;
+- splashes always in slot 0;
+- the splash advancing on `[12B2]` only;
+- the round-2 pre-step offset;
+- the ±0x1E outside round 2;
+- the Y wrap;
+- the −12 draw position, measured on real PH0 frame pixels.
+
+The old animation test now expires the cooldown before each call.

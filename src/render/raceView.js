@@ -260,7 +260,7 @@ function drawPuffsAndSplashes(dst, w, h, camX, camY, ph0, car) {
     const dx = wrapDelta(slot.x - camX, WORLD_PX)
     const dy = wrapDelta(slot.y - camY, WORLD_PX)
     const frame = ph0Round2SplashFrame(ph0, slot.frame)
-    blitTransparent(dst, w, h, dx - 16, dy - 16, frame)
+    blitTransparent(dst, w, h, dx - 12, dy - 12, frame) // 847E: 8486/8489 SUB 0xC (the rotor's -16 is 843D's own extra -4)
   }
   for (const slot of car.puffSlots ?? []) {
     if (slot.frame === -1) continue

@@ -1315,11 +1315,12 @@ async function checkPuffsAndSplashes() {
     const car = mkCar({ puffSrcWet: 1 })
     updatePuffsAndSplashes(car, { round: 1 }) // spawns at frame 0, cooldown reset to 3
     check('puff animation: freshly spawned slot does not advance in the same call', car.puffSlots[0].frame === 0)
-    car.puffCooldown = 0
     for (let i = 1; i < 8; i++) {
+      car.puffCooldown = 0 // every expiry re-arms [12B2]=3 (8125); airborne.js counts it back down
       updatePuffsAndSplashes(car, { round: 1 })
       check(`puff animation: frame advances to ${i} while cooldown<=0`, car.puffSlots[0].frame === i)
     }
+    car.puffCooldown = 0
     updatePuffsAndSplashes(car, { round: 1 })
     check('puff animation: expires to -1 past frame 8', car.puffSlots[0].frame === -1)
   }
@@ -1340,6 +1341,51 @@ async function checkPuffsAndSplashes() {
       updatePuffsAndSplashes(car, { round: 2 })
     }
     check(`splash cursor: after a full 5-slot cycle, it's back on slot 1, not 0 (${car.splashSlotCursor})`, car.splashSlotCursor === 1)
+    check('splash spawn: always into slot 0 (8410-8418, no cursor); slots 1-4 stay empty', car.splashSlots.slice(1).every((sl) => sl.frame === -1))
+  }
+
+  // (f) the real order inside 8083 (docs/engine.md §9ch): on an expired cooldown the live frames
+  // advance FIRST (80F5), [12B2]=3 is set whether or not anything spawns (8125), then the spawn.
+  {
+    const car = mkCar({ puffSrcWet: 1 })
+    updatePuffsAndSplashes(car, { round: 1 }) // slot 0 at frame 0
+    for (let i = 0; i < 3; i++) { car.puffSrcWet = 1; car.puffCooldown = 0; updatePuffsAndSplashes(car, { round: 1 }) }
+    check('puff: a continuous trigger still animates the older puffs (advance before spawn, 80F5)', car.puffSlots[0].frame === 3 && car.puffSlots[3].frame === 0)
+    const idle = mkCar({})
+    updatePuffsAndSplashes(idle, { round: 1 })
+    check('puff: an expired cooldown is re-armed to 3 even when nothing spawns (8125)', idle.puffCooldown === 3 && idle.puffSlots.every((sl) => sl.frame === -1))
+    const stopped = mkCar({ lowGripTimerA: 5, velX: 0, velY: 0, puffSrcSkid: 1 })
+    updatePuffsAndSplashes(stopped, { round: 1 })
+    check('puff: low grip on a stopped car spawns nothing and tries no other trigger (8151)', stopped.puffSlots.every((sl) => sl.frame === -1) && stopped.puffSrcSkid === 1)
+  }
+  // (g) the splash frames advance on the PUFF cooldown [12B2] (83CB), not [12B4].
+  {
+    const car = mkCar({ splashTrigger: 1 })
+    updatePuffsAndSplashes(car, { round: 2 }) // spawn, [12B4]=6
+    car.puffCooldown = 0; car.splashCooldown = 5
+    updatePuffsAndSplashes(car, { round: 2 })
+    check('splash: advances when [12B2] expires even with [12B4] still running (83CB)', car.splashSlots[0].frame === 1)
+    car.puffCooldown = 2; car.splashCooldown = 0
+    updatePuffsAndSplashes(car, { round: 2 })
+    check('splash: does not advance while [12B2] runs, whatever [12B4] says', car.splashSlots[0].frame === 1)
+  }
+  // (h) round 2's spray angle uses the offset from BEFORE this spawn's oscillation step (8186-8194).
+  {
+    const { SINE8 } = await import('../src/data/engine-tables.js')
+    const car = mkCar({ puffSrcWet: 1, heading: 0x40, puffOffA: 10, puffOffB: 20 })
+    updatePuffsAndSplashes(car, { round: 2 })
+    const angle = (0x40 + 10 + 0x80) & 0xff
+    check('puff: the round-2 spray uses the pre-step offset, then steps it', car.puffSlots[0].xA === 1000 + (SINE8[angle] >> 4) && car.puffOffA === 30 && car.puffOffB === -20)
+    const flat = mkCar({ puffSrcWet: 1, heading: 0x40, puffOffA: 10 })
+    updatePuffsAndSplashes(flat, { round: 1 })
+    check('puff: outside round 2 the spray is heading-0x1E / +0x1E (8181/8221)', flat.puffSlots[0].xA === 1000 + (SINE8[(0x40 - 0x1e + 0x80) & 0xff] >> 4) && flat.puffOffA === 10)
+  }
+  // (i) the spawn point's own asymmetric wrap (81CB-81ED): Y wraps only at <= -0xC.
+  {
+    const car = mkCar({ puffSrcWet: 1, posX: 100, posY: 2, heading: 0x80 })
+    updatePuffsAndSplashes(car, { round: 1 })
+    const ys = [car.puffSlots[0].yA, car.puffSlots[0].yB]
+    check('puff: a spawn point a few px above y=0 stays negative (Y wraps only at <= -0xC)', ys.some((y) => y < 0 && y > -0xc))
   }
 }
 
@@ -1396,6 +1442,15 @@ async function checkProjectileAndPuffRendering() {
     check('composeRaceView: puffs-only draws (differs from quiet)', differs(render(puffsOnlyCar), quietBuf))
     check('composeRaceView: splash-only draws (differs from quiet)', differs(render(splashOnlyCar), quietBuf))
     check('composeRaceView: all three combined still don\'t throw', !!render(activeCar))
+    // 847E: the 32x32 splash is drawn at pos-cam-12 (8486/8489), not -16.
+    const { ph0Round2SplashFrame } = await import('../src/formats/race.js')
+    const raw = ph0Round2SplashFrame(ph0, 2).indexed
+    let fx = 99, fy = 99
+    for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (raw[y * 32 + x]) { fx = Math.min(fx, x); fy = Math.min(fy, y) }
+    const sb = render(splashOnlyCar)
+    let mx = 99, my = 99
+    for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) if (sb[y * 64 + x] !== quietBuf[y * 64 + x]) { mx = Math.min(mx, x); my = Math.min(my, y) }
+    check(`composeRaceView: the splash sits at pos-cam-12 (847E), got (${mx - fx},${my - fy})`, mx - fx === 1000 - 968 - 12 && my - fy === 990 - 968 - 12)
   } catch (e) {
     threw = e
   }

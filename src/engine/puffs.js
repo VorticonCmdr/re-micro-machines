@@ -24,38 +24,40 @@
 
 import { PH0_LAYOUT } from '../formats/race.js'
 import { SINE8 } from '../data/engine-tables.js'
-import { wrapWorld } from './int16.js'
+import { toI16 } from './int16.js'
 
-const PUFF_SLOT_COUNT = 8
-const SPLASH_SLOT_COUNT = 5
 const PUFF_ANIM_FRAMES = 8
 const SPLASH_ANIM_FRAMES = 5
 export const PUFF_SET = { WET: 0, SKID: 1, MUD: 2 }
 
-/** Heading-relative spawn point, `>>4` scale (docs/engine.md §9q) -- the same sin/cos-pair
- * convention every other heading->displacement consumer in this codebase uses (camera, velocity,
- * projectile fire); the research pinned the X-axis formula exactly but not an explicit Y formula,
- * so the Y axis here is inferred by that precedent, not independently disassembled. */
+/** Heading-relative spawn point, `>>4` scale (`81A8-81C9`): the byte sine table at `DS:10A0`, SAR 4,
+ * X from `angle`, Y from `angle-0x40`. The wrap is the bytes' own, asymmetric one (`81CB-81ED`): X
+ * gets +0xC00 at <= -1, Y only at <= -0xC; both get -0xC00 at >= 0xC00. */
 function spawnPoint(car, offset) {
   const angle = (car.heading + offset + 0x80) & 0xff
-  const s = SINE8[angle]
-  const c = SINE8[(angle - 0x40) & 0xff]
-  return { x: wrapWorld(car.posX + (s >> 4)), y: wrapWorld(car.posY + (c >> 4)) }
+  let x = car.posX + (SINE8[angle] >> 4)
+  let y = car.posY + (SINE8[(angle - 0x40) & 0xff] >> 4)
+  if (x <= -1) x += 0xc00
+  if (x >= 0xc00) x -= 0xc00
+  if (y <= -0xc) y += 0xc00
+  if (y >= 0xc00) y -= 0xc00
+  return { x, y }
 }
 
-/** Advances `puffOffA/B` (and `C/D`) as a round-2-only sweeping oscillator (`1000:82..`, docs
- * §9q): `off += step`, flip `step`'s sign once `|off| > 29`. Outside round 2 these stay fixed. */
-function oscillate(car, ctx, offField, stepField) {
-  if (ctx.round !== 2) return
-  car[offField] += car[stepField]
-  if (Math.abs(car[offField]) > 29) car[stepField] = -car[stepField]
+/** The spray angle offset (`8181`/`8186-81A4`, `8221`/`8226-8244`): -0x1E / +0x1E outside round 2;
+ * in round 2 the offset BEFORE this spawn's oscillation step (`[128E]`/`[1292]`), which then moves
+ * by `[1290]`/`[1294]`, whose sign flips once `|off| >= 0x1E`. */
+function sprayOffset(car, ctx, offField, stepField, fixed) {
+  if (ctx.round !== 2) return fixed
+  const old = car[offField]
+  car[offField] = old + car[stepField]
+  if (Math.abs(car[offField]) >= 0x1e) car[stepField] = -car[stepField]
+  return old
 }
 
 function spawnPuff(car, ctx, set) {
-  oscillate(car, ctx, 'puffOffA', 'puffOffB')
-  oscillate(car, ctx, 'puffOffC', 'puffOffD')
-  const a = spawnPoint(car, car.puffOffA)
-  const b = spawnPoint(car, car.puffOffC)
+  const a = spawnPoint(car, sprayOffset(car, ctx, 'puffOffA', 'puffOffB', -0x1e))
+  const b = spawnPoint(car, sprayOffset(car, ctx, 'puffOffC', 'puffOffD', 0x1e))
   const slot = car.puffSlots[car.puffSlotCursor]
   slot.xA = a.x; slot.yA = a.y
   slot.xB = b.x; slot.yB = b.y
@@ -63,21 +65,10 @@ function spawnPuff(car, ctx, set) {
   slot.source = set
   car.puffSlotCursor++
   if (car.puffSlotCursor > 7) car.puffSlotCursor -= 7 // 1000:82ab: skips slot 0 after the first cycle -- bug-for-bug, see docs/engine.md §9q
-  car.puffCooldown = 3
 }
 
-function spawnSplash(car) {
-  const slot = car.splashSlots[car.splashSlotCursor]
-  slot.x = car.posX
-  slot.y = car.posY
-  slot.frame = 0
-  car.splashSlotCursor++
-  if (car.splashSlotCursor > 4) car.splashSlotCursor -= 4 // 1000:842a: same skip-slot-0 quirk, 5-slot ring
-  car.splashCooldown = 6
-}
-
-function advanceFrames(slots, cooldown, maxFrame) {
-  if (cooldown > 0) return
+/** Advances every live slot one frame (`80F5-8109` / `83CB-83DF`), frame `max` -> -1. */
+function advanceFrames(slots, maxFrame) {
   for (const slot of slots) {
     if (slot.frame === -1) continue
     slot.frame++
@@ -86,24 +77,40 @@ function advanceFrames(slots, cooldown, maxFrame) {
 }
 
 /** Call once per car per physics step (after `puffCooldown`/`splashCooldown` have already been
- * decremented this step -- `airborne.js`, matching `UpdateCarAirborneLandingSfx`'s own order). */
+ * decremented this step -- `airborne.js`, matching `UpdateCarAirborneLandingSfx`'s own order).
+ * The real order (`DrawRaceCarLayer 7D01`): the splash `8386` first, then the puffs `8083`
+ * (docs/engine.md §9ch). */
 export function updatePuffsAndSplashes(car, ctx) {
-  if (car.puffCooldown <= 0) {
-    if (car.lowGripTimerA !== 0 && (car.velX !== 0 || car.velY !== 0)) {
-      spawnPuff(car, ctx, PUFF_SET.MUD)
-    } else if (car.puffSrcSkid) {
-      car.puffSrcSkid = 0
-      spawnPuff(car, ctx, PUFF_SET.SKID)
-    } else if (car.puffSrcWet) {
-      car.puffSrcWet = 0
-      spawnPuff(car, ctx, PUFF_SET.WET)
-    }
+  // 8386: with the cursor [1298] nonzero (838D), the live splash frames advance on the PUFF
+  // cooldown [12B2] (83CB); a spawn needs the trigger and the splash cooldown [12B4] <= 0, and
+  // always writes slot 0 (8410-8418) -- the cursor only walks, gating this loop.
+  if (car.splashSlotCursor > 0 && toI16(car.puffCooldown) <= 0) advanceFrames(car.splashSlots, SPLASH_ANIM_FRAMES)
+  if (car.splashTrigger && toI16(car.splashCooldown) <= 0) {
+    car.splashCooldown = 6 // 83FC
+    car.splashTrigger = 0 // 8402
+    const slot = car.splashSlots[0]
+    slot.x = car.posX
+    slot.y = car.posY
+    slot.frame = 0
+    car.splashSlotCursor++
+    if (car.splashSlotCursor > 4) car.splashSlotCursor -= 4 // 841E-842A
   }
-  advanceFrames(car.puffSlots, car.puffCooldown, PUFF_ANIM_FRAMES)
 
-  if (car.splashTrigger && car.splashCooldown <= 0) {
-    car.splashTrigger = 0
-    spawnSplash(car)
+  // 8083: with the cursor [1296] nonzero (808A), the live puff frames advance when [12B2] <= 0
+  // (80F5) -- BEFORE any spawn; then, on an expired cooldown only, [12B2]=3 whether or not anything
+  // spawns (8125), and the trigger chain: low grip (a moving car only -- a stopped one spawns
+  // nothing and tries no other trigger, 8151), then skid, then wet.
+  if (car.puffSlotCursor > 0 && toI16(car.puffCooldown) <= 0) advanceFrames(car.puffSlots, PUFF_ANIM_FRAMES)
+  if (toI16(car.puffCooldown) > 0) return // 811B
+  car.puffCooldown = 3
+  if (car.lowGripTimerA !== 0) {
+    if (car.velX === 0 && car.velY === 0) return
+    spawnPuff(car, ctx, PUFF_SET.MUD)
+  } else if (car.puffSrcSkid) {
+    car.puffSrcSkid = 0
+    spawnPuff(car, ctx, PUFF_SET.SKID)
+  } else if (car.puffSrcWet) {
+    car.puffSrcWet = 0
+    spawnPuff(car, ctx, PUFF_SET.WET)
   }
-  advanceFrames(car.splashSlots, car.splashCooldown, SPLASH_ANIM_FRAMES)
 }
