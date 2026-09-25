@@ -12145,3 +12145,28 @@ drawing through pass 4 isn't modelled.
 
 **Test.** In `check-play`, car 1 is placed so its shadow lands exactly on car 0's body, clear of its
 own body. Car 0's body pixel survives; it fails on the old code.
+
+## 9cj. The projectile tail icon (`[1396]`), ported (2026-09-25)
+
+GOAL-DOS-PARITY.md P5, from §9cf 6 (f), corrected. `[STATIC]` from `8712-8730` and `51B2-51DC`.
+
+`[1396]` (`projFrame`) is zeroed at fire (`4F63`) and counted up, saturating at 5, in **two**
+places:
+- **`8712`, the projectile draw** (render, `DrawRaceCarLayer`'s pass 3), while the shot is live
+  (`[1394]`). It reads `CX = [1396] >> 2`, which is the tail icon drawn, **before** its own
+  count-up (`871F-872D`).
+- **`51B2`, the flight step** (the per-car pass after the render). After decrementing `[13A4]`, while
+  that is still ≥ 0x28, it counts up again (`51D1-51D8`).
+
+So the icon is 0 on the firing frame and the next one, then 1 for the rest of the flight. The §9cf
+reading ("icon 0 for 4 drawn frames") missed the second count-up. The port had `elapsed >= 2`, which
+showed icon 0 for one frame only, and it never counted `projFrame` at all.
+
+**Port.**
+- `projectile.js`'s `updateProjectileFlight` counts `projFrame` up in flight.
+- A new `projectileDrawTick` (8712's read-then-count) runs in `step.js` just before `runStates`
+  (pass 3 precedes pass 4) and leaves the icon in `car._projIcon` for `raceView.js`.
+- `applyScoreSlotGarbage`'s `51B2` transcription already had the count-up.
+
+**Test.** `check-play` runs the real call order from firing and gets icons `0,0,1,1,1,1` with
+`projFrame` saturating at 5. It fails without the flight count-up (`0,0,0,0,1,1`).

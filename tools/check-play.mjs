@@ -1253,6 +1253,16 @@ async function checkProjectiles() {
   check('projectilesEnabled: true in round 7', projectilesEnabled({ round: 7 }))
   check('projectilesEnabled: true with the cheat flag in any round', projectilesEnabled({ round: 1, projectilesForAll: true }))
   check('projectilesEnabled: false otherwise', !projectilesEnabled({ round: 1 }))
+  // The tail icon (docs/engine.md §9cj): 8712 reads [1396]>>2 BEFORE its own count-up (render, before
+  // the handlers), and 51B2 counts [1396] up again in the per-car pass while in flight -- icon 0 on the
+  // firing frame and the next, then icon 1, which it keeps (the count saturates at 5).
+  {
+    const { projectileDrawTick } = await import('../src/engine/projectile.js')
+    const car = { projActive: 1, projFrame: 0, reloadCooldown: RELOAD_TOTAL, projX: 1000, projY: 1000, projXsub: 0, projYsub: 0, projStepsA: 0, projStepsB: 0 }
+    const icons = []
+    for (let i = 0; i < 6; i++) { projectileDrawTick(car); icons.push(car._projIcon); updateProjectileFlight(car) }
+    check(`projectile tail icon: 0,0 then 1 (871F read before the count-up, 51D8 in flight) -- got ${icons.join(',')}`, icons.join() === '0,0,1,1,1,1' && car.projFrame === 5)
+  }
 }
 
 /**

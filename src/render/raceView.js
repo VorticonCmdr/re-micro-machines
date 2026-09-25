@@ -22,7 +22,7 @@
 import { TILE, TILE_BYTES, WORLD_TILES, WORLD_PX, OVERLAY_TILE_DELTA, tileCount, remapCarColours, ph0TailIcon, ph0PuffFrame, ph0Round2SplashFrame, ph0Banner, ph0PositionLabel, ph0KnockoutFrame } from '../formats/race.js'
 import { blitTransparent, blitSilhouette } from './blit.js'
 import { drawHud, drawRuffTruxCountdown, drawTwoCarHud } from './hud.js'
-import { RELOAD_TOTAL, FLIGHT_THRESHOLD } from '../engine/projectile.js'
+import { FLIGHT_THRESHOLD } from '../engine/projectile.js'
 import { KNOCKOUT_DURATIONS, KNOCKOUT_FRAME_IDS, STATE1_ANIM_A, STATE1_ANIM_B, STATE1_ANIM_DEFAULT, STATE1_ANIM_ROUND2, FALL_ANIM, CRASH_ANIM } from '../data/engine-tables.js'
 import { viewCoord, inClipWindow, NORMAL_CAR_FOLD, ROUND9_CAR_FOLD } from '../engine/drawn.js'
 
@@ -285,8 +285,7 @@ function drawProjectile(dst, w, h, camX, camY, ph0, car) {
   const dx = wrapDelta(car.projX - camX, WORLD_PX)
   const dy = wrapDelta(car.projY - camY, WORLD_PX)
   if (car.reloadCooldown > FLIGHT_THRESHOLD) {
-    const elapsed = RELOAD_TOTAL - car.reloadCooldown
-    const icon = ph0TailIcon(ph0, elapsed >= 2 ? 1 : 0)
+    const icon = ph0TailIcon(ph0, car._projIcon ?? (car.projFrame ?? 0) >> 2) // 871F-8723 (engine/projectile.js projectileDrawTick)
     const sx = wrapDelta(car.projX + car.projStepsA - camX, WORLD_PX)
     const sy = wrapDelta(car.projY + car.projStepsB - camY, WORLD_PX)
     blitSilhouette(dst, w, h, sx - 4, sy - 4, icon)

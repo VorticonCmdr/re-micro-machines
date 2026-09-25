@@ -784,7 +784,7 @@ docs, (6) commit.
 - [x] **The car layer's paint order** **Done (§9ci, M3.89).** (§9cf 6e, `DrawRaceCarLayer 7CE0`): shadows, then
   splash+puffs, then projectiles, then bodies, each over all cars. Split `drawCarLayer` into the
   four passes.
-- [ ] **The projectile tail icon** (§9cf 6f, `871F-872D`): `projFrame >> 2`, read before a
+- [x] **The projectile tail icon** **Done (§9cj, M3.90): icon 0 for two frames (two count-ups per frame), then 1.** (§9cf 6f, `871F-872D`): `projFrame >> 2`, read before a
   saturating increment to 5, reset at fire.
 - [ ] **The pause's cheat-gated key combos** (§9cf 4, `37B8-37F5`): with the `25011968` flag, in
   rounds other than 9, after the pause-ending release, until tick 140: exactly F1+F2 applies the

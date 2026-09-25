@@ -86,6 +86,7 @@ export function updateProjectileFlight(car) {
   if (car.reloadCooldown === 0) return
   car.reloadCooldown--
   if (car.reloadCooldown > FLIGHT_THRESHOLD - 1) {
+    if (car.projFrame < 5) car.projFrame++ // 51D1-51D8: the tail-icon counter [1396], saturating at 5
     car.projX = wrapWorld(car.projX + axisDrift(car.projXsub))
     car.projY = wrapWorld(car.projY + axisDrift(car.projYsub))
     if (car.projStepsA !== 0) {
@@ -94,6 +95,17 @@ export function updateProjectileFlight(car) {
     }
   }
   if (car.reloadCooldown === 0) car.projActive = 0
+}
+
+/** `8712`'s own state step (`871C-872D`), run in the render before the state handlers (DrawRaceCarLayer's
+ * projectile pass 7D14 precedes 7D2B): while the shot is live ([1394]), the tail icon drawn this frame
+ * is `[1396] >> 2`, read BEFORE `[1396]` counts up (saturating at 5). With `51B2`'s own count-up in the
+ * per-car pass after it, that is icon 0 on the firing frame and the next, then icon 1
+ * (docs/engine.md §9cj). `car._projIcon` carries the icon to the renderer. */
+export function projectileDrawTick(car) {
+  if (!car.projActive) return
+  car._projIcon = (car.projFrame ?? 0) >> 2
+  if ((car.projFrame ?? 0) < 5) car.projFrame = (car.projFrame ?? 0) + 1
 }
 
 /** Hit (`1000:79fd`). Once per step, not per car -- a shot can hit any OTHER present car. No-op

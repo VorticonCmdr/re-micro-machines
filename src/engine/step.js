@@ -19,7 +19,7 @@ import { dispatchTerrain, round2Current, plughole } from './terrain.js'
 import { updateCheckpointsAndLaps } from './checkpoints.js'
 import { updateCarAirborneLanding } from './airborne.js'
 import { updatePuffsAndSplashes } from './puffs.js'
-import { fireProjectile, updateProjectileFlight, resolveProjectileHits } from './projectile.js'
+import { fireProjectile, updateProjectileFlight, resolveProjectileHits, projectileDrawTick } from './projectile.js'
 import { applyScriptedDrift } from './dropin.js'
 import { runStates } from './states.js'
 import { updateCamera } from './camera.js'
@@ -350,6 +350,8 @@ export function runStep(world, cars, controls, raceState, ctx) {
   if (twoCar) twoCarRenderGate(cars, raceState, ctx)
   // `hiddenCar`: 7D74's car, which 7D73 leaves before its clip test and rotor call (drawn.js).
   const hiddenCar = twoCar && raceState.twoCar.hiddenCar != null ? cars[raceState.twoCar.hiddenCar] : null
+  // DrawRaceCarLayer's projectile pass (7D14 -> 8712) runs before its state-handler pass (7D2B).
+  for (const car of cars) projectileDrawTick(car)
   runStates(cars, raceState, { ...ctx, world, hiddenCar }) // the state-handler dispatch the real game runs from render (90c5)
   if (twoCar) {
     // 7d74: the car [2621] names is not drawn (so its drawnThisFrame stays 0) -- as the car layer
