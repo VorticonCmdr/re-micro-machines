@@ -876,6 +876,16 @@ function newCar(fields) {
   }
   check('82BE: a knockout entered with a stale timer (95, left from the start countdown) steps once per call: 7 calls', koCalls(95) === 7)
   check('82BE: from a zeroed timer the handler sees 0,1,2,...: steps at 4/8/../24, ends on call 26', koCalls(0) === 26)
+  {
+    // 0xD -> 7 -> 2: the respawn step itself runs no state-2 handler, so the render must fall back to
+    // the cursor (step 0: overlay frame 0, no body), not the finished 0xD's last step (a body flash).
+    const { carAnimationFrame } = await import('../src/render/raceView.js')
+    const car = { state: 0xd, active: 1, animTimer: 95, animStep2: 0, subState: 0, height: 0, safeX: 500, safeY: 500, posX: 500, posY: 500 }
+    let n = 0
+    while (car.state !== 2 && n < 50) { runStates([car], {}, { round: 1 }); animTimerPass(car, 0, { round: 1 }); n++ }
+    const a = carAnimationFrame(car, 1)
+    check('82BE: on the respawn frame (now state 2) no stale step shows the plain body: overlay frame 0, no body', car.state === 2 && !a.drawBody && a.overlay?.frame === 0)
+  }
 
   // Through runStep, ROUND22 at its real tournament index: the countdown leaves every car's timer at
   // the value it enters state 0 with, and a plughole fall right after the start is short (live: ~12

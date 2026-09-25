@@ -23,7 +23,7 @@ import { TILE, TILE_BYTES, WORLD_TILES, WORLD_PX, OVERLAY_TILE_DELTA, tileCount,
 import { blitTransparent, blitSilhouette } from './blit.js'
 import { drawHud, drawRuffTruxCountdown, drawTwoCarHud } from './hud.js'
 import { FLIGHT_THRESHOLD } from '../engine/projectile.js'
-import { KNOCKOUT_DURATIONS, KNOCKOUT_FRAME_IDS, STATE1_ANIM_A, STATE1_ANIM_B, STATE1_ANIM_DEFAULT, STATE1_ANIM_ROUND2, FALL_ANIM, CRASH_ANIM } from '../data/engine-tables.js'
+import { KNOCKOUT_FRAME_IDS, STATE1_ANIM_A, STATE1_ANIM_B, STATE1_ANIM_DEFAULT, STATE1_ANIM_ROUND2, FALL_ANIM, CRASH_ANIM } from '../data/engine-tables.js'
 import { viewCoord, inClipWindow, NORMAL_CAR_FOLD, ROUND9_CAR_FOLD } from '../engine/drawn.js'
 
 // The car body/shadow's own real fold parameters (7d73/7e5c, docs/engine.md §9d), shared with

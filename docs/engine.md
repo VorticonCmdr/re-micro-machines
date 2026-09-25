@@ -3093,7 +3093,7 @@ not just the one asked about), an advisor-directed gating check ran first: an ex
 states 1/2/4/5/D (`HandleTerrainHazardFallSnapStop` `6466`, `HandleTerrainHazardFallKeepVel` `6505`,
 `UpdateCarAirborneLandingSfx` `76A4`/`76BC`, `RespawnCarAtSafePoint` `7280`, `HandleCarState0EDropIn
 Sequencer` `6D04`/`6F68`) and every one of these states' own terminal exits zero it; `73E7` (`73F4`)
-is the ONLY increment site in the whole binary. Since it's always zeroed on entry and incremented
+is the ONLY increment site in the whole binary. Since it's always zeroed on entry **(CORRECTED, §9cg: it is not -- the plughole `62E3` and every 0→D entry leave it, and `73E7` skips state 0 but not state A, so those animations start from ~95; the inline bumps were also one tick early. The port now has the one real bump, `animTimerPass`)** and incremented
 exactly once per tick thereafter regardless of source, the port's "bump inline once per handler call,
 from a zeroed baseline" shape is behaviorally IDENTICAL to the real external-unconditional-increment
 for states 2/4/5/D -- confirmed, not assumed, by direct disassembly of `HandleCarState2or0DKnockoutAnim`
@@ -5223,7 +5223,7 @@ the wrong car. On swap ticks they act on the bytes 0..8 into car 0's record.
   gets neither. Car 1's shot is frozen through the exchange, and car 0's flies twice as fast.
 - When P1 scores, car 0 loses its own pass on the 8 swap ticks.
 - The visible consequence is the timing quirk the request names: the car whose `73E7` was skipped
-  tests its 0xD re-line-up counter one step behind the other (`skipAnimBump`).
+  tests its 0xD re-line-up counter one step behind the other (`skipAnimBump` -- **since §9cg, no flag: the pass's `animTimerPass` runs on `cars[bx]`, which gives the lag directly**).
 - `twocar.js` `stepExchange` now returns the BX, and `step.js`'s pass runs `73E7`/`51B2` on it.
 - A score-value BX goes to `applyScoreSlotGarbage`, a byte-level emulation of `73E7` + `51B2`
   (with `87F3`) over car 0's record via `car.js`'s `toBytes`/`fromBytes`. The per-k field aliasing
@@ -11954,7 +11954,7 @@ Divergences, re-checked against `80E0-8160` and `8386-848F` except (e) and (f):
   earlier car's body.
 - (f) **Projectile tail icon** (agent reading of `871F-872D`): `[1396] >> 2`, read before a
   saturating increment to 5, and reset at fire (`4F63`). That gives icon 0 for 4 drawn frames, then
-  icon 1. The port uses `elapsed >= 2`.
+  icon 1 **(CORRECTED, §9cj: `51B2` counts `[1396]` up too, so it is 2 frames)**. The port uses `elapsed >= 2`.
 
 All six go to P5.
 
@@ -12170,3 +12170,16 @@ showed icon 0 for one frame only, and it never counted `projFrame` at all.
 
 **Test.** `check-play` runs the real call order from firing and gets icons `0,0,1,1,1,1` with
 `projFrame` saturating at 5. It fails without the flight count-up (`0,0,0,0,1,1`).
+
+**Follow-up (2026-09-25): a stale draw step on the respawn frame.** `stepKnockoutAnim` records the
+step it drew (`_koDrawStep`) for the renderer. Its terminal call left that at 6. On the next frame
+the car is already in state 2 (`stepRespawn` runs inside `runStates`, so no state-2 handler has run
+yet), and `carAnimationFrame` then fell through to "body, no overlay". That flashed the plain body
+for one frame at every respawn. The field is now cleared at the terminal call, at `stepRespawn` and
+at the two-car `7692` reset, so that frame falls back to the cursor (step 0: overlay frame 0, no
+body), as before §9cg. A `check-step` case drives 0xD → 7 → 2 and fails without the fix. What DOS
+itself shows on that exact frame (the state-7 handler's own draw) was not checked live.
+
+Doc corrections from this item: §9w's "identical to the real increment" claim and §9an's
+`skipAnimBump` are marked, and the `stepHazardDeath` docstring no longer says the port reads
+`driftSteps` a tick late (it is the real order).

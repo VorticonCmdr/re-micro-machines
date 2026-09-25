@@ -38,6 +38,7 @@ function stepKnockoutAnim(car, endState, raceState, ctx) {
   car._koDrawStep = idx
   if (KNOCKOUT_FRAME_IDS[idx] === 0xffff || idx >= KNOCKOUT_FRAME_IDS.length) { // 82D6 -> 8308
     car.animStep2 = 0
+    car._koDrawStep = undefined // nothing of 82BE's drawn after this; a later 2/0xD starts from animStep2
     car.state = endState
     car.animTimer = 0
     // 8321: the end of the state-2 reappear clears [2911] (every format) -- the only thing that
@@ -174,6 +175,7 @@ function stepRespawn(car, ctx, raceState) {
   // vertical state, the skid/grip/splash transients, the puff spray offsets, halveOnBounce.
   car.animStep = 0
   car.animStep2 = 0
+  car._koDrawStep = undefined
   car.height = 0
   car.zVel = 0
   car.bounceOnLand = 1
@@ -251,12 +253,9 @@ function stepRespawn(car, ctx, raceState) {
  * tiles' entries (`6468`/`6507`) zero it and play the full table. A round-9 non-car0 car's timer
  * never moves, so it never reaches state 7 -- the real game's own behaviour.
  *
- * `driftSteps` is read here BEFORE its own decrement: `runStates` runs before `applyScriptedDrift` in
- * `step.js`'s per-step order, so this function sees the PREVIOUS tick's already-decremented value,
- * one tick later than the real game (where `880A`, called from render, sees the SAME tick's `73E7`
- * work). The pause this function applies therefore runs one 35Hz tick longer than the real game's --
- * the same class of off-by-one `stepKnockoutAnim`'s own header comment already documents for a
- * similar ordering reason, not a new kind of imprecision.
+ * `driftSteps` is read here before the pass's own decrement (`applyScriptedDrift`, `73E7`'s drift half),
+ * which is the real order too: `880A` runs from render, before `RunRaceMainLoop`'s per-car pass
+ * (docs/engine.md §9cg), so it sees the value the previous pass left.
  *
  * The table-walk here uses `car.animStep` (`[BX+0x12B6]`, the same cursor field states 4/5 use) as an
  * explicit index rather than `animTableDone`'s implicit threshold-rescan, because the real function

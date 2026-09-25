@@ -242,7 +242,7 @@ export function stepExchange(carIndex, cars, raceState, ctx) {
   raceState.cameraIndex = 0 // 767B: back to the midpoint
   lineUpBothCars(cars, raceState) // 7681
   raceState.knockoutRequest = 2 // 7684
-  for (const car of [p1, p2]) { car.active = 1; car.state = 0xd; car.animStep2 = 0; car.animTimer = 0 } // 7692-76BC
+  for (const car of [p1, p2]) { car.active = 1; car.state = 0xd; car.animStep2 = 0; car.animTimer = 0; car._koDrawStep = undefined } // 7692-76BC
 
   if (!m.matchOpen) { // 76C2 JNZ 7742: the finish block already decided the match
     raceState.raceOverCount = 2 // 7742

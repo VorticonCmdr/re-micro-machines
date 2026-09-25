@@ -409,8 +409,8 @@ function checkStateFourFiveDriftGate() {
 
     // Round-9/non-car0 animTimer exclusion (the same real 73E7 gate state 1 already has,
     // docs/engine.md §9w): a round-9 non-car0 car in state 4 gets no animTimer increment at all
-    // and stays stuck; the camera-target car progresses normally. State 5 shares the identical
-    // `bumpAnimTimerRound9Gated` helper, not re-tested separately here.
+    // and stays stuck; the camera-target car progresses normally. The gate lives in step.js's
+    // `animTimerPass` (73E7-73F3) for every state, so state 5 is not re-tested separately here.
     const fallCarZero = { state: 4, animTimer: 0, active: 1, height: 0, zVel: 0 }
     const fallNonCarZero = { state: 4, animTimer: 0, active: 1, height: 0, zVel: 0 }
     // raceState persisted across the loop, ruffTruxTimer pre-seeded -- runStates' own RUFFTRUX
