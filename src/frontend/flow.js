@@ -38,8 +38,8 @@ import { lapLineSegments, nearestPaletteIndex } from '../engine/lapLine.js'
 import { Si2Player } from '../audio/si2Player.js'
 import { RUFF_TRUCK_TIMES } from '../data/engine-tables.js'
 import { initTournament, isInQualifier, applyRaceSkip, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, raceIntroHoldTicks, raceIntroParticipants, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, resultsPassed, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, OUTCOME } from './tournament.js'
-import { CHARACTER_NAMES, OUTCOME_MESSAGES, resolveSmoothnessForPlay } from '../data/frontend-tables.js'
-import { drawTwoPlayerPickLabels, drawChooseGame, drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawOpponentPanel, drawEliminatedScreen, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
+import { CHARACTER_NAMES, OUTCOME_MESSAGES, resolveSmoothnessForPlay, TITLE_CLASS_NAMES } from '../data/frontend-tables.js'
+import { drawTwoPlayerPickLabels, drawChooseGame, drawTwoPlayerRaceInfo, drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawOpponentPanel, drawEliminatedScreen, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
 import { createSmoothnessGate } from '../engine/smoothness.js'
 import { introInitialState, introStep, smPalette, SCREEN_W as LOGO_W, SCREEN_H as LOGO_H } from '../formats/gfx1.js'
 import { attractInitialState, attractStep } from './attract.js'
@@ -51,7 +51,7 @@ import { waitScreenInitialState, waitScreenStep, holdTicksPreStep } from './keyW
 import { outcomeWaitInitialState, outcomeWaitStep } from './outcomeWait.js'
 import { championInitialState, championStep } from './champion.js'
 import { pressAnyKeyInitialState, pressAnyKeyStep } from './pressAnyKey.js'
-import { twoHumanSessionState, twoHumanSetupState, twoHumanRosterBytes, commitTwoHumanPick, twoHumanMatchState, H2H_P1_START, H2H_P2_START } from './twoHuman.js'
+import { twoHumanSessionState, twoHumanSetupState, twoHumanRosterBytes, commitTwoHumanPick, twoHumanMatchState, H2H_P1_START, H2H_P2_START, nextTrack, reportRace, skillLabel, raceInfoSlideTicks } from './twoHuman.js'
 import { windowedWaitInitialState, windowedWaitStep, RESULTS_17FF_CX } from './windowedWait.js'
 import { composeCodeCardScreen, fontbinPalette, targetFromTickByte, moveCursor, CURSOR_X0, CURSOR_Y0, CODECARD_W, CODECARD_H } from '../formats/fontbin.js'
 import { cycleControl, cycleSound, cycleSmoothness, advanceCheatCursor, redefineKeyAccepted, redefineGroupOf, redefineSlotInGroup, REDEFINE_TOTAL_SLOTS, REDEFINE_SLOTS_PER_GROUP } from './options.js'
@@ -797,7 +797,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     else if (phase === 'RACE_INTRO') drawRaceIntro(menuBuf, arena, { ...currentRace(tournament), participants: raceIntroParticipants(tournament) })
     else if (phase === 'RESULTS') drawResults(menuBuf, arena, { standings: lastStandings, passed: lastPassed })
     else if (phase === 'OUTCOME') drawOutcome(menuBuf, arena, { message: OUTCOME_MESSAGES[tournament.lastOutcome] })
-    else if (phase === 'CHAMPION') drawChampion(menuBuf, arena, { playerName: CHARACTER_NAMES[tournament.playerCharacter] })
+    else if (phase === 'CHAMPION') drawChampion(menuBuf, arena, { playerName: CHARACTER_NAMES[championCharacter ?? tournament.playerCharacter] })
     paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
     statusEl.textContent = phase
   }
@@ -837,11 +837,15 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
 
   /** Runs one race (or, for round 9, the bonus RUFFTRUX challenge) to completion and resolves the
    * result tournament.js's reportRaceResult expects. */
-  async function runOneRace({ round, race }) {
+  /** `twoHuman`: a two-human Head to Head race's own setup (docs/engine.md §9bw) -- `{ raceNumber,
+   * rosterWords }`: raceFormat 2, both cars human (`[0x2658]`/`[0x265A]` = the two players' own
+   * devices), the alternate tuning path with the two slot words (`[0x8A2]` nonzero, §9bg), and a real
+   * P2 reader for car 1. Otherwise the one-player `tournament` supplies everything, as before. */
+  async function runOneRace({ round, race }, twoHuman = null) {
     statusEl.textContent = `Loading round ${round} race ${race}…`
     const { bank, words, palBytes, rgb, size: vehicleSize, frames, rotorFrames, bank2, pristineTile0, ph0, world, brk } = await loadRaceAssets(round, race)
     const strt = strtList.find((s) => s.round === round && s.race === race)
-    const raceFormat = tournament.format === 'twocar' ? 2 : 1
+    const raceFormat = twoHuman ? 2 : tournament.format === 'twocar' ? 2 : 1
     // `UNKNOWN_kidmodifier_use` resolved 2026-09-22 -- `tournament.opponents` (the 3 drones' own
     // selected characters) feeds spawnCars's real per-car tuning handicap, not just
     // `raceCtx.tournamentIndex`. Both use `effectiveRaceIndex`, not `tournament.raceIndex` directly
@@ -850,13 +854,16 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     // less than this port's own already-advanced `raceIndex` (docs/engine.md §9ay,
     // `tournament.js`'s own `effectiveRaceIndex` header for the full account -- found alongside the
     // tournament board item, but not board-specific).
-    const tIndex = effectiveRaceIndex(tournament)
-    const cars = spawnCars(strtList, round, race, { raceFormat, tournamentIndex: tIndex, opponentCharacters: opponentCharactersFor(tournament) })
+    const tIndex = twoHuman ? twoHuman.raceNumber : effectiveRaceIndex(tournament) // [28C1]: 1FB9/207A in two-human play
+    const controllerTypes = twoHuman ? [settings.p1Control, settings.p2Control, 6, 6] : [settings.p1Control, 6, 6, 6]
+    const cars = twoHuman
+      ? spawnCars(strtList, round, race, { raceFormat, tournamentIndex: tIndex, controllerTypes, altTuning: true, rosterWords: twoHuman.rosterWords })
+      : spawnCars(strtList, round, race, { raceFormat, tournamentIndex: tIndex, opponentCharacters: opponentCharactersFor(tournament) })
     currentCars = cars
     const camera = initCameraState(strt)
     // controllerTypes [2658..265E]: P1's real chosen device (settings.p1Control, 1000:2D00's own
     // 1-based enum -- JOY1/JOY2/MOUSE never reachable yet, P6), every other car the CPU (6).
-    const raceCtx = { ...roundCtx(round, race, { raceFormat }), brk, tournamentIndex: tIndex, world, stepIncrement: 1, sound, camera, controllerTypes: [settings.p1Control, 6, 6, 6] }
+    const raceCtx = { ...roundCtx(round, race, { raceFormat }), brk, tournamentIndex: tIndex, world, stepIncrement: 1, sound, camera, controllerTypes }
     if (round === 9) raceCtx.ruffTruxTime = RUFF_TRUCK_TIMES[race - 1]
     const raceState = {}
     currentRaceState = raceState
@@ -865,6 +872,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     raceStart(sound)
     // KEYS1(4) or KEYS2(5) -- the only two devices reachable yet (P6 adds JOY1/JOY2/MOUSE).
     const humanReader = recordingReader(createKeyboardReader(settings.p1Control === 4 ? settings.keys1 : keys2, window))
+    const p2Reader = twoHuman ? createKeyboardReader(p2Keys(), window) : null // car 1's own human driver
     // Pause/fade/cheats (docs/engine.md §9q/§9ai): the same modules `play.js` wires into its own
     // loop, ported here for the first time (M3.34) -- `game.html` previously had none of the three.
     // Fresh per race, same as `humanReader`/`smoothGate` above: a reader created once at boot would
@@ -900,6 +908,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       let last = performance.now()
       function cleanup() {
         humanReader.dispose()
+        p2Reader?.dispose()
         pauseKey.dispose()
         abortRaceFn = null
       }
@@ -957,7 +966,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
             // that already gates rendering (docs/engine.md §9ao 8) -- called once, not twice, since
             // `shouldDraw()` mutates its own counter.
             raceCtx.drawnTick = smoothGate.shouldDraw()
-            const controls = cars.map((car, i) => (i === 0 ? humanReader.read() : droneControlByte(car, raceCtx)))
+            const controls = cars.map((car, i) => (i === 0 ? humanReader.read() : i === 1 && p2Reader ? p2Reader.read() : droneControlByte(car, raceCtx)))
             runStep(world, cars, controls, raceState, raceCtx)
             if (isOver()) { over = true; break } // the exiting step never renders (3081 jumps past 90C5)
             if (raceCtx.drawnTick) { shouldRender = true; advanceRotorFrame(cars, round); raceState.tileAnimCounter = (raceState.tileAnimCounter ?? 0) + 1 }
@@ -1046,7 +1055,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     // Only a FAILED qualifier (10E4 -> RET) skips it -- needsOpponentPick's own !over-unless-champion.
     if (needsOpponentPick(tournament)) { enterOpponentPick(); return }
     if (tournament.over) {
-      if (tournament.champion) { enterChampion(); return }
+      if (tournament.champion) { championCharacter = tournament.playerCharacter; enterChampion(); return }
       enterSelectGame()
       return
     }
@@ -1194,13 +1203,72 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       h2hFirstSeed = twoItemState.idleTicks // [0x2] at the confirm -- race 1's nextTrack v (rule 3)
       h2hSession.chooseGameSelection = selection // 1F84
       h2hMode = selection // 1F8E: [0x8A2]=CL, the altTuning fork
-      // The race screens are P4 commits B/C (docs/engine.md §9bv); until then the real exits:
-      // TOURNAMENT (1F97: CALL 1FAF; RET) ends back at SELECT GAME, SINGLE RACE (1FA6: JMP 1EF1)
-      // comes back to CHOOSE GAME.
-      statusEl.textContent = 'Two-human race screens pending (P4 commits B/C).'
-      if (selection === 1) enterSelectGame()
-      else enterChooseGame()
+      if (selection === 1) { h2hNextRace(h2hFirstSeed); return } // 1F97: CALL 1FAF (docs/engine.md §9bw)
+      // SINGLE RACE (2329) is P4's second item; until then its real exit, 1FA6: JMP 1EF1.
+      statusEl.textContent = 'Two-human single race is not implemented yet (P4 item 2).'
+      enterChooseGame()
     })
+  }
+
+  /** `RunHeadToHeadTournament 1000:1FAF`'s per-race loop (docs/engine.md §9bw): pick the track
+   * (`1FDD-1FF9`, `nextTrack` from `v`), the race-info screen (`240A`/`2481`/"TOURNAMENT RACE n",
+   * then `2216`'s slide -- `raceInfoSlideTicks` with input ignored -- then `179B`, both players
+   * combined), the race (`216C`), then `256E` (commit C), `INC [28C1]` and the first-to-4 test. */
+  let h2hTrack = null
+  let h2hInfoWait = null
+  let h2hInfoPreStep = null
+  let h2hInfoRafId = null
+  let h2hInfoLast = 0
+  let h2hInfoAcc = 0
+  let championCharacter = null // who 1AAD names: the one-player player, or the two-human match winner (2081-2095: BX=0xC03/0xC1E)
+  function h2hNextRace(v) {
+    h2hTrack = nextTrack(h2hMatch, v)
+    phase = 'H2H_RACE_INFO'
+    const slide = raceInfoSlideTicks(smoothnessN) // 2216: floor(22/smoothness)+1 ticks
+    h2hInfoWait = waitScreenInitialState()
+    h2hInfoPreStep = holdTicksPreStep(slide)
+    menuReleaseTracker.reset()
+    paintTwoPlayerRaceInfo()
+    h2hInfoLast = performance.now()
+    h2hInfoAcc = 0
+    h2hInfoRafId = requestAnimationFrame(h2hInfoTick)
+  }
+  function paintTwoPlayerRaceInfo() {
+    canvas.width = MENU_VIEW.w
+    canvas.height = MENU_VIEW.h
+    menuBuf.fill(0)
+    const players = h2hSetup.characters.map((c) => ({ name: CHARACTER_NAMES[c], label: skillLabel(h2hSession.lifetimeWins[c], h2hSession.lifetimeLosses[c]), wins: h2hSession.lifetimeWins[c], losses: h2hSession.lifetimeLosses[c] }))
+    drawTwoPlayerRaceInfo(menuBuf, arena, { raceNumber: h2hMatch.raceNumber, className: TITLE_CLASS_NAMES[h2hTrack.round - 1], players, tally: [h2hMatch.p1Wins, h2hMatch.p2Wins] })
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
+    statusEl.textContent = 'TOURNAMENT RACE'
+  }
+  function h2hInfoWaitTick(input) {
+    const r = waitScreenStep(h2hInfoWait, input, h2hInfoPreStep)
+    if (r.entered) menuReleaseTracker.reset() // 179B's own entry (17AB/17B0)
+    if (r.exit) { h2hRunRace(); return true }
+    return false
+  }
+  function h2hInfoTick(now) {
+    if (phase !== 'H2H_RACE_INFO') return
+    h2hInfoAcc += Math.min(now - h2hInfoLast, 250)
+    h2hInfoLast = now
+    while (h2hInfoAcc >= INTRO_TICK_MS) {
+      h2hInfoAcc -= INTRO_TICK_MS
+      if (h2hInfoWaitTick(readWaitInput())) return
+    }
+    h2hInfoRafId = requestAnimationFrame(h2hInfoTick)
+  }
+  async function h2hRunRace() {
+    if (h2hInfoRafId != null) { cancelAnimationFrame(h2hInfoRafId); h2hInfoRafId = null }
+    phase = 'LOADING'
+    const result = await runOneRace(h2hTrack, { raceNumber: h2hMatch.raceNumber, rosterWords: h2hSetup.rosterWords }) // 2074: CALL 216C
+    if (result.aborted) { enterTitle(); return } // ESC during a race: port-only, as in one-player play
+    const p1Won = result.finishPosition === 1 // [0x3FC]==0xC03 (256E's own 2574), after the [2630] fix-up
+    // 256E is commit C: until then its side effects only (the tally, the lifetime stats, 207A's
+    // [28C1] INC), no screen, and races 2+ seed nextTrack with 0 instead of 17FF's own [0x2].
+    const { matchOver, champion } = reportRace(h2hMatch, h2hSetup.characters[0], h2hSetup.characters[1], p1Won)
+    if (matchOver) { championCharacter = h2hSetup.characters[champion - 1]; enterChampion(); return } // 2095: CALL 1AAD, then RET up to SELECT GAME
+    h2hNextRace(0) // 2092: JMP 1FCC
   }
 
   /** The results table, `ShowRaceResultsScreenTune8or6 1000:13E4`, its wait at `1618-164E`
@@ -1414,7 +1482,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     if (phase === 'OPTIONS') { optionsKey(e); return }
     if (phase === 'QUIT') return // real DOS is gone at this point; nothing left to read
     if (phase === 'LOADING') return
-    if (phase === 'SELECT_GAME' || phase === 'ONE_PLAYER_GAME' || phase === 'CHAR_SELECT' || phase === 'BOARD' || phase === 'RACE_INTRO' || phase === 'ELIMINATED' || phase === 'OUTCOME' || phase === 'RESULTS' || phase === 'CHAMPION' || phase === 'PRESS_ANY_KEY' || phase === 'CHOOSE_GAME' || phase === 'HANDICAP') return // each phase's own dedicated reader(s) + menuReleaseTracker own its input entirely (RACE_INTRO/ELIMINATED: 179B, raceIntroTick/eliminationTick; OUTCOME: 1C1B, outcomeTick; RESULTS: 13E4, resultsTick; CHAMPION: 1AAD, championTick; PRESS_ANY_KEY: 0C15, pressAnyKeyTick)
+    if (phase === 'SELECT_GAME' || phase === 'ONE_PLAYER_GAME' || phase === 'CHAR_SELECT' || phase === 'BOARD' || phase === 'RACE_INTRO' || phase === 'ELIMINATED' || phase === 'OUTCOME' || phase === 'RESULTS' || phase === 'CHAMPION' || phase === 'PRESS_ANY_KEY' || phase === 'CHOOSE_GAME' || phase === 'HANDICAP' || phase === 'H2H_RACE_INFO') return // each phase's own dedicated reader(s) + menuReleaseTracker own its input entirely (RACE_INTRO/ELIMINATED: 179B, raceIntroTick/eliminationTick; OUTCOME: 1C1B, outcomeTick; RESULTS: 13E4, resultsTick; CHAMPION: 1AAD, championTick; PRESS_ANY_KEY: 0C15, pressAnyKeyTick)
     if (e.code === 'Space' || e.code === 'Enter') confirm()
   }
   window.addEventListener('keydown', onKeydown)
@@ -1455,6 +1523,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       if (resultsRafId != null) cancelAnimationFrame(resultsRafId)
       if (championRafId != null) cancelAnimationFrame(championRafId)
       if (handicapRafId != null) cancelAnimationFrame(handicapRafId)
+      if (h2hInfoRafId != null) cancelAnimationFrame(h2hInfoRafId)
       if (pressAnyKeyRafId != null) cancelAnimationFrame(pressAnyKeyRafId)
       if (waitReaders) for (const r of Object.values(waitReaders)) r.dispose()
       titleReader?.dispose()
@@ -1537,6 +1606,10 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     },
     getCheatActive: () => cheatActive,
     getTwoHuman: () => ({ session: h2hSession, setup: h2hSetup, match: h2hMatch, mode: h2hMode, firstSeed: h2hFirstSeed, handicap: phase === 'HANDICAP' ? { ...handicapState, character: handicapCharacter, slot: handicapSlot } : null }),
+    forceTwoPlayerRaceInfoSteps: (n, input = {}) => {
+      if (phase !== 'H2H_RACE_INFO') return
+      for (let i = 0; i < n; i++) if (h2hInfoWaitTick(input)) return
+    },
     forceHandicapSteps: (n, bits = 0) => {
       if (phase !== 'HANDICAP') return
       for (let i = 0; i < n; i++) if (handicapWaitTick(bits)) return
@@ -1565,9 +1638,9 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       for (let i = 0; i < n; i++) if (outcomeWaitTick(read)) return
     },
     getOutcomeWait: () => (phase === 'OUTCOME' ? { ...outcomeWait, window: outcomeWait.window && { ...outcomeWait.window, wait: { ...outcomeWait.window.wait } } } : null),
-    // Where a 179B-terminated screen is: `{ inWait, stage, ticks }` (null outside RACE_INTRO/ELIMINATED).
+    // Where a 179B-terminated screen is: `{ inWait, stage, ticks }` (null outside RACE_INTRO/ELIMINATED/H2H_RACE_INFO).
     getKeyWait: () => {
-      const w = phase === 'RACE_INTRO' ? raceIntroWait : phase === 'ELIMINATED' ? eliminationWait : null
+      const w = phase === 'RACE_INTRO' ? raceIntroWait : phase === 'ELIMINATED' ? eliminationWait : phase === 'H2H_RACE_INFO' ? h2hInfoWait : null
       if (!w) return null
       return { inWait: w.wait != null, stage: w.wait?.phase ?? null, ticks: w.wait?.ticks ?? 0 }
     },

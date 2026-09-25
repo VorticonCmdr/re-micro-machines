@@ -11166,3 +11166,54 @@ sleeps, real key events through the session readers: P1 KEYS 2, P2 KEYS 1 `J L I
   200ms after the question opened), the question resolved on its first tick with the stored YES:
   words `[0x80, 11]`, straight on to P2's pick. ESC on P2's pick: SELECT GAME.
 - No console errors.
+
+## 9bw. P4 two-human Head to Head, commit B: the race-info screen, a two-human race, the match loop (2026-09-25)
+
+**Purpose.** GOAL-DOS-PARITY.md P4's first item, commit B of three (§9bv has A). What
+`RunHeadToHeadTournament 1000:1FAF` does around each race, minus `256E`'s screen (commit C).
+
+**The disassembly (`1FAF-2098`, `[STATIC]`).** `[0x988]=1`, `[0x8A5]=1`, `[0x28C1]=1`, the
+used-track bitmap zeroed, then per race: the track (`1FDD-1FF9`: `[0x2]&7` resampled until an unused
+slot, `[28BF]`/`[28C0]` from `DS:09BA`, `[0x9D8]` = round); the two class icons (records 8/9, frame
+round-1); `240A` (`AX=0x24`: the portraits, names, tally digits); `2481` (skill labels, lifetime
+WON/LOST); "TOURNAMENT RACE n" (`DS:0975`, the number patched in by `1A34` at `0985`, centred at
+Y=0x6E); the class icon record `0xBB2`; `2216` (the slide, `raceInfoSlideTicks`); `179B` (the key
+wait, both players combined, ~700-tick timeout; no race skip here -- that is only at `1398`);
+`216C` (the race); `256E` (commit C); `INC [28C1]` (`207A`); `[0x98A]==4` champion for P1
+(`BX=0xC03`), else `[0x98C]==4` for P2 (`BX=0xC1E`), then `CALL 1AAD` and RET all the way up to
+SELECT GAME; otherwise `JMP 1FCC` (the next track). No tune is started in `1FAF` itself.
+
+**What changed (`flow.js`).**
+- `runOneRace(race, twoHuman)`: with a two-human setup the race is format 2, `controllerTypes`
+  = `[p1Control, p2Control, 6, 6]` (so car 1 is not a drone, §9bf), `spawnCars` takes the
+  alternate tuning path with the two slot words from commit A (`altTuning`, `rosterWords`, §9bg),
+  `tournamentIndex` = the race number (`[28C1]`), and car 1 reads a real P2 keyboard reader.
+- CHOOSE GAME's TOURNAMENT now runs `h2hNextRace(seed)`: `nextTrack`, an `H2H_RACE_INFO` phase
+  drawn by the new `screens.js` `drawTwoPlayerRaceInfo` (text only: race number, class name, each
+  player's name, skill label, lifetime WON/LOST and match tally; the portraits and icons are not
+  drawn), driven by the same `waitScreenStep` composition as the one-player race intro with
+  `raceInfoSlideTicks(smoothness)` as the pre-wait slide and `179B` after it; then the race; then
+  `reportRace` (tally, lifetime stats, `207A`); first to 4 wins goes to the champion screen, which
+  now names `championCharacter` (the match winner here; the player in one-player play), and then
+  SELECT GAME. SINGLE RACE still returns to CHOOSE GAME (P4 item 2).
+- **Until commit C:** `256E` is not shown; its side effects run (the tally, the lifetime stats),
+  and races 2+ seed `nextTrack` with 0 rather than `17FF`'s own `[0x2]` at the dismiss.
+- Debug hooks: `forceTwoPlayerRaceInfoSteps(n, input)`; `getKeyWait()` covers `H2H_RACE_INFO`.
+
+**Tests.** No new pure logic: `nextTrack`, `reportRace`, `raceInfoSlideTicks`, the two-human
+`isDrone` and the alternate tuning are already covered by `check-twohuman`/`check-twocar`. The
+wiring is verified live. Full regression suite plus `build` clean.
+
+**Live verification, `[PROVEN]` in the port** (`game.html`, Web Worker RAF shim, real key events):
+- DWAYNE (P1) vs JETHRO (P2), no handicap question; CHOOSE GAME TOURNAMENT with a seed of 4 used
+  track slot 4; the race-info slide took 335ms (23 ticks = 329ms at HIGH smoothness), and with no
+  input `179B` timed out 10.02s later (700 ticks) into the race.
+- In the race: `isDrone` `[0,0,1,1]`; P2's `I` (KEYS 1 accelerate) held 1.5s moved car 1 only
+  (speeds `[0,848,0,0]`), P1's ArrowUp moved car 0 only (`[848,0,0,0]`), and car 1 did not move
+  on its own.
+- Race 1 ended with P1 ahead (the live two-car score set to 7, then P1 drove car 1 off-screen for
+  the 8th point): the race-info screen for race 2 followed, tally 1-0, DWAYNE lifetime 1/0 and
+  JETHRO 0/1, a different track slot (0).
+- With the tally set to 3-0 and P1 winning race 2: the champion screen, then fire back to SELECT
+  GAME.
+- No console errors.

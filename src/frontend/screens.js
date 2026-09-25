@@ -120,6 +120,23 @@ export function drawTwoPlayerPickLabels(buf, arena, { slot, handicap = null }) {
   if (handicap) drawStringCentred(buf, arena, rec('FONT1.CHR'), `HANDICAP ${CHARACTER_NAMES[handicap.character]} ? ${handicap.answer ? 'YES' : 'NO'}`, 0xa8)
 }
 
+/** `RunHeadToHeadTournament 1000:1FAF`'s own per-race info screen (docs/engine.md §9bw), as text:
+ * "TOURNAMENT RACE n" (`DS:0975`, the number patched in at `0985`, `2040-204F`), the vehicle class
+ * (`2216`'s `DS:002F` name by round), and per player (`240A`/`2481`): the name, the skill label and
+ * the lifetime WON/LOST count, and the match's own win tally. The portraits, the class icon and
+ * `2216`'s sliding icons are not drawn by the port. */
+export function drawTwoPlayerRaceInfo(buf, arena, { raceNumber, className, players, tally }) {
+  drawStringCentred(buf, arena, rec('FONT2.CHR'), `TOURNAMENT RACE ${raceNumber}`, 0x6e)
+  drawStringCentred(buf, arena, rec('FONT1.CHR'), className, 0x8c)
+  players.forEach((p, i) => {
+    const x = i === 0 ? 4 : 0xbe
+    drawString(buf, arena, rec('FONT1.CHR'), p.name, x, 0x14)
+    drawString(buf, arena, rec('FONT1.CHR'), p.label.trim(), x, 0x1e)
+    drawString(buf, arena, rec('FONT1.CHR'), `WON ${p.wins} LOST ${p.losses}`, x, 0x28)
+    drawString(buf, arena, rec('FONT2.CHR'), String(tally[i]), x + 0x38, 0x3c)
+  })
+}
+
 /** `RunHeadToHeadChooseGameMenu 1000:1EF1`'s own screen: "TOURNAMENT" (X=0x18) and "SINGLE RACE"
  * (X=0x9C) at Y=0xBE, "CHOOSE GAME!" centred at Y=0x68 (`1F25-1F4C`); the two vehicle icons
  * (`1F4F-1F71`) are not drawn by the port. */

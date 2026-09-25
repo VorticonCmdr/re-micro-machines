@@ -704,8 +704,11 @@ docs, (6) commit.
   DWAYNE/JETHRO (`[0x9A0]`/`[0x9A2]`), each followed by `0B51`'s handicap question when it applies
   (the picking player's own reader, the session answer cells, the slot word `character|answer`) --
   then `1EF1`'s CHOOSE GAME (tune 2, the tally reset, `[0x8A0]`/`[0x8A2]`, race 1's seed). `[PROVEN]`
-  live in the port, slot words byte-identical to the §9bn DOS walkthrough. Remaining: commit B (the
-  race-info screen, `2216`+`179B`, and a two-human race), commit C (`256E`, the loop, the champion).
+  live in the port, slot words byte-identical to the §9bn DOS walkthrough. **Commit B done (M3.77,
+  §9bw):** TOURNAMENT runs `1FAF`'s loop -- the track pick, the race-info screen (`2216`'s slide
+  then `179B`), a real two-human race (car 1 on P2's keys, the alternate tuning with the slot
+  words), the tally and lifetime stats, first to 4 wins to the champion screen and back to SELECT
+  GAME. Remaining: commit C (`256E`'s WINNER!/LOSER! screen, and the next track's seed from it).
 - [ ] **The single-race select** (`SelectSingleRaceTrack 1000:2193`, the 10-entry list at
   `DS:09D9`; LEFT and RIGHT both step +1). Find where it is reachable from, and port it if it is
   reachable.
