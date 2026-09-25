@@ -19,61 +19,47 @@
 // pending bonus race, where it genuinely is the just-completed race, since round 9 itself is never
 // in `ORDER_TABLE` and gets no icon of its own).
 //
-// The newest icon blinks -- `18d8`'s own loop erases it (`RestoreSpriteBackground`), flips, waits;
-// redraws (`ClipAndBlitSpriteTransparent`), flips, waits -- every `BOARD_BLINK_HALF_PERIOD_TICKS`
-// (36 ticks, ~0.5s -- `FUN_1000_17ff`'s own `CMP [0x2],CX/JLE` loop runs for CX+1 ticks, not CX,
-// since the loop's own [2]<=CX continue-test still re-enters on the CX-th tick; the SAME off-by-one
-// class `frontMenu.js`'s own idle-cancel test already caught once), for up to
-// `BOARD_TIMEOUT_TICKS` (0x2BC=700 ticks, ~10s, `[261F]`) or until any input. `[261F]`'s own
-// threshold is sampled only ONCE per full blink cycle (`1000:1921`, right after the redraw half,
-// not continuously) -- so the REAL timeout lands on the next 72-tick cycle boundary at or past 700,
-// i.e. 720 ticks (~10.3s), not exactly 700; `boardStep` reproduces this by checking the timeout
-// only at the same off->on transition, not every tick. Exit test (`FUN_1000_17ff`, the SAME
-// combined-P1|P2 "wait for fire or any key release" helper `frontMenu.js`'s idle-cancel path also
-// drives): fire pressed OR ESC/other key released. SIMPLIFIED here (not byte-for-byte `17ff`): the
-// real routine treats an ALREADY-held fire button as "wait for it to be released, THEN wait for a
-// fresh press" within the SAME ~0.5s budget, so a fire button still held from confirming the
-// previous screen can (rarely) skip the board on its very first tick. This port instead reuses the
-// established `AWAIT_RELEASE` idiom already used by `frontMenu.js`/`charSelect.js` for the same
-// "ignore an already-held button" concern -- ignore fire entirely until it is released once, then
-// treat the next press as the real one. Behaviourally equivalent for every case except that one
-// rare already-held-at-entry edge, and consistent with every other menu screen in this file rather
-// than re-deriving `17ff`'s own dual-phase-shared-budget logic a second time for a screen with no
-// live capture and no gameplay rule riding on it.
+// The newest icon blinks, and the screen waits, through `1000:17FF` (docs/engine.md §9br,
+// `windowedWait.js`): `1902` present, `CALL 17FF` with CX=0x23 -- CLC leaves the screen, STC erases
+// the icon (`RestoreSpriteBackground 05B4`), presents, `CALL 17FF` again -- CLC leaves, STC redraws
+// the icon (`ClipAndBlitSpriteTransparent 04B8`), compares `[0x261F]` with 0x2BC (`1921`) and leaves
+// if reached, else loops. Each `17FF` window is CX+1 = 36 ticks (`BOARD_BLINK_HALF_PERIOD_TICKS`);
+// the timeout is sampled only after every 2nd window, so it lands on tick 720, not 700. `17FF`
+// itself (`twoHuman.js` `raceResultWaitStep`): both players' fire combined, the release latch
+// cleared at every window's entry, any key release or a FRESH fire press leaves; a fire already
+// held keeps it waiting for the release, and the window's ticks keep counting meanwhile, so a held
+// fire neither dismisses the board nor stops its blink or its timeout.
 //
-// NOT ported: the round-9 "reveal" branch (`1000:192b-198d`), the ALWAYS-taken path whenever a
-// pending bonus race is about to run (`TriggerBonusRace 1000:1a82` calls `115c` with `[28BF]`
-// already forced to 9, so `18d8`'s own `CMP [28BF],9/JZ 192b` fires every time, not rarely). It
-// skips the single-icon blink entirely and instead repeatedly draws 8 more MINATURE.CHR icons at
-// two fixed columns across four rows, then redraws the whole `ORDER_TABLE[1..raceIndex]` icon list,
-// with the SAME wait/exit/timeout shape as the regular blink (still `FUN_1000_17ff`, still gated on
-// the SAME `[261F]` threshold) -- but frame indices 0x20-0x27 (32-39), the last two of which read
-// past `MINATURE.CHR`'s own real 38-frame table (`chr.js`'s `CHR_TABLE`, frames 0-37), a genuine
-// benign out-of-bounds read in the shipped game. This port shows the SAME single-icon blink for a
-// pending-bonus-race board too, a documented simplification of a real, always-taken (not rare)
-// code path that draws past its own asset's real bounds in the original.
-export const BOARD_BLINK_HALF_PERIOD_TICKS = 0x24 // 36 (not 0x23=35 -- 17ff's own CX+1 tick loop)
-export const BOARD_TIMEOUT_TICKS = 0x2bc // ~10s, [261F] -- sampled once per 72-tick cycle, see above
+// **CORRECTED 2026-09-25 (§9br).** This file used to model the wait with its own
+// `AWAIT_RELEASE`/`POLL` idiom instead of `17FF`, and said the real routine could "(rarely) skip
+// the board" on a fire held from the previous screen. That was wrong: under `17FF` a held fire
+// never dismisses. The old idiom also stopped counting ticks while fire was held, freezing the blink
+// and the timeout; `17FF` does not.
+//
+// **The bonus-race reveal (`1000:192B-198B`)**, the ALWAYS-taken path whenever a pending bonus race
+// is about to run (`TriggerBonusRace 1000:1a82` calls `115c` with `[28BF]` already forced to 9, so
+// `18d8`'s own `CMP [28BF],9/JZ 192b` fires every time): its DRAWING is not ported -- it repeatedly
+// draws 8 more MINATURE.CHR icons at two fixed columns across four rows, then redraws the whole
+// `ORDER_TABLE[1..raceIndex]` icon list, with frame indices 0x20-0x27 (32-39), the last two of
+// which read past `MINATURE.CHR`'s own real 38-frame table (`chr.js`'s `CHR_TABLE`, frames 0-37), a
+// genuine benign out-of-bounds read in the shipped game. This port shows the SAME single-icon
+// blink for it. Its WAIT is ported: the same two 36-tick `17FF` windows per cycle, but the
+// `[0x261F]` check (`1971`) comes after the FIRST window of each pair, not the second, so it times
+// out on tick 756, not 720 (`boardInitialState({ bonusReveal: true })`).
+import { windowedWaitInitialState, windowedWaitStep } from './windowedWait.js'
 
-export function boardInitialState() {
-  return { phase: 'AWAIT_RELEASE', blinkOn: true, phaseTicks: 0, totalTicks: 0 }
+export const BOARD_17FF_CX = 0x23 // 1905/1916/1969/1985: MOV CX,0x23
+export const BOARD_BLINK_HALF_PERIOD_TICKS = BOARD_17FF_CX + 1 // 36: 17FF's own window is CX+1 ticks
+export const BOARD_TIMEOUT_TICKS = 0x2bc // ~10s, [261F] -- sampled after every 2nd window (1921), or after every 1st (1971, the bonus reveal)
+
+export function boardInitialState({ bonusReveal = false } = {}) {
+  return { blinkOn: true, window: windowedWaitInitialState({ cx: BOARD_17FF_CX, checkPeriod: 2, checkOffset: bonusReveal ? 1 : 0 }) }
 }
 
+/** One tick. `input`: `{ fireHeld, anyKeyReleased }`. Returns `windowedWaitStep`'s own
+ * `{ exit, resetLatch, windowEnded, timeoutChecked }`; `state.blinkOn` flips at every window end. */
 export function boardStep(state, input = {}) {
-  const bits = input.bits ?? 0
-  if (state.phase === 'AWAIT_RELEASE') {
-    if ((bits & 0x08) === 0) state.phase = 'POLL'
-    return { exit: false }
-  }
-  if (input.escReleased || input.otherReleased || bits & 0x08) return { exit: true }
-  state.totalTicks++
-  state.phaseTicks++
-  if (state.phaseTicks >= BOARD_BLINK_HALF_PERIOD_TICKS) {
-    state.phaseTicks = 0
-    state.blinkOn = !state.blinkOn
-    // 1000:1921: [261F] is only compared right after the redraw half (the off->on transition), not
-    // continuously -- so a 700-tick crossing mid-cycle doesn't exit until the NEXT sample point.
-    if (state.blinkOn && state.totalTicks >= BOARD_TIMEOUT_TICKS) return { exit: true }
-  }
-  return { exit: false }
+  const r = windowedWaitStep(state.window, input)
+  if (r.windowEnded && !r.exit) state.blinkOn = !state.blinkOn // 1910 erase / 191E redraw
+  return r
 }

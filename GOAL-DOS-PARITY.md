@@ -120,7 +120,7 @@ Don't read `docs/engine.md` from start to finish. It is 6,000 lines. Jump to sec
 ## Regression suite (run before every commit; all must pass)
 
 ```bash
-for s in catalog lz chrtable tables car intro codecard options title mainmenu charselect board elimination keywait outcomewait step trace ai play sound rounds finish twocar twohuman tournament \
+for s in catalog lz chrtable tables car intro codecard options title mainmenu charselect board elimination keywait outcomewait windowedwait step trace ai play sound rounds finish twocar twohuman tournament \
          menu screens opl-toggle smoothness si2 live smoke; do npm run -s $s || echo "FAIL $s"; done
 npm run build
 ```
@@ -283,7 +283,7 @@ docs, (6) commit.
   CODECARD, which needs 3, plus 1 more at OPTIONS (4 total, confirmed by the working JS-dispatch
   retry). H2H race-info's own `179B` use remains unwired
   (that screen isn't reachable from `flow.js` at all yet, P4's own remaining scope).
-- [ ] **Wait-screen input parity.** `179B`'s own real `fireHeld`/`anyKeyReleased` release-latch exit
+- [x] **Wait-screen input parity.** `179B`'s own real `fireHeld`/`anyKeyReleased` release-latch exit
   and stage-1 debounce are NOT modelled anywhere in this port -- `RACE_INTRO`/`ELIMINATED` still
   dismiss ONLY via the existing keydown-edge-triggered `onKeydown`->`confirm()` path, the timeout
   fix above adds only the auto-advance NUMBER, not the real input shape (`keyWaitStep`,
@@ -324,6 +324,15 @@ docs, (6) commit.
   `raceResultWaitStep` now takes `17FF`'s `CX` as a parameter (default 20, `256E` unchanged), one
   model rather than a copy, and the outcome screen's own `1E0C` call is done. What is left of item
   (3) is wiring the board (`DrawTournamentBoard 18D8`) and the results screen (`164B`) onto it.
+  **Scope item (3) DONE 2026-09-25 (M3.72, docs/engine.md §9br), closing this bullet:** a shared
+  repeated-`17FF` loop (`windowedWait.js`) now drives the board (CX=0x23, timeout sampled after
+  every 2nd window: 720; the bonus-race reveal after every 1st: 756), the results screen (CX=0xF,
+  every window: 704) and the outcome screen's SIMPLE path. The board's old `AWAIT_RELEASE` idiom
+  froze its blink and timeout on a held fire, which `17FF` does not; the board now also reads the
+  session-lifetime readers. `[PROVEN]` live in the port: a fire held into the board still blinks
+  and times out at 10.29s; RESULTS times out at 10.05s; a fresh fire press dismisses RESULTS into
+  ONE LIFE LOST, which then leaves at its first poll. Every `17FF` call reachable in one-player play
+  now runs the real `17FF`; `26BA` (two-human) is P4's, and `2166` has no callers.
 - [x] **Tournament board** (`1000:18d8`): the `CASE.CHR` map with `MINATURE` icons at the
   positions in `DS:0312` (26 words, §9t). It is gated on `[43A]=1`. Find exactly when it is shown
   in `RunTournamentLoop 1000:10a0`.

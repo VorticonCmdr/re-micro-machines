@@ -49,6 +49,7 @@ import { boardInitialState, boardStep } from './board.js'
 import { eliminationInitialState, eliminationStep } from './elimination.js'
 import { waitScreenInitialState, waitScreenStep, holdTicksPreStep } from './keyWait.js'
 import { outcomeWaitInitialState, outcomeWaitStep } from './outcomeWait.js'
+import { windowedWaitInitialState, windowedWaitStep, RESULTS_17FF_CX } from './windowedWait.js'
 import { composeCodeCardScreen, fontbinPalette, targetFromTickByte, moveCursor, CURSOR_X0, CURSOR_Y0, CODECARD_W, CODECARD_H } from '../formats/fontbin.js'
 import { cycleControl, cycleSound, cycleSmoothness, advanceCheatCursor, redefineKeyAccepted, redefineGroupOf, redefineSlotInGroup, REDEFINE_TOTAL_SLOTS, REDEFINE_SLOTS_PER_GROUP } from './options.js'
 
@@ -665,10 +666,10 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
 
   // P3's first item (GOAL-DOS-PARITY.md, src/frontend/board.js): DrawTournamentBoard 1000:18d8,
   // shown between races in the Challenge format only (`tournament.js`'s own `shouldShowBoard`,
-  // called from `nextAfterOutcome` below). Same combined-P1|P2 fire-bit + shared
-  // menuReleaseTracker input model as SELECT_GAME/ONE_PLAYER_GAME.
+  // called from `nextAfterOutcome` below). Its wait is 17FF's own (board.js, windowedWait.js,
+  // docs/engine.md §9br), read from the session-lifetime waitReaders so a fire held from the
+  // previous screen is seen as held (the part-1 lesson, §9bp).
   let boardState = null
-  let boardReaders = null
   let boardRafId = null
   let boardLast = 0
   let boardAcc = 0
@@ -682,9 +683,8 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     canvas.width = MENU_VIEW.w
     canvas.height = MENU_VIEW.h
     phase = 'BOARD'
-    boardState = boardInitialState()
-    boardReaders = { p1: createKeyboardReader(p1Keys(), window), p2: createKeyboardReader(p2Keys(), window) }
-    menuReleaseTracker.reset()
+    boardState = boardInitialState({ bonusReveal: !!tournament.pendingBonusRace }) // 18F5: [28BF]==9 takes the 192B reveal
+    menuReleaseTracker.reset() // the first 17FF call's own 180F/1814
     paintBoard()
     boardLast = performance.now()
     boardAcc = 0
@@ -696,17 +696,20 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     boardLast = now
     while (boardAcc >= INTRO_TICK_MS) {
       boardAcc -= INTRO_TICK_MS
-      const bits = boardReaders.p1.read() | boardReaders.p2.read()
-      const { escReleased, otherReleased } = menuReleaseTracker.read()
-      const r = boardStep(boardState, { bits, escReleased, otherReleased })
-      if (r.exit) { leaveBoard(); return }
+      if (boardWaitTick(readWaitInput())) return
     }
     paintBoard()
     boardRafId = requestAnimationFrame(boardTick)
   }
+  /** One BOARD tick, shared by the real RAF loop and forceBoardSteps. Returns true once left. */
+  function boardWaitTick(input) {
+    const r = boardStep(boardState, input)
+    if (r.resetLatch) menuReleaseTracker.reset() // the next 17FF call's own 180F/1814
+    if (r.exit) { leaveBoard(); return true }
+    return false
+  }
   function leaveBoard() {
     if (boardRafId != null) { cancelAnimationFrame(boardRafId); boardRafId = null }
-    boardReaders.p1.dispose(); boardReaders.p2.dispose(); boardReaders = null
     startNextRace()
     paintMenu()
   }
@@ -965,7 +968,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     // table only for a Challenge race that isn't the qualifier; an outcome message for a qualifier
     // (either format), a bonus race or a lost Head-to-Head race; nothing after a won Head-to-Head race.
     const next = screenAfterRace(tournament, { wasQualifier, wasBonus: race.round === 9 })
-    if (next === 'RESULTS') { raceResultMusic(sound, resultsWasPassed); phase = 'RESULTS' }
+    if (next === 'RESULTS') { enterResults(resultsWasPassed); return }
     else if (next === 'OUTCOME') { enterOutcome(); return }
     else {
       nextAfterOutcome()
@@ -1049,6 +1052,52 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     // this screen; 1E12's own RET leaves in both cases (docs/engine.md §9bq).
     if (exit === 'livesCheat') applyLivesCheat(tournament)
     nextAfterOutcome() // whether this is a regular race or the just-unlocked bonus race, currentRace() resolves it
+  }
+
+  /** The results table, `ShowRaceResultsScreenTune8or6 1000:13E4`, its wait at `1618-164E`
+   * (docs/engine.md §9br): `[0x261F]=0`, then loop -- blink the rows, present, `[0x261F] >= 0x2BC`
+   * leaves, else `CALL 17FF` with CX=0xF (a release or a fresh fire press leaves, STC loops). The
+   * same shape as the outcome screen's SIMPLE path (windowedWait.js, checkPeriod 1). Replaces the old
+   * indefinite Space/Enter keydown wait. */
+  let resultsWait = null
+  let resultsRafId = null
+  let resultsLast = 0
+  let resultsAcc = 0
+  function enterResults(passed) {
+    raceResultMusic(sound, passed)
+    phase = 'RESULTS'
+    menuReleaseTracker.reset() // the first 17FF call's own 180F/1814
+    resultsWait = windowedWaitInitialState({ cx: RESULTS_17FF_CX })
+    paintMenu()
+    resultsLast = performance.now()
+    resultsAcc = 0
+    if (resultsRafId != null) cancelAnimationFrame(resultsRafId)
+    resultsRafId = requestAnimationFrame(resultsTick)
+  }
+  function resultsWaitTick(input) {
+    const r = windowedWaitStep(resultsWait, input)
+    if (r.resetLatch) menuReleaseTracker.reset()
+    if (r.exit) { leaveResults(); return true }
+    return false
+  }
+  function resultsTick(now) {
+    if (phase !== 'RESULTS') return
+    resultsAcc += Math.min(now - resultsLast, 250)
+    resultsLast = now
+    while (resultsAcc >= INTRO_TICK_MS) {
+      resultsAcc -= INTRO_TICK_MS
+      if (resultsWaitTick(readWaitInput())) return
+    }
+    resultsRafId = requestAnimationFrame(resultsTick)
+  }
+  /** A dismiss and a timeout both fall into 1650. 1000:1650-166A: a PASS jumps straight past
+   * ShowRaceOutcomeMessageTune8or6 to the elimination-check tail -- only a FAIL (CX=2) shows an
+   * OUTCOME screen at all (GOAL-DOS-PARITY.md P3's 4th item, docs/engine.md §9bb item 3,
+   * showsOutcomeAfterResults's own header). */
+  function leaveResults() {
+    if (resultsRafId != null) { cancelAnimationFrame(resultsRafId); resultsRafId = null }
+    if (showsOutcomeAfterResults(tournament)) enterOutcome()
+    else nextAfterOutcome()
   }
 
   let raceIntroWait = null // waitScreenStep's own state: the slide hold is its pre-wait work, 179B the wait
@@ -1137,16 +1186,8 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       leaveRaceIntro()
       return
     } else if (phase === 'RESULTS') {
-      // 1000:1650-166A: a PASS jumps straight past ShowRaceOutcomeMessageTune8or6 to the
-      // elimination-check tail -- only a FAIL (CX=2) shows an OUTCOME screen at all (GOAL-DOS-
-      // PARITY.md P3's 4th item, docs/engine.md §9bb item 3, showsOutcomeAfterResults's own header).
-      if (showsOutcomeAfterResults(tournament)) {
-        enterOutcome()
-        return
-      } else {
-        nextAfterOutcome()
-        return
-      }
+      leaveResults() // debug/test entry only (window.mmGame.confirm) -- real input goes through resultsTick
+      return
     } else if (phase === 'OUTCOME') {
       leaveOutcome('dismiss') // debug/test entry only (window.mmGame.confirm) -- real input goes through outcomeTick
       return
@@ -1178,7 +1219,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     if (phase === 'OPTIONS') { optionsKey(e); return }
     if (phase === 'QUIT') return // real DOS is gone at this point; nothing left to read
     if (phase === 'LOADING') return
-    if (phase === 'SELECT_GAME' || phase === 'ONE_PLAYER_GAME' || phase === 'CHAR_SELECT' || phase === 'BOARD' || phase === 'RACE_INTRO' || phase === 'ELIMINATED' || phase === 'OUTCOME') return // each phase's own dedicated reader(s) + menuReleaseTracker own its input entirely (RACE_INTRO/ELIMINATED: 179B, raceIntroTick/eliminationTick; OUTCOME: 1C1B, outcomeTick)
+    if (phase === 'SELECT_GAME' || phase === 'ONE_PLAYER_GAME' || phase === 'CHAR_SELECT' || phase === 'BOARD' || phase === 'RACE_INTRO' || phase === 'ELIMINATED' || phase === 'OUTCOME' || phase === 'RESULTS') return // each phase's own dedicated reader(s) + menuReleaseTracker own its input entirely (RACE_INTRO/ELIMINATED: 179B, raceIntroTick/eliminationTick; OUTCOME: 1C1B, outcomeTick; RESULTS: 13E4, resultsTick)
     if (phase === 'PRESS_ANY_KEY') { confirm(); return } // 0C15: any key click
     if (e.code === 'Space' || e.code === 'Enter') confirm()
   }
@@ -1217,12 +1258,12 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       if (eliminationRafId != null) cancelAnimationFrame(eliminationRafId)
       if (raceIntroRafId != null) cancelAnimationFrame(raceIntroRafId)
       if (outcomeRafId != null) cancelAnimationFrame(outcomeRafId)
+      if (resultsRafId != null) cancelAnimationFrame(resultsRafId)
       clearTimeout(pressAnyKeyTimer)
       waitReaders?.p1.dispose(); waitReaders?.p2.dispose()
       titleReader?.dispose()
       twoItemReaders?.p1.dispose(); twoItemReaders?.p2.dispose()
       charSelectReader?.dispose()
-      boardReaders?.p1.dispose(); boardReaders?.p2.dispose()
       menuReleaseTracker.dispose()
     },
     // debugging/testing hooks: drive the flow without a real keyboard
@@ -1275,15 +1316,19 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       paintCharSelect()
     },
     // Same fast-forward precedent, for BOARD (P3's first item): `input` is
-    // `{ bits, escReleased, otherReleased }`. A no-op outside that phase.
-    forceBoardSteps: (n, input) => {
+    // `{ fireHeld, anyKeyReleased }` (17FF's own input, docs/engine.md §9br). A no-op outside that phase.
+    forceBoardSteps: (n, input = {}) => {
       if (phase !== 'BOARD') return
-      for (let i = 0; i < n; i++) {
-        const r = boardStep(boardState, input)
-        if (r.exit) { leaveBoard(); return }
-      }
+      for (let i = 0; i < n; i++) if (boardWaitTick(input)) return
       paintBoard()
     },
+    getBoardWait: () => (phase === 'BOARD' ? { blinkOn: boardState.blinkOn, ticks: boardState.window.ticks, windows: boardState.window.windows, stage: boardState.window.wait.phase, checkOffset: boardState.window.checkOffset } : null),
+    // Same, for RESULTS: `input` is `{ fireHeld, anyKeyReleased }`. A no-op outside that phase.
+    forceResultsSteps: (n, input = {}) => {
+      if (phase !== 'RESULTS') return
+      for (let i = 0; i < n; i++) if (resultsWaitTick(input)) return
+    },
+    getResultsWait: () => (phase === 'RESULTS' ? { ticks: resultsWait.ticks, windows: resultsWait.windows, stage: resultsWait.wait.phase } : null),
     // Same fast-forward precedent, for ELIMINATED (P3's third item): the bounce, then 179B's own
     // wait. `input` is `{ fireHeld, anyKeyReleased }` (default: nothing), ignored during the bounce,
     // bypassing the readers/menuReleaseTracker entirely. A no-op outside that phase.
@@ -1304,7 +1349,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       const read = () => ({ p1FireHeld: !!input.p1FireHeld, anyFireHeld: !!input.anyFireHeld, releasedCode: input.releasedCode ?? null })
       for (let i = 0; i < n; i++) if (outcomeWaitTick(read)) return
     },
-    getOutcomeWait: () => (phase === 'OUTCOME' ? { ...outcomeWait, wait: outcomeWait.wait && { ...outcomeWait.wait } } : null),
+    getOutcomeWait: () => (phase === 'OUTCOME' ? { ...outcomeWait, window: outcomeWait.window && { ...outcomeWait.window, wait: { ...outcomeWait.window.wait } } } : null),
     // Where a 179B-terminated screen is: `{ inWait, stage, ticks }` (null outside RACE_INTRO/ELIMINATED).
     getKeyWait: () => {
       const w = phase === 'RACE_INTRO' ? raceIntroWait : phase === 'ELIMINATED' ? eliminationWait : null

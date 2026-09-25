@@ -3,12 +3,15 @@
 //  - shouldShowBoard's real three-way gate: Challenge format only, never before the qualifier,
 //    never before the very last race -- including the pending-bonus-race index correction
 //    (`effectiveRaceIndex`, `TriggerBonusRace 1000:1a82` calls `115c` BEFORE `10a0`'s own `INC [28C1]`);
-//  - board.js's own AWAIT_RELEASE debounce (an already-held fire button at entry doesn't confirm);
+//  - the wait is 17FF's own (docs/engine.md §9br): a fire held at entry never dismisses, but the
+//    36-tick windows keep counting while it is held -- the blink keeps going and the board still
+//    times out at 720 (the old AWAIT_RELEASE idiom froze both); release then a fresh press dismisses;
 //  - the blink toggles every BOARD_BLINK_HALF_PERIOD_TICKS (36, not 35 -- `17ff`'s own `CX+1`-tick
 //    loop, the same off-by-one class `frontMenu.js`'s own idle-cancel test already caught once);
-//  - a fresh fire press, or an ESC/other-key release, exits immediately;
-//  - the idle timeout fires at the next 72-tick cycle boundary at or past BOARD_TIMEOUT_TICKS
-//    (720, not exactly 700 -- `[261F]` is sampled only once per full blink cycle, `1000:1921`).
+//  - any key release exits immediately, and the release latch is cleared at every window start;
+//  - the timeout is sampled after every 2nd window (`1921`): tick 720, not 700; the bonus-race
+//    reveal samples after every 1st window of a pair (`1971`): tick 756. The two schedules are told
+//    apart both by the timeout tick and by the `timeoutChecked` sequence itself.
 //   node tools/check-board.mjs
 import { boardInitialState, boardStep, BOARD_BLINK_HALF_PERIOD_TICKS, BOARD_TIMEOUT_TICKS } from '../src/frontend/board.js'
 import { initTournament, shouldShowBoard, effectiveRaceIndex } from '../src/frontend/tournament.js'
@@ -56,62 +59,63 @@ check('BOARD_ICON_POSITIONS has 26 entries', BOARD_ICON_POSITIONS.length === 26)
   check('pending bonus race: board still shown (4 is neither 0 nor the last index)', shouldShowBoard(s))
 }
 
-// 2. AWAIT_RELEASE: fire already held at entry does not exit; releasing it, then a fresh press, does.
-{
-  const s = boardInitialState()
-  check('starts in AWAIT_RELEASE', s.phase === 'AWAIT_RELEASE')
-  let r = boardStep(s, { bits: 0x08 }) // fire still held from confirming the previous screen
-  check('fire held at entry: does not exit yet', r.exit === false && s.phase === 'AWAIT_RELEASE')
-  r = boardStep(s, { bits: 0 }) // released
-  check('release clears AWAIT_RELEASE', r.exit === false && s.phase === 'POLL')
-  r = boardStep(s, { bits: 0x08 }) // a fresh press
-  check('a fresh fire press exits', r.exit === true)
-}
-
-// 3. The blink toggles every BOARD_BLINK_HALF_PERIOD_TICKS ticks, starting blinkOn=true.
-{
-  const s = boardInitialState()
-  boardStep(s, { bits: 0 }) // clear AWAIT_RELEASE
-  check('blinkOn starts true', s.blinkOn === true)
-  for (let i = 0; i < BOARD_BLINK_HALF_PERIOD_TICKS - 1; i++) boardStep(s, {})
-  check('one tick before the boundary: still on', s.blinkOn === true)
-  boardStep(s, {}) // the boundary tick
-  check('at the boundary: toggles off', s.blinkOn === false)
-  for (let i = 0; i < BOARD_BLINK_HALF_PERIOD_TICKS; i++) boardStep(s, {})
-  check('one full period later: toggles back on', s.blinkOn === true)
-}
-
-// 4. An ESC or other-key release exits immediately, mid-blink, regardless of elapsed ticks.
-{
-  const s = boardInitialState()
-  boardStep(s, { bits: 0 })
-  for (let i = 0; i < 50; i++) boardStep(s, {})
-  const r = boardStep(s, { escReleased: true })
-  check('ESC release exits', r.exit === true)
-}
-{
-  const s = boardInitialState()
-  boardStep(s, { bits: 0 })
-  const r = boardStep(s, { otherReleased: true })
-  check('any other key release also exits (17ff has no ESC-specific branch)', r.exit === true)
-}
-
-// 5. The idle timeout fires at the next full-cycle boundary at or past BOARD_TIMEOUT_TICKS (720,
-// the smallest multiple of a 72-tick full cycle >= 700), not at 700 itself and not one cycle early.
-{
-  const CYCLE = BOARD_BLINK_HALF_PERIOD_TICKS * 2 // 72: erase-wait + redraw-wait, 1000:1902-1929
-  const realTimeout = Math.ceil(BOARD_TIMEOUT_TICKS / CYCLE) * CYCLE
-  check('the real timeout lands on tick 720, not 700', realTimeout === 720)
-  const s = boardInitialState()
-  boardStep(s, { bits: 0 })
-  let exited = false
-  for (let i = 0; i < realTimeout - 1; i++) {
-    const r = boardStep(s, {})
-    if (r.exit) exited = true
+const held = { fireHeld: true }
+const run = (s, input, max = 2000) => {
+  const checks = []
+  for (let t = 1; t <= max; t++) {
+    const r = boardStep(s, input)
+    if (r.timeoutChecked) checks.push(t)
+    if (r.exit) return { exit: r.exit, at: t, checks }
   }
-  check(`tick ${realTimeout - 1}: not yet timed out`, !exited)
-  const r = boardStep(s, {}) // the boundary tick
-  check(`tick ${realTimeout}: times out`, r.exit === true)
+  return { exit: null, at: null, checks }
+}
+
+// 2. A fire held from before the screen never dismisses, and does not stop the clock.
+{
+  const s = boardInitialState()
+  check('starts blinkOn, in 17FF\'s AWAIT_RELEASE', s.blinkOn === true && s.window.wait.phase === 'AWAIT_RELEASE')
+  for (let t = 1; t < BOARD_BLINK_HALF_PERIOD_TICKS; t++) boardStep(s, held)
+  check('fire held: still on one tick before the window ends', s.blinkOn === true)
+  boardStep(s, held)
+  check('fire held: the blink still toggles at tick 36 (17FF times out while waiting for the release)', s.blinkOn === false)
+  const r = run(boardInitialState(), held)
+  check('fire held the whole time: the board times out at 720, never dismisses', r.exit === 'timeout' && r.at === 720)
+}
+
+// 3. Release, then a fresh press, dismisses; the blink period is 36.
+{
+  const s = boardInitialState()
+  boardStep(s, held)
+  check('released: no exit', boardStep(s, {}).exit === null)
+  check('a fresh fire press exits', boardStep(s, held).exit === 'dismiss')
+  const b = boardInitialState()
+  for (let i = 0; i < BOARD_BLINK_HALF_PERIOD_TICKS - 1; i++) boardStep(b, {})
+  check('one tick before the boundary: still on', b.blinkOn === true)
+  boardStep(b, {})
+  check('at the boundary: toggles off', b.blinkOn === false)
+  for (let i = 0; i < BOARD_BLINK_HALF_PERIOD_TICKS; i++) boardStep(b, {})
+  check('one full period later: toggles back on', b.blinkOn === true)
+}
+
+// 4. Any key release exits immediately; every window start asks the caller to clear the latch.
+{
+  const s = boardInitialState()
+  for (let i = 0; i < 50; i++) boardStep(s, {})
+  check('a release exits mid-blink', boardStep(s, { anyKeyReleased: true }).exit === 'dismiss')
+  const r = boardInitialState()
+  const resets = []
+  for (let t = 1; t <= 200; t++) if (boardStep(r, {}).resetLatch) resets.push(t)
+  check('the latch is cleared at every 36-tick window start (36, 72, 108, ...)', resets.length === 5 && resets.every((t, i) => t === 36 * (i + 1)))
+}
+
+// 5. The timeout schedule: regular board after every 2nd window (720), bonus reveal after every 1st of a pair (756).
+{
+  const reg = run(boardInitialState(), {})
+  check('regular board: times out on tick 720, not 700', reg.exit === 'timeout' && reg.at === 720)
+  check('regular board: [261F] sampled at 72, 144, ... (after every 2nd window, 1921)', reg.checks.every((t, i) => t === 72 * (i + 1)))
+  const bonus = run(boardInitialState({ bonusReveal: true }), {})
+  check('bonus reveal: times out on tick 756', bonus.exit === 'timeout' && bonus.at === 756)
+  check('bonus reveal: [261F] sampled at 36, 108, 180, ... (after the 1st window of each pair, 1971)', bonus.checks.every((t, i) => t === 36 + 72 * i))
 }
 
 console.log(bad ? `${bad} check(s) failed` : 'check-board: DrawTournamentBoard\'s real when-shown gate (incl. the pending-bonus-race index) and blink/exit/timeout logic matches the disassembly')

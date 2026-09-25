@@ -40,8 +40,8 @@
 // a tick. The exact tick numbers below hold under (a)-(c). The blink and the sliding lives digits
 // themselves are render items, not modelled here.
 
-import { raceResultWaitInitialState, raceResultWaitStep } from './twoHuman.js'
 import { OUTCOME } from './tournament.js'
+import { windowedWaitInitialState, windowedWaitStep } from './windowedWait.js'
 
 export const OUTCOME_TIMEOUT_TICKS = 0x2bc // 1D2B/1DE5's own comparand, against [0x261F]
 export const OUTCOME_17FF_CX = 0xf // 1E09: MOV CX,0xF
@@ -52,7 +52,7 @@ export const OUTCOME_CHEAT_KEY = 'BracketRight' // scancode 0x1B, 1DCD
 export function outcomeWaitInitialState(code) {
   const lives = code === OUTCOME.ONE_LIFE_LOST || code === OUTCOME.EXTRA_LIFE
   // SIMPLE: the first 1DE5 check (0 < 700) passes at entry, so the first 17FF window is already open.
-  if (!lives) return { path: 'SIMPLE', ticks: 0, wait: raceResultWaitInitialState() }
+  if (!lives) return { path: 'SIMPLE', ticks: 0, window: windowedWaitInitialState({ cx: OUTCOME_17FF_CX }) }
   return { path: 'LIVES', ticks: 0, iteration: 0, left: OUTCOME_SLIDE_ITERATION_TICKS }
 }
 
@@ -68,13 +68,11 @@ export function outcomeWaitInitialState(code) {
 export function outcomeWaitStep(state, readInput) {
   state.ticks++ // [0x261F], 48D8
   if (state.path === 'SIMPLE') {
+    // 1DE5: the timeout check before every 17FF call (windowedWait.js, checkPeriod 1); CLC -> 1E0F
+    // falls to RET, STC -> blink, redraw, the check, a fresh 17FF call
     const inp = readInput()
-    const r = raceResultWaitStep(state.wait, { fireHeld: inp.anyFireHeld, anyKeyReleased: inp.releasedCode != null }, OUTCOME_17FF_CX)
-    if (r.exit === 'dismiss') return { exit: 'dismiss', resetLatch: false } // 17FF CLC -> 1E0F falls to RET
-    if (r.exit !== 'retoggle') return { exit: null, resetLatch: false }
-    if (state.ticks >= OUTCOME_TIMEOUT_TICKS) return { exit: 'timeout', resetLatch: false } // 17FF STC -> 1DE5/1DEB, no tick between
-    state.wait = raceResultWaitInitialState() // blink, redraw, then a fresh 17FF call
-    return { exit: null, resetLatch: true }
+    const r = windowedWaitStep(state.window, { fireHeld: inp.anyFireHeld, anyKeyReleased: inp.releasedCode != null })
+    return { exit: r.exit, resetLatch: r.resetLatch }
   }
   // LIVES
   if (--state.left > 0) return { exit: null, resetLatch: false }

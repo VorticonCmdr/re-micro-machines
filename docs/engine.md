@@ -6252,7 +6252,8 @@ correction, `tournament.js`), the icon-position/frame formula (confirming §9t's
 byte-for-byte against the live table; for a regular race the newest icon PREVIEWS the upcoming race,
 not a trophy for one just finished, another advisor-caught correction), and the blink/timeout exit
 logic (`FUN_1000_17ff`, simplified to the project's existing `AWAIT_RELEASE` idiom, documented; the
-real tick constants are 36/720, not 35/700, a third correction). New, deliberately unported open
+real tick constants are 36/720, not 35/700, a third correction -- **the simplification itself was
+replaced by the real `17FF` in M3.72, §9br**). New, deliberately unported open
 item: the round-9 "reveal" branch (`1000:192b-198d`) -- the NORMAL path for every bonus race, not a
 rare one -- draws past `MINATURE.CHR`'s own real 38-frame table (a genuine benign OOB read in the
 original), not pixel-replicated.
@@ -7087,6 +7088,13 @@ not silently glossed -- a screen with no `[PROVEN]` live capture and no gameplay
 did not justify re-deriving `17FF`'s own byte-for-byte timing a second time once an already-proven
 idiom covers every case that matters, though its EXACT tick constants still needed re-deriving
 correctly, which the advisor review's own re-check caught this draft had not done.
+**CORRECTED 2026-09-25 (M3.72, §9br): the simplification was NOT behaviourally equivalent.** The
+`AWAIT_RELEASE` idiom stopped counting ticks while fire was held, so a fire held into the board
+froze both the blink and the ~10s timeout; real `17FF` keeps counting in both of its stages, so
+the board keeps blinking and still times out at 720. (`board.js`'s own header also said a held
+fire could "(rarely) skip the board"; under `17FF` a held fire never dismisses.) The board now runs
+`17FF` itself (`windowedWait.js`), and the bonus-race reveal's different timeout sample point (756,
+not 720) is ported too.
 
 **Not ported: the round-9 "reveal" branch (`18D8`'s own `1000:192B-198D`) -- the NORMAL path for
 every bonus race, not the rare one the first draft of this section called it.** `TriggerBonusRace
@@ -10674,10 +10682,89 @@ onto a Web Worker's `setInterval(16)` ticker. The game code itself ran unmodifie
   only possible action (an Enter keydown) cannot dismiss the LIVES wait, and the exit came at 702
   ticks, so the timeout result stands.
 
-**Not covered.** The Challenge RESULTS -> OUTCOME entry (after a FAIL result) was not exercised
+**Not covered.** ~~The Challenge RESULTS -> OUTCOME entry (after a FAIL result) was not exercised
 live; it relies on the same listener order part 1 proved at PRESS_ANY_KEY (the tracker sees the
-confirming keydown before `onKeydown` runs, so `enterOutcome`'s `reset()` untracks that key).
+confirming keydown before `onKeydown` runs, so `enterOutcome`'s `reset()` untracks that key).~~
+**Superseded 2026-09-25 (M3.72, §9br):** RESULTS now leaves from its own tick loop, not a keydown,
+and the RESULTS -> ONE LIFE LOST entry was exercised live there: a fresh S press dismissed RESULTS,
+S stayed held, and ONE LIFE LOST left at its first poll 2.212s later, as `1DDB` does.
 EXTRA_LIFE (reachable only after a bonus race) was not reached live; its path is
 the same code as ONE_LIFE_LOST except the slide direction, and `]` there is covered by the unit
 test only. The blinking sprite and the sliding lives digits are render items and stay unported
 (the port draws a static message). Nothing here is a DOS-side measurement.
+
+## 9br. Wait-screen input parity, part 3: the board and the results screen on `17FF` (2026-09-25)
+
+**Purpose.** GOAL-DOS-PARITY.md P3's "Wait-screen input parity" bullet, scope item (3), closing the
+bullet and P3. After part 2 settled that `17FF` gets one model with a `CX` parameter
+(`raceResultWaitStep`, §9bq), what remained was wiring the two one-player screens that still
+simplified it: the tournament board (`DrawTournamentBoard 1000:18D8`) and the results table
+(`ShowRaceResultsScreenTune8or6 1000:13E4`). `get_xrefs_to 17FF` lists 8 call sites: four in
+`18D8` (`1908`, `1919`, `196C`, `1988`), `164B` in `13E4`, `1E0C` in `1C1B` (part 2), `26BA` in
+`ShowHeadToHeadRaceWinnerTune8` (two-human, P4, not reachable from `flow.js` yet), and `2166` in
+`ShowHeadToHeadResultUnreferenced` (no callers). After this commit every `17FF` call reachable in
+one-player play runs the real `17FF`.
+
+**The disassembly, all `[STATIC]`:**
+- **Results (`1618-164E`).** `1618` `[0x261F]=0`; loop at `161E`: XOR the blink bit on the rows at
+  `[0x3FC]` and `[0x402]`, redraw the four rows (`0DB0`, `BX` from `0xC03` by `0x1B`), present
+  (`08BC`), `1640` `[0x261F] >= 0x2BC` leaves, else `1648` `CX=0xF`, `164B` `CALL 17FF`, `164E` STC
+  loops. A dismiss and a timeout both fall into `1650` (the PASS/FAIL tail, §9bb).
+- **Board, regular (`18FC-1929`).** `[0x261F]=0`; `1902` present, `17FF` CX=0x23 (CLC leaves), erase
+  the newest icon (`05B4`), present, `17FF` CX=0x23 (CLC leaves), redraw it (`04B8`), `1921`
+  `[0x261F] >= 0x2BC` leaves, else loop. So the timeout is sampled after every 2nd 36-tick window:
+  tick 720.
+- **Board, bonus-race reveal (`192B-198B`, taken whenever `[28BF]==9` at `18F5`).** `[0x261F]=0`,
+  the icon draws, a partial present (`089C`), `17FF` CX=0x23 (CLC leaves), `1971` the timeout
+  check, the list redraw (`198E`), `089C`, `17FF` again, STC loops to `1931`. The sample comes
+  after the FIRST window of each pair: tick 756, not 720.
+
+**What changed.**
+- `src/frontend/windowedWait.js` (new): the repeated-`17FF` loop, `windowedWaitInitialState({ cx,
+  checkPeriod, checkOffset })`/`windowedWaitStep`, returning `{ exit, resetLatch, windowEnded,
+  timeoutChecked }`. The outcome screen's SIMPLE path (§9bq) now uses it too; `check-outcomewait.mjs`
+  passes unedited, which shows the refactor kept its behaviour.
+- `board.js`: `boardInitialState({ bonusReveal })`/`boardStep(state, { fireHeld, anyKeyReleased })`
+  on `windowedWait` (CX=0x23, checkPeriod 2, offset 0 or 1); `blinkOn` flips at every window end.
+  The old `AWAIT_RELEASE`/`POLL` idiom is gone, and with it a real divergence (corrected in place
+  in §9ay): a fire held into the board used to freeze the blink and the timeout.
+- `flow.js`: the board reads the session-lifetime `waitReaders` (its own per-phase `boardReaders`
+  had the part-1 bug: created during the PRESS_ANY_KEY keydown that enters the board, they could
+  not see that key held). `bonusReveal` comes from `tournament.pendingBonusRace`, the same state
+  `effectiveRaceIndex` reads for `[28BF]==9`. RESULTS gets `enterResults()` and a per-tick loop
+  (CX=0xF, checkPeriod 1), with the old Space/Enter keydown wait removed (`onKeydown` returns early
+  for RESULTS). `leaveResults()` runs the existing `1650` logic for both a dismiss and a timeout.
+  New debug hooks: `getBoardWait()`, `forceResultsSteps(n, input)`, `getResultsWait()`;
+  `forceBoardSteps` now takes `{ fireHeld, anyKeyReleased }`.
+
+**Tests.** `check-board.mjs` sections 2-5 rewritten against `17FF`: a fire held the whole time
+still blinks at 36 and times out at 720; release then a fresh press dismisses; the latch is cleared
+at 36, 72, ...; the regular board samples `[261F]` at 72, 144, ... and times out at 720, the bonus
+reveal samples at 36, 108, ... and times out at 756. `tools/check-windowedwait.mjs` (new, `npm run
+windowedwait`): the results screen's 16-tick windows, samples at every window end and timeout at
+704; the `checkPeriod`/`checkOffset` sample schedules; a held fire through window after window
+still times out; a press that is down at a new window's first poll counts as held there, and only
+its release dismisses. Reintroduction-proven with five mutations: ignoring `checkOffset` (2 board
++ 1 windowedwait), sampling after every window (3 board + 2 windowedwait), no latch reset per window (1 in
+each of the three scripts), ignoring the bonus flag (2 board), and the old idiom's clock freeze on
+a held fire (2 board + 2 windowedwait). All restored, clean. Full regression suite plus `build`
+clean.
+
+**Live verification, `[PROVEN]` in the port.** `game.html`, Challenge, the Web Worker RAF shim and
+worker-clock sleeps (§9bq), fresh page load, console tracking on from the start.
+- Board, S pressed at PRESS_ANY_KEY (that keydown enters the board) and never released: the board
+  stayed in `17FF`'s release-wait stage, the blink toggled every 36 ticks (seen at 36, 73, 108, 144,
+  180, 216, ...; the 73 is sampling jitter), and it timed out 10.293s after entry (720 ticks =
+  10.286s) into RACE_INTRO.
+- Results after a win (race 1 ended by setting `raceOverCount=4` with a winning order), no input:
+  timed out 10.052s after entry (704 ticks = 10.057s), then the next board.
+- Results after a loss (the order re-applied each tick with car 0 last): a fresh S press 1.0s in
+  dismissed it into ONE LIFE LOST (LIVES path), S held, which left at its first poll 2.212s later.
+- Board, Enter keydown: still BOARD 200ms later; keyup: RACE_INTRO.
+- No console errors.
+
+**Not covered.** The bonus-race reveal board (the 756-tick schedule) was not reached live (it needs
+a triggered bonus race); it is covered by the unit tests. Its own drawing stays unported, as
+before. The timing assumptions (b) and (c) from §9bq apply here too: DOS zeroes `[0x261F]` only
+after the entry draws, and each draw group is assumed to fit in one tick. `26BA` (two-human, P4)
+already runs `raceResultWaitStep` in `twoHuman.js`, but that flow is not wired into `flow.js` yet.

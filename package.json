@@ -24,6 +24,7 @@
     "elimination": "node tools/check-elimination.mjs",
     "keywait": "node tools/check-keywait.mjs",
     "outcomewait": "node tools/check-outcomewait.mjs",
+    "windowedwait": "node tools/check-windowedwait.mjs",
     "step": "node tools/check-step.mjs",
     "trace": "node tools/check-trace.mjs",
     "ai": "node tools/check-ai.mjs",

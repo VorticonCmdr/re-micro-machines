@@ -42,13 +42,14 @@ GAME OPTIONS screen (F5), matching the original's real redefine-keys screen. `ga
 boot chain through character select — the title screen, SELECT GAME / ONE PLAYER GAME, and the
 character-select carousel — reads the same LEFT/RIGHT/FIRE keys your copy's `SETTINGS.DAT`
 configures (both players' own bindings work at every menu level except character select, which is
-P1 only, exactly as the original does — see `docs/engine.md` §9av-§9ax); everything after the
-character picks mostly still uses plain Space/Enter, until `GOAL-DOS-PARITY.md`'s remaining P3
-items land. The exceptions are the race-intro, "IS OUT!!" and outcome-message screens, which now run the
-original's own key waits: any key moves on when you RELEASE it, and after ~10 s they move on by
-themselves. On the race-intro and "IS OUT!!" screens a fire key held into the screen must be let go
-first. The ONE LIFE LOST / EXTRA LIFE messages don't respond until the ~2 s lives slide ends; a
-key released during it still counts then, and fire held at that point leaves at once (`docs/engine.md` §9bp/§9bq).
+P1 only, exactly as the original does — see `docs/engine.md` §9av-§9ax); the screens between
+races now run the original's own key waits too (`docs/engine.md` §9bp-§9br): on the race intro,
+"IS OUT!!", the tournament board, the results table and the outcome messages, any key moves on
+when you RELEASE it (a fire key also works on a fresh press), and after ~10 s they move on by
+themselves. A fire key held into one of these screens has to be let go first. The ONE LIFE LOST /
+EXTRA LIFE messages are the exception: they don't respond until the ~2 s lives slide ends, then a
+key released during it still counts, and fire held at that point leaves at once. The champion
+screen still takes plain Space/Enter.
 
 ## Setting up the game files for development
 
