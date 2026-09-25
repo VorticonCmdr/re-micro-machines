@@ -777,6 +777,19 @@ docs, (6) commit.
 - [ ] **`UNKNOWN_rematch_fail_stale_2682`**, the downstream consequence (§9ar c): build a double-fall
   scenario on round 3 in `check-twocar.mjs`, trace `stepExchange` and the commit, and record what
   happens.
+- [ ] **Puffs and splashes, `8083`/`8386`** (§9cf 6 a–d): frames advance before the spawn, `[12B2]=3`
+  on every expiry, a zero-velocity low-grip trigger spawns nothing; the splash always spawns into
+  slot 0, advances on `[12B2]`, and draws at pos−cam−12. Fix `puffs.js`/`raceView.js` with tests.
+- [ ] **The car layer's paint order** (§9cf 6e, `DrawRaceCarLayer 7CE0`): shadows, then
+  splash+puffs, then projectiles, then bodies, each over all cars. Split `drawCarLayer` into the
+  four passes.
+- [ ] **The projectile tail icon** (§9cf 6f, `871F-872D`): `projFrame >> 2`, read before a
+  saturating increment to 5, reset at fire.
+- [ ] **The pause's cheat-gated key combos** (§9cf 4, `37B8-37F5`): with the `25011968` flag, in
+  rounds other than 9, after the pause-ending release, until tick 140: exactly F1+F2 applies the
+  type-9 cheat and exactly F2+F3 the instant win, then a white flash and the pause restarts. With
+  the flag on, the pause lasts at least 140 ticks. Verify live first (one attempt failed, likely
+  timing), then port.
 - [ ] **The RUFFTRUX banner's looping sfx/tick idiom.** M3.8 simplified it to a one-shot (§9k
   "Deliberately not done").
 
@@ -835,16 +848,16 @@ Commit each item on its own, including any capture file under `tools/refs/`.
 Subagents may do the disassembly for these items, but only the main session edits files and
 commits.
 
-- [ ] `UNKNOWN_lev_low_bits` (`docs/track-layout.md`): bits 1–0 of the `.LEV` byte. Do an exhaustive
+- [x] `UNKNOWN_lev_low_bits` **Closed (§9cf): no reader consumes bits 1–0.** (`docs/track-layout.md`): bits 1–0 of the `.LEV` byte. Do an exhaustive
   byte-pattern search for every `.LEV` read.
-- [ ] `UNKNOWN_map_attr_bits` (partial): bit 1's physical meaning and round 8's pattern.
-- [ ] `UNKNOWN_cheats_type` (narrowed): the downstream consequences of the three flag-set effects
+- [x] `UNKNOWN_map_attr_bits` **Closed (§9cf): bit 1 mirrors the tile's flow field across its LEV axis.** (partial): bit 1's physical meaning and round 8's pattern.
+- [x] `UNKNOWN_cheats_type` **Closed (§9cf): `[2917]` and `[291B]` are write-only; type 6 does nothing.** (narrowed): the downstream consequences of the three flag-set effects
   (§6).
-- [ ] `UNKNOWN_race_reader_low_bits` (docs/engine.md §9bt): in a race, a held D/SPACE/V (KEYS 2) or
+- [x] `UNKNOWN_race_reader_low_bits` **Closed (§9cf): no reader of the control byte's bits 0–2; the pause reads `[107C]` for two cheat-gated combos -- new P5 item.** (docs/engine.md §9bt): in a race, a held D/SPACE/V (KEYS 2) or
   F1-F3 (KEYS 1) sets the low three bits of that car's control byte; check whether anything besides
   the SPACE pause test (`3074`) reads them. If something does, it becomes a P5 item.
-- [ ] `UNKNOWN_pr0_header_use` (`docs/track-graphics.md`).
-- [ ] The remaining unnamed race-draw helpers (`8634`, `8386`, `8712`, …; `docs/track-graphics.md`).
+- [x] `UNKNOWN_pr0_header_use` (`docs/track-graphics.md`). **Closed (§9cf): it is tile 0, copied for the rounds 1/3/5 parallax.**
+- [x] **Done (§9cf): all named in Ghidra; four port divergences went to P5.** The remaining unnamed race-draw helpers (`8634`, `8386`, `8712`, …; `docs/track-graphics.md`).
   Name them in Ghidra, document them, and check that each is ported.
 - [x] The "AUTO" string's purpose (§9t, left unnamed). **Resolved as a byproduct of P1's GAME
   OPTIONS item (M3.49, docs/engine.md §9au):** AUTO is smoothness value 5, reachable via F4 --
@@ -852,10 +865,10 @@ commits.
   side, not F4's own input cycling. Resolves at RETURN to a real 1-4 value via a VGA-retrace
   CPU-speed probe (`AutoDetectSmoothnessByRetraceLoops 1000:3AD0`); the port resolves it to 1
   (HIGH) unconditionally, since any modern machine trivially clears the real threshold.
-- [ ] `UNKNOWN_sfx_semantics`: every sfx id is wired to its site; the audible meaning was only
+- [x] **Closed (§9cf) as consistent by measurement; the renders are in `tools/out/sfx/` and nobody has listened yet.** `UNKNOWN_sfx_semantics`: every sfx id is wired to its site; the audible meaning was only
   rendered, never heard. Listen to each through `npm run tunes`-style renders, then close it.
-- [ ] `UNKNOWN_microu_runs_standalone`: try `MICROU.EXE` alone in DOSBox once, then close it.
-- [ ] Category (c) closures with a reason: `UNKNOWN_gfx1_header`, `UNKNOWN_unp_version`,
+- [x] **Closed (§9cf): yes, into a race, `[PROVEN]`.** `UNKNOWN_microu_runs_standalone`: try `MICROU.EXE` alone in DOSBox once, then close it.
+- [x] **Done (§9cf); `UNKNOWN_1254_1256` was already closed in §9v.** Category (c) closures with a reason: `UNKNOWN_gfx1_header`, `UNKNOWN_unp_version`,
   `UNKNOWN_ph0_1140_1380` (three icon shapes with no consumer), `UNKNOWN_1254_1256`.
 
 ## Part D: documentation and repository debt

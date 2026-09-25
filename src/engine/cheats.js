@@ -41,7 +41,7 @@ export function applyCheatEffect(car, cheat, globalState = {}) {
     case 3: car.gripStep = cheat.param; break // [127E]
     case 4: car.accel = cheat.param; break // [12A2]
     case 5: globalState.cheat5 = 1; break // [2915]: its only reader 4F0D turns the fire entry 4F03 into a ground coast -- only the 0x30 chord fires (docs/engine.md §9an)
-    case 6: globalState.cheat6 = 1; break // [2917] -- ditto
+    case 6: globalState.cheat6 = 1; break // [2917]: write-only -- no reader anywhere, type 6 has no effect (docs/engine.md §9cf)
     case 7: car.hazardVulnerable = 0; break // [12F9]
     case 8: car.maxSpeedCur = 0x800; break // [129C]
     case 9: // [2915]=[2919]=1, [291B]=4: projectiles in every round -- but with [2915] only via the 0x30 chord (docs/engine.md §9an)

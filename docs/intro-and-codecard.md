@@ -246,7 +246,7 @@ Resolved 2026-09-23 (M3.30, this session — see the sections above for full der
 
 Resolved 2026-09-24 (P1, this session — see "The real per-frame animation" above): `UNKNOWN_intro_key_effect` (no key skips the intro; only a mouse click does, or the 250-iteration post-shine timeout; holding A+B together is the one real keyboard effect, holding the timeout open).
 
-Still open, investigated and not further resolvable without new information: `UNKNOWN_gfx1_header` (exhaustively re-confirmed unread; version-number and several checksum hypotheses tested against the real file bytes and ruled out — see the `GFX1.GFX` section above).
+**Closed as irrelevant (`docs/engine.md` §9cf): `UNKNOWN_gfx1_header`, never read; a DOS-time reading (13:31:24) matches no archive stamp either.** Previously: still open, investigated and not further resolvable without new information: `UNKNOWN_gfx1_header` (exhaustively re-confirmed unread; version-number and several checksum hypotheses tested against the real file bytes and ruled out — see the `GFX1.GFX` section above).
 
 New, narrow, not blocking: `UNKNOWN_intro_loop_vs_total_gap` (the ~0.23 s between the loop's own derived 314-iteration/~4.49 s duration and the M3.30 whole-process 4.72 s figure — plausibly the pre-loop setup, not independently timed; would need a fresh live session bracketing the loop itself, e.g. breakpoints at `CS:097F`'s first hit and `CS:07C6`'s own `RET`, reading `0040:006C` at each, the same technique M3.30 used).
 

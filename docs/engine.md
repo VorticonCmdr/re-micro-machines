@@ -5933,6 +5933,8 @@ TANKS/a cheat spot actually lets a shot fire. The release tick's own speed jump 
 
 ## 10. Open items
 
+**2026-09-25 (§9cf), Part R closed:** `UNKNOWN_lev_low_bits` (no reader), `UNKNOWN_map_attr_bits` (bit 1 = mirrored flow field), `UNKNOWN_cheats_type` (`[2917]`/`[291B]` write-only), `UNKNOWN_race_reader_low_bits` (no control-byte reader; the pause's cheat-gated F1+F2/F2+F3 combos found instead), `UNKNOWN_pr0_header_use` (tile 0), `UNKNOWN_sfx_semantics` (consistent; not yet listened to), `UNKNOWN_microu_runs_standalone` (yes, `[PROVEN]`), `UNKNOWN_gfx1_header`, `UNKNOWN_unp_version` (4.11), `UNKNOWN_ph0_1140_1380` (unused knockout slot 5). The race-draw helpers are all named; four port divergences (puffs/splash, paint order, projectile tail icon) and the pause combos went to GOAL P5.
+
 **2026-09-25 (§9ce):** the round-2 bathtub plughole (`62E3`) is ported and live-proven. New open item: `UNKNOWN_stale_animtimer_port` -- `[12B0]` is not bumped in state 0 (`309F`) and not zeroed by the 0→1/0→D entries `62E3`/`6169`/`5FAC`, so those animations start from the value the car entered state 0 with (94 after the countdown, live); the port starts them from 0 (GOAL P5).
 
 `UNKNOWN_tile_index_overflow` **resolved 2026-09-22 (§9ac): three real cases across all 29 races,
@@ -11802,3 +11804,205 @@ inside the existing two-car-preamble guard.
 
 Six mutations are caught: `<=` for the centre sign, max for min, zeroing animTimer, dropping the
 state gate, the inner box edge, and removing the call.
+
+## 9cf. Part R: the remaining static items closed (2026-09-25)
+
+GOAL-DOS-PARITY.md Part R. Four subagents did the disassembly (Ghidra reads, byte scans of the
+`MICROU.EXE` code image at file+0x480, no DOSBox, no repo edits). The main session re-checked each
+key claim marked "re-checked" and ran the two live items itself. Where a claim rests only on an
+agent's report, it says so.
+
+### 1. `UNKNOWN_lev_low_bits` — closed: no reader consumes `.LEV` bits 1–0 `[STATIC]`
+
+- The `.LEV` buffer is `DS:1B5B`, loaded at `3BBA-3BD0` (`CX=0x80`), with its pointer at `[28B9]`.
+- `[28B9]` is read only at `5DE0` and `70C8`:
+  - `5DE4-5DEC` copies the whole byte to `[12E0]` and tests only `0x80`;
+  - `70C8-70D8` (respawn) uses `& 0x1C` (the nudge) and `>> 5 & 3` (the heading).
+- `[12E0]` has two writers, `434E` (init) and `5DE6`, and two readers, `543B` and `6239`. Both
+  readers do `SHR CX,5 / AND CX,3`. The byte scan was re-checked: `E0 12` occurs only inside those
+  four instructions.
+- A scan for any word in `0x1B5B-0x1BDA` finds nothing else. `0x1B78` occurs only as a segment
+  value.
+- The files do set bits 1–0 on a minority of tiles, for example `0x22`/`0x2E`/`0x3A` (value 2),
+  `0x41`/`0x45`/`0x49` (1) and `0x63`/`0x73`/`0xF3` (3):
+
+  | Round | 0 | 1 | 2 | 3 |
+  |---|---|---|---|---|
+  | r1 | 51 | 2 | 7 | 2 |
+  | r2 | 53 | 4 | 3 | 3 |
+  | r3 | 44 | 6 | 10 | 4 |
+  | r4 | 53 | 2 | 7 | 2 |
+  | r5 | 46 | 2 | 7 | 2 |
+  | r6 | 37 | 4 | 9 | 6 |
+  | r7 | 39 | 4 | 7 | 4 |
+  | r8 | 28 | 3 | 14 | 4 |
+  | r9 | 48 | 2 | 7 | 2 |
+
+  This is authoring data the engine never reads. `levbrk.js` only shows it in the viewer.
+
+### 2. `UNKNOWN_map_attr_bits` — closed: bit 1 = "this cell's flow field is mirrored" `[STATIC]`
+
+- **Readers.** `589C` returns `DI = mapByte >> 6` (`58CD`). Of its 16 call sites:
+  - `55C6` and `5748` store it to `[12DE]`;
+  - `7121` keeps it live for the respawn (`7172`, tested at `71A2`/`71AB`);
+  - the rest use only CF.
+- `[12DE]` is read only at `5437` (drone AI, `544E`/`5472`) and `6235` (the push, `6250`/`626E`);
+  the byte scan was re-checked. The `.CT` expansion (`449D`) masks `0x3F`, so the graphics are never
+  mirrored.
+- **Meaning.** Each `DS:191B` remap row is a reflection of the `DS:18FB` compass: `h' = K − h`, with
+  K = 0x00, 0x80, 0x40, 0xC0 for LEV rows 0–3. This was re-checked over all 16 entries of every row
+  from `engine-tables.js`. So bit 1 means "use this meta-tile's flow field mirrored across the
+  tile's LEV axis": a straight run backwards, or a corner taken the other way.
+  - The respawn applies it as `^0x80` (`71A2`) because each row's base heading is perpendicular to
+    its mirror axis.
+  - Bit 0 is a plain 180° rotation (`^0x80`, `71AB`, and the push's reversal, §9cd).
+- **Corroboration** (the agent's data scan, not re-run): over all 29 races, the attribute-applied
+  flow agrees with the direction of increasing progress (plane 2) at a mean cosine of 0.59–0.88,
+  against −0.15 to 0.39 without the attribute.
+- **Round 8's pattern.** It is not special: its circuits reuse the same straight and corner tiles
+  on the return legs with attribute 2, as every round does. ROUND82's background fill carries
+  attribute 1 (742 cells).
+- **Port.** The engine is already right (`ai.js`, `terrain.js` `h6231`, `states.js` respawn).
+  Two leftovers:
+  - (a) `states.js` writes `car.levByte` at respawn. The original has no `[12E0]` write in
+    `6FEB-73E6`, but the next `5DE6` writes the same byte, so nothing observable changes. It is
+    recorded here, not "fixed".
+  - (b) The viewer's `track.js` `dirHeading` always applies remap row 0. That is wrong per cell, and
+    `docs/track-layout.md`'s "bucket 0, i.e. what an ordinary car actually samples" is corrected
+    below. This is viewer only.
+
+### 3. `UNKNOWN_cheats_type` — closed `[STATIC]`
+
+Every access, in DS and CS-alias form, was classified. The writers-only result for `[2917]`/`[291B]`
+and the reader lists for `[2915]`/`[2919]` were re-checked by byte scan.
+
+| Flag | Written by | Read by | Effect |
+|---|---|---|---|
+| `[2915]` | types 5/9 (`3702`/`3722`), init 0 (`3CA4`) | `4F0D` only | Fire becomes a ground coast (§9an 5a). Ported (`fireKeyDisabled`). |
+| `[2919]` | type 9 (`3728`), init 0 (`3CAA`) | `4F21` (fire gate), `5E3C` (hit-test gate) | TANKS-or-flag. Ported (`projectilesEnabled`). |
+| `[2917]` | type 6 (`370A`), init 0 (`3C9E`) | **none** | Type 6 does nothing in this binary. |
+| `[291B]` | type 9 = 4 (`372E`), init 3 (`3CB0`) | **none** | Write-only. |
+
+Correction: projectile **flight** (`30A9 → 51B2`) is not flag-gated; only arming (`4F63`, on the
+gated fire path) is. This changes nothing in behaviour, and the port already runs flight ungated.
+`projectile.js`'s "all three call sites" comment and `cheats.js`'s "ditto" for type 6 are wrong in
+wording only.
+
+### 4. `UNKNOWN_race_reader_low_bits` — closed: nothing reads bits 0–2 of a car's control byte `[STATIC]`
+
+- **Bit mapping.** The ISR (`2F70-2F8D`) maps slot i to bit `0x8000 >> i` of `[107C]`. With this
+  `SETTINGS.DAT` that gives:
+  - in `[107D]`: F1 = 4, F2 = 2, F3 = 1;
+  - in `[107C]`: D = 4, SPACE = 2, V = 1.
+- **The per-car control bytes.** `[137B]`/`[14DF]`/`[1643]`/`[17A7]` are touched only by the
+  clears, the `PollAllCarInputs` writes (`2DB1-2DE0`), the physics read (`4D47`) and the drone AI.
+  The physics step masks DL only with 0x08/0xC0/0x80/0x40/0x30/0x20/0x10, and the AI keeps
+  `& 0xC0`.
+- **But the ISR word `[107C]` has two more in-race readers**, both inside the pause
+  (`CheckCheatSpotsThenPause 37B8-37F5`), gated by the `25011968` flag (`37BF`, `CS:A329` =
+  DS:0F69) and by round ≠ 9. After the pause-ending release (`37B8`, AL = the released scancode, so
+  F12 → `SCRE0.RAW`), the pause polls until `[261F]` reaches 140:
+  - **exactly F1+F2 held** (`[107C]==0x0600`) → `JMP 3722`, the type-9 cheat body;
+  - **exactly F2+F3 held** (`0x0300`) → `JMP 36A7`, the type-1 instant win.
+
+  Either one then runs the white flash and restarts the pause. With the cheat on, the pause can't
+  end before tick 140 unless F12 is the key released. This is the agent's reading. One live attempt
+  at F2+F3 in a ROUND21 pause did not trigger the win; the most likely cause is the key timing
+  against the `37B8` release wait, but this is not proven either way. It is not ported (`pause.js`
+  cut it as a "debug backdoor" while `A329` was thought dead, §9ar f, reversed in §9bn). New P5
+  item.
+
+### 5. `UNKNOWN_pr0_header_use` — closed: it is tile 0, not a header `[STATIC]`
+
+`SavePristineTile0CopyToDs 4808` (was `CopyPr0HeaderToDs`) copies the bank's first 0x100 bytes to
+`DS:3EE3..3FE2`, ending exactly where PH0 starts. Its sole reader is
+`ScrollTile0ParallaxFromPr0Copy 8996` (`89B5`), for rounds 1/3/5 only (the §9al parallax). A byte
+scan finds `E3 3E` only at `481A`/`89B6`, and the CS alias has 0 hits.
+
+### 6. The race-draw helpers — all named; four real port divergences found `[STATIC]`
+
+Named in Ghidra (saved) by the agent:
+
+| Address | Name | Ported? |
+|---|---|---|
+| `8386` | `DrawAndSpawnCarLandingSplash` | divergent (below) |
+| `8712` | `DrawCarProjectileAndImpactPuff` | yes, except the tail icon (below) |
+| `851F` | `DrawTwoCarSpinnerBonusBanner` | yes (`twocar.js` `spinBanner`) |
+| `8634` | `DrawTwoCarBonusSlideOrPlayOffBanner` | yes (`slideBanner`) |
+| `8996` | `ScrollTile0ParallaxFromPr0Copy` | yes (`applyTile0Parallax`) |
+| `89E0` | `AnimateRound2WaterTilePatch` | yes (`applyRound2WaterAnim`) |
+| `8A2B` | `AnimateRound8HazardTilePatches` | yes (`applyRound8HazardAnim`) |
+| `51B2` | `UpdateProjectileFlight` | yes |
+| `87F3` | `StepProjectileSubpixelAccumulator` | yes |
+| `4808` / `45E5` | tile-0 copy / its loader | not needed |
+
+`7B46` is sound, not drawing. `86D2-8710` has no Ghidra function. It is the RUFFTRUX banner slide,
+already ported (`advanceBannerSlide`/`drawRuffTruxBanner`).
+
+Divergences, re-checked against `80E0-8160` and `8386-848F` except (e) and (f):
+- (a) **Puffs `8083`.** When the cooldown `[12B2]` has expired, the frames advance first (`80F5`),
+  then `[12B2]=3` is set unconditionally (`8125`), then the spawn chain runs. A low-grip trigger
+  with zero velocity exits (`8151`) without trying skid or wet. `puffs.js` spawns first, advances
+  after, and resets the cooldown only on a spawn.
+- (b) **Splash spawn.** `8410-8418` always writes slot 0 (`[BX+135D]`, no cursor). The cursor
+  `[1298]` only gates the 5-slot draw/advance loop (`838D`), so at most one splash is live per car.
+- (c) **Splash frames** advance on the **puff** cooldown `[12B2]` (`83CB`), not `[12B4]`.
+- (d) **Splash draw position** is pos − cam − 12 (`847E`: `8486`/`8489`), not −16.
+- (e) **Paint order** (agent reading of `DrawRaceCarLayer 7CE0`): four passes over all cars, in
+  order: shadows (`7CE3`), splash+puffs (`7D01`), projectiles (`7D14`), then bodies/state handlers
+  (`7D2B`). The port draws each car's whole stack per car, so a later car's shadow can cover an
+  earlier car's body.
+- (f) **Projectile tail icon** (agent reading of `871F-872D`): `[1396] >> 2`, read before a
+  saturating increment to 5, and reset at fire (`4F63`). That gives icon 0 for 4 drawn frames, then
+  icon 1. The port uses `elapsed >= 2`.
+
+All six go to P5.
+
+### 7. `UNKNOWN_sfx_semantics` — closed as consistent (plausibility, not listening)
+
+- **Method.** All 18 ids were rendered through the port's OPL2 model. Renders are in
+  `tools/out/sfx/SFXn.wav` and `SFXn_strict.wav`, git-ignored, **for a human to listen to — nobody
+  has yet**. Each was measured for duration, pitch and spectral flatness (calibrated: white noise
+  0.553, a sine ≈0), then compared with its `docs/sound.md` §3b trigger sites.
+- **Result.** No id's character contradicts its sites:
+  - the noisy ids (1, 7/17/18, 14) are exactly the FB=7 instruments, at impact, splash, hazard and
+    shot sites;
+  - the thuds (3, 4, 6, 8) are at collision, landing and surface sites;
+  - the chime 2/15 is at lap-complete and the RUFFTRUX banners;
+  - the rising and falling triads (10 and 16, mirror images) are at respawn/knockout and race-over.
+- **New (agent, `[STATIC]`).** Ids 2 and 15 are byte-identical records (`0x65E3`/`0x66EF`). Ids
+  11–13 are never issued, and each has the shape of an engine loop (instrument 0x71).
+- **Tags.** The decode is `[STATIC]`. The acoustics are the port model's (`UNKNOWN_opl_sample_fidelity`).
+
+### 8. `UNKNOWN_microu_runs_standalone` — closed: yes `[PROVEN]`
+
+Live in DOSBox: `MICROU` typed at `C:\` with no `MICRO.COM` and no `SM.EXE`.
+- It shows the FONT.BIN code card, accepts ENTER twice, then GAME OPTIONS and the title (the
+  showcase running).
+- Through ONE PLAYER → Challenge → SPIDER, it starts the ROUND21 qualifier: the `GAME1` chdir and
+  every race load work.
+
+### 9. Category (c) closures
+
+- **`UNKNOWN_gfx1_header` — closed as irrelevant.** No `SM.EXE` instruction reads bytes 0–3 (M3.30).
+  Further readings were tested and refuted (agent):
+  - BE32 93164 and LE32 against every size;
+  - a DOS time (13:31:24), which matches no archive stamp (15:15:4x).
+
+  Only the packing tool could say what it means.
+- **`UNKNOWN_unp_version` — UNP 4.11 (agent).** It is established by hash identity with the copy
+  used in the sibling Pushover project, which that project's notes identify as v4.11: SHA-1
+  `e034d6fe…`, 20106 B, byte-identical to `../Pushover/UNP.EXE` and to five other sibling copies. It
+  is ruled out as the 4.12 build by size and hash. It is DIET-packed with the `diet` tag at 0x1C
+  stripped, which is why `strings` shows no banner.
+- **`UNKNOWN_ph0_1140_1380` — closed as an unused asset.** The range is knockout frame slot 5
+  (`0x45E3 + 5·0x240 = 0x5123`). The frame table `DS:28AB` = `0,1,2,3,4,0,FFFF` never selects
+  slot 5.
+  - Every PH0-relative pointer was enumerated and bounded: puffs ≤ +0x5FF, projectile ≤ +0x37F,
+    knockout ≤ +0x113F, everything else ≥ +0x1380.
+  - No operand or DS data word addresses `DS:5123-5362`.
+
+  The three icon shapes there are shipped art with no consumer.
+- **`UNKNOWN_1254_1256`** was already closed in §9v, and was re-confirmed dead (agent: no literal,
+  base-register, string-op or data-pointer access). The static values follow `(car+1)·0x2400` and
+  `car·0x3600`.

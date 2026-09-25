@@ -37,7 +37,8 @@ export const FLIGHT_THRESHOLD = 0x28 // 40 -- reloadCooldown >= this = still in 
 const HIT_BOX = 13 // 1000:79fd: |dx|,|dy| < 0xD
 
 /** TANKS (round 7) or the `projectilesForAll` cheat flag (docs/engine.md §6 type 9) -- gates
- * firing, flight sub-stepping and the hit test alike, confirmed live for all three call sites. */
+ * firing (`4F21`) and the hit test (`5E3C`). Flight (`30A9 -> 51B2`) is NOT gated, but only a shot armed on
+ * the gated fire path (`4F63`) ever flies, and `updateProjectileFlight` below runs ungated too (docs/engine.md §9cf). */
 export function projectilesEnabled(ctx) {
   return ctx.round === 7 || !!ctx.projectilesForAll
 }
