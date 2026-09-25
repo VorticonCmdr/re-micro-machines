@@ -6452,9 +6452,9 @@ from an earlier one-player session in the same DOSBox instance, unrelated to thi
 open items carried forward, UNCHANGED in scope (not resolved either way by this session):
 `UNKNOWN_handicap_rosterword_link` (how, or whether, a per-character handicap answer -- `0B51`'s
 own `DS:[0x1D6+c]` toggle -- ever reaches a roster word's bit 7 at all -- UNCHANGED by this
-session, not resolved either way, deferred to a capture with an eligible character) and
-`UNKNOWN_4be7_twocar_rubberband` (the rubber band's own two-car-specific branch at `4BE7`, found
-while confirming `4B1C`'s gate, not yet read).
+session, not resolved either way, deferred to a capture with an eligible character -- **RESOLVED
+2026-09-25, §9bk, live and `[PROVEN]`**) and `UNKNOWN_4be7_twocar_rubberband` (the rubber band's
+own two-car-specific branch at `4BE7`, found while confirming `4B1C`'s gate, not yet read).
 
 **Added 2026-09-25 (§9bh).** P4 engine refactor step 3 of 4: `twoHuman.js`, a new pure-state module
 (track pick with no repeats, win tally, per-character lifetime stats split into session-vs-match
@@ -6493,6 +6493,18 @@ readers traced). GOAL's own "LEFT and RIGHT both step +1" note confirmed mechani
 once, before either test). `[0x8A3]`'s own track-select cursor has no reset site, `[PROVEN]` at `0`
 by a live read of its own real word-sized field -- the same session-lifetime shape as the lifetime
 win/loss counters.
+
+**Added 2026-09-25 (§9bk).** `UNKNOWN_handicap_rosterword_link` RESOLVED, live and `[PROVEN]`: the
+handicap answer sets bit 7 of the roster word's own low byte directly (`09E0`'s own `OR word ptr
+[0x2668],AX` at `0B0E`, immediately after `CALL 0B51`), the SAME bit `altTuningFieldsFor`'s own
+`3F3B` path already tests. A live DOSBox walkthrough (fresh TWO PLAYER entry, WALTER for P1
+answered YES, MIKE for P2 answered NO) confirms the whole chain byte-exact: `[0x1D6]`(WALTER's
+answer cell)`=0x80`, `[0x2668]`(car 0's roster word)`=0x0080` (character 0 | handicap bit);
+`[0x1D7]`(MIKE's)`=0`, `[0x266A]`(car 1's)`=1` (character 1, bit 7 clear). Also settles that `0B51`
+IS called unconditionally by `09E0` for every car-0/car-1 commit (not gated by character range at
+the CALL site -- the range gate is entirely inside `0B51` itself), and separately derives/confirms
+`raceInfoSlideTicks`'s own formula live, exactly. See §9bk for the full derivation and a real
+DOSBox-automation methodology pitfall this session hit along the way.
 
 ## 9as. P1's first item: the logo intro's real per-frame animation (2026-09-24)
 
@@ -9377,3 +9389,111 @@ existing carousel, a `CHOOSE_GAME` third instance of the existing `twoItemMenuSt
 tournament path exit to) is NOT new work either: `flow.js` already has a `CHAMPION` phase wired to
 `drawChampion`/`championMusic` for the one-player path, reusable here rather than re-ported. Each
 remaining piece still its own commit, per the established one-commit-per-screen pattern.
+
+## 9bk. Live DOSBox pass: `raceInfoSlideTicks` proven exact, `UNKNOWN_handicap_rosterword_link` resolved (2026-09-25)
+
+**Purpose.** §9bj's own "Verification status" flagged two live-checkable predictions and one
+untouched open item as good next steps: whether `raceInfoSlideTicks` matches a real capture, and
+whether `0B51`'s own handicap answer ever reaches a roster word's bit 7. This session's live DOSBox
+instance (found idle mid-race, unchanged since §9bg/§9bi/§9bj, `frame` counter still advancing --
+genuinely running, not suspended) was used to check both, live, end to end.
+
+**The prior mid-race capture was abandoned, deliberately.** A basic responsiveness check (holding
+P1's own accelerate for 4 real seconds produced no visible change) turned out to mean the held key
+never reached the game at all -- `mcp__dosbox__input_key` with `pressed:true` dispatches a TAP
+(press+release together, confirmed by its own `events_scheduled` count: 2 for `pressed:true`, 1 for
+a standalone `pressed:false` release of an already-tapped key) -- matching this project's own
+existing memory note (`dosbox-input-key-is-a-tap.md`) that a fresh session re-derived the hard way
+before finding. `KBD_esc`, sent the same way, DID visibly work (dumping straight to the title
+screen) -- confirming input was reaching the game, just not as a sustained hold -- so the old
+mid-race capture (whatever race it was) was abandoned rather than chased further; ESC-during-a-race
+returning to the title is itself already documented (CLAUDE.md, `docs/engine.md` §9an) as the
+real game's own behaviour, so nothing was lost by this. A fresh TWO PLAYER walkthrough was driven
+instead, entirely via `mcp__dosbox__input_sequence` (explicit `delay_ms`-timed press/release pairs),
+which DOES hold correctly.
+
+**A second, more consequential instance of the SAME pitfall: `0B51`'s own poll loop shares P1's
+fire bit with the character carousel's own commit, with no release-wait.** A first attempt held P1's
+fire (`S`) continuously through BOTH the carousel's own ~1.1s/5-blink commit animation AND
+straight into whatever followed, for both P1 (ANNE) and P2 (WALTER) -- picking two characters both
+inside `handicapQuestionApplies`'s own eligible range (0-2) -- and NEITHER showed any handicap
+screen, landing directly on CHOOSE GAME instead. Disassembling `09E0` in full this session (its
+body was previously only known by citation, not read end to end) explains why: `0B51`'s own poll
+loop (`0BEC: MOV AL,[0x108B]` then `0BEF`/`0BF3: TEST AL,0x10`/`0x08; JNZ 0C09`) exits on the SAME
+FIRE bit (`0x08`) the carousel's own commit used, with NO release-wait at its own entry (unlike
+`179B`'s own documented `[0x107E]`/`[0x107F]` clear, elsewhere in this file) -- so a fire button
+already held continuously through the carousel's own commit satisfies `0B51`'s own exit test on its
+very first poll, resolving the question INSTANTLY with whatever answer was already stored (`0` the
+first time, per `0B9D: MOV AL,byte ptr [BX]`'s own default-load from `DS:[0x1D6+character]`) and
+with no visible interaction at all. **A held key silently swallowing a screen it can also close is
+a real trap for any live-input-sequence automation in this codebase, not specific to this one
+screen** -- new `PLAN.md` §8 pitfall, below. Releasing fire cleanly BEFORE the carousel's own commit
+animation finishes (a short `input_sequence` press-then-release, well under the ~1.1s blink
+duration, followed by a `wait_for frames` with nothing held) fixed it immediately.
+
+**`09E0`, disassembled in full for the first time this session (`09E0-0B50`).** Confirms `0B51` is
+called UNCONDITIONALLY by `09E0` itself for every commit of car 0's or car 1's own record (`0AFB-
+0B24`: `CMP BX,0xC03`/`0xC1E` selects which of `[0x2668]`/`[0x266A]` to store into and calls `0B51`
+either way, `PUSHA`/`POPA`-wrapped) -- the character-RANGE gate (0-2) that determines whether
+anything actually happens is entirely INSIDE `0B51` itself (already correctly cited from §9bf), not
+a precondition at the call site. `0B51`'s own return value (`AX`, `AH` always cleared by `0C0F`) is
+merged into the roster word via `OR word ptr [0x2668/0x266A],AX` (`0B0E`/`0B20`) -- for an eligible
+character that answers YES, `AL=0x80` (`0BFD`/`0C03`/`0C0D`), so the OR sets bit 7 of the roster
+word's own LOW byte directly on top of the character index already stored there moments earlier
+(`0B07`/`0B19`) -- EXACTLY the bit `altTuningFieldsFor`'s own `3F3B` path (`race.js`) already tests.
+Cars 2/3 (`0xC39`/`0xC54`) never call `0B51` at all (matching two-human H2H only ever using cars
+0/1) -- consistent with, not a new constraint on, the existing port.
+
+**Live walkthrough, `[PROVEN]` end to end.** Fresh TWO PLAYER entry (title -> SELECT GAME -> TWO
+PLAYER, `input_sequence` throughout): P1 (KEYS2, arrows+`S`) scrolled to WALTER (character 0) and
+confirmed with a clean short press+release. The handicap screen appeared -- `[PROVEN]` this
+session for the first time ever, live: "HANDICAP WALTER ? NO" (the real string layout, `DS:0x1A0`
+region per `0B65`'s own per-character `SI` table), toggling to "HANDICAP WALTER ? YES" on a RIGHT
+press (`[0x1E0]` read live as `0x80` mid-toggle, BEFORE confirming -- `[0x1D6]` itself still `0`
+at that instant, confirming the toggle is scratch-only until the final commit). Confirmed YES:
+`[0x1D6]=0x80`, `[0x2668]=0x0080` (character 0 | handicap bit). P2 (KEYS1, `J`/`L`/`I`/`M`/`K`)
+scrolled to MIKE (character 1), shown "HANDICAP MIKE ? NO" by default, left as NO and confirmed:
+`[0x1D7]=0x00`, `[0x266A]=0x0001` (character 1, bit 7 clear) -- a clean YES/NO pair, both
+character slots, both directions of the OR, all `[PROVEN]` live, closing
+`UNKNOWN_handicap_rosterword_link` in full.
+
+**`raceInfoSlideTicks`, `[PROVEN]` exact.** From CHOOSE GAME, TOURNAMENT was picked; execute
+breakpoints at the live-mapped `023E:2216` (entry) and `023E:22B5` (the loop's own exit `RET`) let
+`DS:0002` (the shared tick counter, §9v) be read at both instants directly, at the real `HIGH`/`1`
+smoothness this session's own `SETTINGS.DAT` already established (§9bg): `963` at entry, `986` at
+exit -- `986-963 = 23` ticks, matching `raceInfoSlideTicks(1) = 23` EXACTLY (not merely "at least
+23" -- this particular real run happened to take no more than one tick per iteration throughout).
+Record 8's and record 9's own X fields at exit, `[0xCDD]`/`[0xCF8]`, read `92`/`132` -- matching
+§9bj's own hand-derived resting-position table for smoothness 1 EXACTLY. The resulting screen
+(screenshotted) shows precisely what §9bj's own reading of `2481`/`2216` predicted: "TOURNAMENT
+RACE 1", "WON 0 LOST 0 ORDINARY" for both WALTER and MIKE (the live 0-0 tie -> `H2H_SKILL_LABELS`
+index 10 -> "ORDINARY" cross-check, first made in §9bg, now independently reproduced with a
+DIFFERENT character pair), the win-tally digits `0`/`0` (tournament mode DOES draw them, unlike
+single race), and the two round-indexed vehicle-class icons at rest side by side ("TURBO WHEELS",
+round 4 -- `[0x28BF]=4`/`[0x28C0]=2`, `[PROVEN]` live, confirming `[0x28BF]`/`[0x28C0]` really are
+the live round/race cells `nextTrack`'s own auto-pick landed on).
+
+**Session left mid-race again, deliberately**, matching the established pattern (§9bg/§9bi/§9bj all
+found and left this same instance mid-flight for the next session to continue) -- round 4/race 2
+("TURBO WHEELS", WALTER-handicapped-YES vs. MIKE-handicapped-NO) is now live and running past the
+`2216` screen; finishing it to capture `256E`'s own WINNER!/LOSER! screen and settle the `&0x1F`/
+`&0xF` mask-divergence note (§9bh) live is a good next step for whoever resumes this session, not
+chased further here -- this pass's own two target predictions (the slide formula, the roster-word
+link) are both now closed, and P4's remaining scope is unchanged by this pass (screens/flow wiring,
+same list as §9bj's own "Verification status").
+
+**Tests.** None -- this is a pure live-verification pass with no new port; `raceInfoSlideTicks` and
+`selectSingleRaceTrack`/`twoHuman.js` are unchanged from M3.63/M3.64, so the existing 95-assertion
+`check-twohuman.mjs` suite and the full 30-script regression suite remain the only coverage, both
+still passing (unaffected by a docs-only change).
+
+**Verification status.** `[PROVEN]` live, this session: the full handicap chain (screen text, toggle,
+default-load, final commit, roster-word merge, for both a YES and a NO answer on two different
+character slots); `raceInfoSlideTicks(1)=23` exact; the resting-position table's smoothness-1 row
+exact; `[0x28BF]`/`[0x28C0]` as live round/race cells. `[STATIC]` still: `raceInfoSlideTicks`'s own
+other three smoothness values (2/3/4) and the rest of the resting-position table -- not re-checked
+live this session (changing `[0x263A]` live was not attempted), though the formula's own single
+live data point is a strong cross-check of the whole derivation, not just one branch of it. Still
+open, UNCHANGED: `UNKNOWN_4be7_twocar_rubberband`, `UNKNOWN_0160_0192_meaning`,
+`UNKNOWN_989_98b_meaning`, the `&0x1F`/`&0xF` mask-divergence note's own live confirmation (§9bh),
+and all of step 4's own remaining screen/flow-wiring work (unchanged from §9bj's own list).

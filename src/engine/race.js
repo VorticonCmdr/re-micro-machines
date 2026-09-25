@@ -176,12 +176,17 @@ export function tuningFieldsFor(carIndex, round, tournamentIndex = 0, character,
  * unconditionally -- `[PROVEN]` live this session to read `0x14` (20, the SAME `GripAdjust` literal
  * `tuningFieldsFor`'s own `gripBase` already uses for a non-drone car).
  *
- * What sets `rosterWord`'s own bit 7 (a per-character handicap answer merged in, a "taken
- * character" marker, or something else) is `UNKNOWN_8a2_meaning`'s own still-open sibling question
- * -- deliberately NOT modelled here; this function takes the raw word as an opaque input, matching
- * the real bytes exactly, rather than guessing at the merge rule. Every CURRENTLY-reachable
- * `spawnCars` caller passes no `rosterWords`, defaulting every slot to `0` (bit 7 clear) --
- * matching this session's own live-captured, `[PROVEN]` no-handicap-answered case exactly.
+ * What sets `rosterWord`'s own bit 7: RESOLVED, `[PROVEN]` live (`UNKNOWN_handicap_rosterword_link`,
+ * docs/engine.md §9bk) -- it genuinely IS a per-character handicap answer merged in, nothing else.
+ * `RunCharacterSelectMenuTune2 1000:09E0` calls the handicap question (`0B51`) unconditionally for
+ * every car-0/car-1 commit, and `OR`s its own return value straight into the roster word
+ * (`0B0E`/`0B20`) -- a live walkthrough confirmed the whole chain byte-exact for both a YES and a NO
+ * answer on two different characters (`DS:[0x1D6+c]`'s own toggle cell -> the roster word's own low
+ * byte, bit 7). This function still takes the raw word as an opaque input, matching the real bytes
+ * exactly, rather than re-deriving the merge itself (that belongs to whichever module eventually
+ * ports the handicap question's own UI/state, not this one). Every CURRENTLY-reachable `spawnCars`
+ * caller passes no `rosterWords`, defaulting every slot to `0` (bit 7 clear) -- matching every live
+ * capture so far, where the handicap question was never actually reached or was answered NO.
  * @param {number} round
  * @param {number} rosterWord this car SLOT's own raw `[0x2668+2*slot]` word (default `0`)
  */
