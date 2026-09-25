@@ -26,7 +26,7 @@
 //    across both its own phases (release-wait then press-wait) -- NOT a fresh budget per phase,
 //    matching [0x2] only ever being reset at 17FF's own entry, never at the 182C transition.
 //   node tools/check-twohuman.mjs
-import { twoHumanSessionState, twoHumanMatchState, twoHumanSetupState, twoHumanRosterBytes, commitTwoHumanPick, H2H_P1_START, H2H_P2_START, nextTrack, reportRace, skillLabel, selectSingleRaceTrack, raceInfoSlideTicks, RACE_RESULT_SLIDE_TICKS, RACE_RESULT_WAIT_TICKS, raceResultWaitInitialState, raceResultWaitStep, H2H_TRACK_TABLE, H2H_WINS_TO_CHAMPION, SINGLE_RACE_TRACK_TABLE } from '../src/frontend/twoHuman.js'
+import { twoHumanSessionState, twoHumanMatchState, twoHumanSetupState, raceResultScreenInitialState, raceResultScreenStep, twoHumanRosterBytes, commitTwoHumanPick, H2H_P1_START, H2H_P2_START, nextTrack, reportRace, skillLabel, selectSingleRaceTrack, raceInfoSlideTicks, RACE_RESULT_SLIDE_TICKS, RACE_RESULT_WAIT_TICKS, raceResultWaitInitialState, raceResultWaitStep, H2H_TRACK_TABLE, H2H_WINS_TO_CHAMPION, SINGLE_RACE_TRACK_TABLE } from '../src/frontend/twoHuman.js'
 import { handicapQuestionApplies } from '../src/frontend/charSelect.js'
 import { CHARACTER_NAMES, H2H_SKILL_INDEX_TABLE, H2H_SKILL_LABELS, trackName } from '../src/data/frontend-tables.js'
 
@@ -337,6 +337,37 @@ check('H2H_SKILL_LABELS has 8 entries (DS:08CD)', H2H_SKILL_LABELS.length === 8)
   check('a new TWO PLAYER entry resets the roster but the session keeps WALTER\'s YES', twoHumanRosterBytes(again)[0] === 0 && session.handicapAnswers[0] === 0x80)
   const w3 = commitTwoHumanPick(again, session, 0, 5, null)
   check('a character the question skips: plain index, no session write', w3 === 5 && session.handicapAnswers[5] === 0)
+}
+
+// 256E's whole screen (docs/engine.md §9bx): 22 silent slide ticks, then 17FF (CX=20) windows with
+// a blink and a latch clear at each, no timeout, and the dismiss tick's [0x2] as the next seed.
+{
+  const s = raceResultScreenInitialState()
+  let first = null
+  const resets = []
+  for (let t = 1; t <= 200; t++) {
+    const r = raceResultScreenStep(s, { anyKeyReleased: t < 22, fireHeld: t < 22 }) // input during the slide
+    if (r.exit) { first = t; break }
+    if (r.resetLatch) resets.push(t)
+  }
+  check('256E: input during the 22-tick slide is ignored', first === null || first > 22)
+  check('256E: the slide ends, the first blink and 17FF entry come on tick 22', resets[0] === 22)
+  check('256E: a new 17FF window (and latch clear) every 21 ticks after that', resets.length >= 4 && resets.slice(1, 4).every((t, i) => t === 22 + 21 * (i + 1)))
+  const n = raceResultScreenInitialState()
+  let exited = false
+  for (let t = 1; t <= 5000; t++) if (raceResultScreenStep(n, {}).exit) exited = true
+  check('256E: no timeout -- 5000 idle ticks never leave', !exited)
+  check('256E: the blink toggles every window', n.blinks > 200)
+  const d = raceResultScreenInitialState()
+  for (let t = 1; t <= 22; t++) raceResultScreenStep(d, {})
+  for (let t = 1; t <= 6; t++) raceResultScreenStep(d, {})
+  const r = raceResultScreenStep(d, { anyKeyReleased: true })
+  check('256E: a release in the first window dismisses, seed = that window\'s [0x2] (7)', r.exit === 'dismiss' && r.seed === 7)
+  const f = raceResultScreenInitialState()
+  for (let t = 1; t <= 22; t++) raceResultScreenStep(f, { fireHeld: true })
+  let fx = null
+  for (let t = 1; t <= 100 && !fx; t++) { const q = raceResultScreenStep(f, { fireHeld: true }); if (q.exit) fx = q }
+  check('256E: a fire held from the race never dismisses (17FF waits for its release)', fx === null)
 }
 
 console.log(bad ? `${bad} of ${asserted} executed check(s) failed` : `check-twohuman: ${distinct.size} distinct assertions (${asserted} executed) pass -- two-human H2H's own tournament state (track pick with no repeats, win tally, session-level lifetime per-character stats that survive a new match, first-to-4 champion detection, the skill label formula, single race's own track select, the race-info slide's own tick count, the race-result screen's own fixed slide, and its own bounded dismiss-wait) matches the disassembly (GOAL-DOS-PARITY.md P4, docs/engine.md §9bh/§9bi/§9bj/§9bl)`)

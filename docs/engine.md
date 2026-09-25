@@ -11217,3 +11217,55 @@ wiring is verified live. Full regression suite plus `build` clean.
 - With the tally set to 3-0 and P1 winning race 2: the champion screen, then fire back to SELECT
   GAME.
 - No console errors.
+
+## 9bx. P4 two-human Head to Head, commit C: `256E`'s WINNER!/LOSER! screen; P4's first item closed (2026-09-25)
+
+**Purpose.** GOAL-DOS-PARITY.md P4's first item, the last of its three commits (§9bv, §9bw).
+
+**The disassembly (`ShowHeadToHeadRaceWinnerTune8 1000:256E-26BF`, re-read, `[STATIC]`).** The
+winner/loser from `[0x3FC]==0xC03` (`2574`), the tally increment (`2583`/`257D`), `[0x3FC]`/`[0x3FE]`
+re-stored as winner/loser; tune 8 (`2593`/`25A0`, `AH=9`-guarded); the lifetime stats
+(`25B0`/`25BE`); `240A` (`AX=0x64`) and `2481`; "WINNER!"/"LOSER!" (`DS:0966`/`096E`) at X=0x1D (P1)
+and X=0xB1 (P2), Y=0x5C, each chosen by who actually won (`25CB-25F6`); the win/lose poses ORed into
+the portraits (`2609`/`260D`); "RESULTS!!" (`DS:095C`) at Y=0x3C; "TOURNAMENT RACE n" (`DS:0975`)
+or "SINGLE RACE" (`DS:093A`) at Y=0x4C by `[0x8A5]` (`261D-263B`); present, fade-up (`32CE`); the
+icon slide: 22 iterations of +4/-4 with exact-equality exit, each iteration one tick (`CALL 3165`
+at `2685`) and no input poll (`266F-269E`); then the blink loop `26A0-26BD`: XOR both portraits'
+bit 4, present, `CALL 17FF` with CX=0x14, `JC 26A0`. No `[0x261F]` timeout anywhere: the screen
+waits for a player indefinitely. After `RET`, `207A` increments `[28C1]` and `1FDD` reads `[0x2]`
+for the next track -- still the count of the `17FF` window that was dismissed (§9bl).
+
+**What changed.**
+- `twoHuman.js`: `raceResultScreenInitialState`/`raceResultScreenStep`: the 22 silent slide ticks,
+  then `17FF` windows (each 21 ticks, `raceResultWaitStep` with CX=20), a blink toggle and a latch
+  clear at each, and on a dismiss the window's own tick count as `seed`.
+- `screens.js`: `drawTwoPlayerResult` (text: RESULTS!!, the race label, WINNER!/LOSER! by side, the
+  players' updated records and the tally; the poses, the blink and the icons are not drawn).
+- `flow.js`: after a two-human race, `enterTwoPlayerResult` (tune 8, an `H2H_RESULT` phase on the
+  combined readers); its dismiss goes to the champion screen at 4 wins (`2095`) or to the next
+  race with the dismissing window's seed (`2092`, replacing commit B's placeholder 0). Debug hooks
+  `forceTwoPlayerResultSteps`, `getTwoPlayerResult`.
+
+**Tests.** `check-twohuman.mjs` +7 assertions (151): input ignored through the slide, the first
+blink/`17FF` entry on tick 22 and a new window every 21 ticks, no timeout in 5000 ticks, the blink
+toggling per window, a first-window release giving seed 7, a fire held from the race never
+dismissing. Four mutations caught (input polled during the slide, the seed not from `17FF`, no latch
+clear per window -- after tightening a vacuous `.every()` check that first let it through -- and an
+added timeout).
+
+**Live verification, `[PROVEN]` in the port** (`game.html`, Web Worker RAF shim, real key events):
+- P2 (holding `I`) won a race from a set score: the result screen came up at tally 0-1; an Enter
+  released 100ms into the slide was ignored; with no input it stayed for 15s, blinking 50 times
+  (15s / 21 ticks = 50): no timeout.
+- A keydown that fell just before a `17FF` window boundary was untracked by that window's latch
+  clear, so its release did not dismiss -- the faithful behaviour, seen by accident. A later ArrowUp
+  release did dismiss it.
+- At 3-1, P1 won the race: tally 4-1, the result screen, an Enter pressed at window tick 1 and
+  released at tick 5 dismissed it straight into the champion screen, and S returned to SELECT GAME.
+- No console errors.
+
+**P4's first item is closed.** The two-human TOURNAMENT is playable end to end: both picks with the
+handicap question, CHOOSE GAME, the no-repeat track per race, the race-info screen, a two-human race
+on the alternate tuning, the WINNER!/LOSER! screen, first to 4 wins, the champion screen. What stays
+open belongs elsewhere: the pixel-level screens (portraits and poses, the class icons and slides,
+the header's extra WORDS.CHR word -- Part F), and SINGLE RACE (P4's second item).

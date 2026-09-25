@@ -137,6 +137,26 @@ export function drawTwoPlayerRaceInfo(buf, arena, { raceNumber, className, playe
   })
 }
 
+/** `ShowHeadToHeadRaceWinnerTune8 1000:256E`'s own screen (docs/engine.md §9bx), as text:
+ * "RESULTS!!" (`DS:095C`, Y=0x3C), "TOURNAMENT RACE n" or "SINGLE RACE" (Y=0x4C, by `[0x8A5]`), and
+ * "WINNER!"/"LOSER!" (`DS:0966`/`096E`) at P1's X=0x1D and P2's X=0xB1, Y=0x5C, following whoever
+ * actually won (`25CB-25F6`); plus each player's updated name/label/lifetime record and the tally
+ * (`240A`/`2481`). The portraits' win/lose poses and their blink, and the sliding class icons, are
+ * not drawn by the port. */
+export function drawTwoPlayerResult(buf, arena, { modeLabel, p1Won, players, tally }) {
+  drawStringCentred(buf, arena, rec('FONT2.CHR'), 'RESULTS!!', 0x3c)
+  drawStringCentred(buf, arena, rec('FONT1.CHR'), modeLabel, 0x4c)
+  drawString(buf, arena, rec('FONT2.CHR'), p1Won ? 'WINNER!' : 'LOSER!', 0x1d, 0x5c)
+  drawString(buf, arena, rec('FONT2.CHR'), p1Won ? 'LOSER!' : 'WINNER!', 0xb1, 0x5c)
+  players.forEach((p, i) => {
+    const x = i === 0 ? 4 : 0xbe
+    drawString(buf, arena, rec('FONT1.CHR'), p.name, x, 0x14)
+    drawString(buf, arena, rec('FONT1.CHR'), p.label.trim(), x, 0x1e)
+    drawString(buf, arena, rec('FONT1.CHR'), `WON ${p.wins} LOST ${p.losses}`, x, 0x28)
+    if (tally) drawString(buf, arena, rec('FONT2.CHR'), String(tally[i]), x + 0x38, 0x3c)
+  })
+}
+
 /** `RunHeadToHeadChooseGameMenu 1000:1EF1`'s own screen: "TOURNAMENT" (X=0x18) and "SINGLE RACE"
  * (X=0x9C) at Y=0xBE, "CHOOSE GAME!" centred at Y=0x68 (`1F25-1F4C`); the two vehicle icons
  * (`1F4F-1F71`) are not drawn by the port. */

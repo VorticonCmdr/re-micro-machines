@@ -524,3 +524,34 @@ export function raceResultWaitStep(state, input = {}, cx = RACE_RESULT_WAIT_TICK
   if (state.ticks > cx) { state.phase = 'AWAIT_RELEASE'; state.ticks = 0; return { exit: 'retoggle' } } // 1859: timeout
   return { exit: null } // 1855: CMP [0x2],CX / JLE -- keep waiting for a fresh press
 }
+
+/**
+ * `256E`'s whole post-race screen, as `flow.js` drives it (docs/engine.md §9bx): the 22-iteration
+ * icon slide (`266F-269E`, each iteration one real tick via `3165` at `2685`, no input polled),
+ * then the blink loop (`26A0-26BD`): XOR the portraits' blink bit, present, `CALL 17FF` with
+ * CX=0x14 -- STC (the window ran out) loops, CLC (a release, or a fresh fire press) returns. There
+ * is no `[0x261F]` timeout: the screen waits for a player indefinitely. The slide's last tick is
+ * also the first blink and the first `17FF` entry, whose latch clear is the caller's job
+ * (`resetLatch`). On a dismiss, `seed` is `17FF`'s own `[0x2]` at that moment -- what `1FDD` reads
+ * for the next track right after `256E` returns (§9bl's "source of `v`").
+ */
+export function raceResultScreenInitialState() {
+  return { slideLeft: RACE_RESULT_SLIDE_TICKS, wait: null, blinkOn: false, blinks: 0 }
+}
+
+export function raceResultScreenStep(state, input = {}) {
+  if (state.wait == null) {
+    if (--state.slideLeft > 0) return { exit: null, resetLatch: false } // 2685: one tick, no poll
+    state.blinkOn = !state.blinkOn; state.blinks++ // 2690 JZ 26A0: the first XOR
+    state.wait = raceResultWaitInitialState() // 26BA: the first 17FF call
+    return { exit: null, resetLatch: true }
+  }
+  const r = raceResultWaitStep(state.wait, input, RACE_RESULT_WAIT_TICKS)
+  if (r.exit === 'dismiss') return { exit: 'dismiss', seed: state.wait.ticks, resetLatch: false } // 26BD: CLC -> RET
+  if (r.exit === 'retoggle') { // 26BD: STC -> JC 26A0
+    state.blinkOn = !state.blinkOn; state.blinks++
+    state.wait = raceResultWaitInitialState()
+    return { exit: null, resetLatch: true }
+  }
+  return { exit: null, resetLatch: false }
+}

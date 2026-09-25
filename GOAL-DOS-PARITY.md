@@ -638,7 +638,7 @@ docs, (6) commit.
   is session-lifetime, as in DOS.
 
 ### P4: two-human Head to Head
-- [ ] Port `FUN_1000_1e20` → `1ef1` / `RunHeadToHeadTournament 1000:1faf` / `2329` / `256e`: the WON/LOST
+- [x] Port `FUN_1000_1e20` → `1ef1` / `RunHeadToHeadTournament 1000:1faf` / `2329` / `256e`: the WON/LOST
   screens, skill labels via `DS:08CD`/`DS:08B0`, the win tally `[98A]`/`[98C]` (first to 4,
   §9y), and the handicap question. Track pick: from `DS:09BA` (`04 0A 11 0D 1C 21 14 19`) by
   `DS:0002 & 7` without repeats. Reproduce `DS:0002` as a 70 Hz tick counter that runs from boot,
@@ -708,7 +708,10 @@ docs, (6) commit.
   §9bw):** TOURNAMENT runs `1FAF`'s loop -- the track pick, the race-info screen (`2216`'s slide
   then `179B`), a real two-human race (car 1 on P2's keys, the alternate tuning with the slot
   words), the tally and lifetime stats, first to 4 wins to the champion screen and back to SELECT
-  GAME. Remaining: commit C (`256E`'s WINNER!/LOSER! screen, and the next track's seed from it).
+  GAME. **Commit C done (M3.78, §9bx), closing this item:** `256E`'s own screen (tune 8, the 22-tick
+  silent slide, `17FF` blink windows with no timeout, the dismissing window's `[0x2]` as the next
+  track's seed); `[PROVEN]` live in the port. The pixel-level art (portraits, poses, icons) is Part
+  F; SINGLE RACE (`2329`) is the next item.
 - [ ] **The single-race select** (`SelectSingleRaceTrack 1000:2193`, the 10-entry list at
   `DS:09D9`; LEFT and RIGHT both step +1). Find where it is reachable from, and port it if it is
   reachable.
