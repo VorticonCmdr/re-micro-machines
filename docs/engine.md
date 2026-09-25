@@ -190,7 +190,7 @@ In `5e4e` (`5e8f–5eea`), **state-0 cars only**: `idx = [12DA] >> 5` for rounds
 | 8 | 60CB 6169 618C |
 | 9 | 60CB 66ED 6768 6231 6231 6231 6622 64F5 |
 
-Handlers (`s = vxi² + vyi²`): `35BE`/`683B` RET · `60CB` normal: `[1390]=0`; leaving a raised level (`[138E]≠0`) → `[138E]=0`, `zVel = s/15+4` (round 1 prev idx 4: `/7+4`, idx 3: `/12+8`) · `6169` knock-out tile → state D, `[1382]=0x46` · `618C` off-track dwell 1→2, then `vx += 0xC8` if `vx ≥ 0` · `61B0` rough: leave-level hop; else halve vx,vy (unless prev idx 3 in round 5 / 4 elsewhere), sfx 6, speed cap 0x200 · `6231` (`FUN_1000_6231`) conveyor/current: push v along the `.DIR` heading (`191B`/`18FB`) ×2, speed cap 0x100 · `63D6` wet puff · `63DD` on ground: `zVel = max(s,0x1C)/8+5`, `[12D8]=0` · `641A` prev idx ≠ 6 and `s ≥ 0xE`: `zVel = max(s,0x1C)/10+5` · `6456`/`64F5` hazard (if `[12F9]`): state 1, glide to the 16-px cell centre in 4 steps (A also zeroes velocity) · `657E` leave-level hop; skidding → `[1288]=1` · `6622` leave-level hop; moving → `[128A]=1`, sfx 18 · `6674` `HandleTileResetSteerFlags`: prev idx 0/2 → `[12D0]=0, [12A8]=1, [12C4]=[12C8]=1` (barrier bounce) · `669B` `HandleTileLowGripSfx12`: `[1284]=0x14`, sfx 18 · `66B2` hop; `[1286]=0x14` · `66ED` hop (+6); prev ≠ 6: `zVel = s/9 + 0xB` (round 2) or `+2` · `6768` hop; `s ≥ 0xE`: `zVel = max(s,0x1C)/7` (+7 round 2) · `67D8` hop; prev ≠ 6: `s/5+4` · `683C` ramp launch · `6882` stepped levels (rounds 4/5): `level = idx − 4` (0xD → −1, 0xE → 4 with launch `s/7+4`); `Δ = level − [138E]`; `Δ > 2` → wall probes + `[12A8]=1`; `|Δ| ≤ 1` nothing; else drop `s/18+4` · `69C5` TANKS levels: `level = idx` (8 → 2), hop `/15+4`, then `6AC2` · `6AC2` `.DIR` bit 4 → `[1388]=1, [1386]=0` else `[1388]=0, [1386]=1` · `6AE5` state-E sequencer (round 3 idx 4). Round-2 extras in `5e4e`: `.DIR & 0x18` → `6231`; every step → `62e3` **plughole** at world (0x650, 0xB70): within ±60 px pull velocity toward the centre by `min((60−|dx|)·4+40, (60−|dy|)·4+5)`; within ±12 → state 1, `[1382]=70`, 4-step glide. `docs/sound.md` §3b's "6622/669B present in every dispatch row" is wrong: `6622` is in rows 4, 5, 9 and `669B` in rows 1 and 6; only `60CB` is in every row.
+Handlers (`s = vxi² + vyi²`): `35BE`/`683B` RET · `60CB` normal: `[1390]=0`; leaving a raised level (`[138E]≠0`) → `[138E]=0`, `zVel = s/15+4` (round 1 prev idx 4: `/7+4`, idx 3: `/12+8`) · `6169` knock-out tile → state D, `[1382]=0x46` · `618C` off-track dwell 1→2, then `vx += 0xC8` if `vx ≥ 0` · `61B0` rough: leave-level hop; else halve vx,vy (unless prev idx 3 in round 5 / 4 elsewhere), sfx 6, speed cap 0x200 · `6231` (`FUN_1000_6231`) conveyor/current: push v along the `.DIR` heading (`191B`/`18FB`) ×2, speed cap 0x100 **(made exact in §9cd: the `191B` remap only with map attribute bit 1, bit 0 reverses, each `2·sin` clamped to `[reverseLimit, maxSpeedCur]`)** · `63D6` wet puff · `63DD` on ground: `zVel = max(s,0x1C)/8+5`, `[12D8]=0` · `641A` prev idx ≠ 6 and `s ≥ 0xE`: `zVel = max(s,0x1C)/10+5` · `6456`/`64F5` hazard (if `[12F9]`): state 1, glide to the 16-px cell centre in 4 steps (A also zeroes velocity) · `657E` leave-level hop; skidding → `[1288]=1` · `6622` leave-level hop; moving → `[128A]=1`, sfx 18 · `6674` `HandleTileResetSteerFlags`: prev idx 0/2 → `[12D0]=0, [12A8]=1, [12C4]=[12C8]=1` (barrier bounce) · `669B` `HandleTileLowGripSfx12`: `[1284]=0x14`, sfx 18 · `66B2` hop; `[1286]=0x14` · `66ED` hop (+6); prev ≠ 6: `zVel = s/9 + 0xB` (round 2) or `+2` · `6768` hop; `s ≥ 0xE`: `zVel = max(s,0x1C)/7` (+7 round 2) · `67D8` hop; prev ≠ 6: `s/5+4` · `683C` ramp launch · `6882` stepped levels (rounds 4/5): `level = idx − 4` (0xD → −1, 0xE → 4 with launch `s/7+4`); `Δ = level − [138E]`; `Δ > 2` → wall probes + `[12A8]=1`; `|Δ| ≤ 1` nothing; else drop `s/18+4` · `69C5` TANKS levels: `level = idx` (8 → 2), hop `/15+4`, then `6AC2` · `6AC2` `.DIR` bit 4 → `[1388]=1, [1386]=0` else `[1388]=0, [1386]=1` · `6AE5` state-E sequencer (round 3 idx 4). Round-2 extras in `5e4e`: `.DIR & 0x18` → `6231`; every step → `62e3` **plughole** at world (0x650, 0xB70): within ±60 px pull velocity toward the centre by `min((60−|dx|)·4+40, (60−|dy|)·4+5)`; within ±12 → state 1, `[1382]=70`, 4-step glide. `docs/sound.md` §3b's "6622/669B present in every dispatch row" is wrong: `6622` is in rows 4, 5, 9 and `669B` in rows 1 and 6; only `60CB` is in every row.
 
 ## 6. Input → control byte; the drone AI `[STATIC]`
 
@@ -11654,3 +11654,39 @@ Three mutations are caught: no round-3 path, no CX=12, no `.DIR` restore. `check
 `check-finish` (all 29 races resolve) pass.
 
 Not captured live: it needs a car driven onto a precise pool-table edge in DOSBox.
+
+## 9cd. The conveyor/current push (`6231`), re-derived byte-exactly (2026-09-25)
+
+GOAL-DOS-PARITY.md P5 (`UNKNOWN_conveyor_push_formula`). The port's `h6231` was a reading of "push
+v along the .DIR heading ×2": always through the LEV bucket's remap, then `2·sin`/`2·cos` added
+unclamped. `6231-62E2`, read in full, `[STATIC]`, differs in three places:
+- **The remap is conditional.** The `.DIR` low nibble (`& 7` in round 2, `6246`) goes through the
+  remap table `DS:191B` (row = LEV bits 6-5, `[12E0]`) **only when map attribute bit 1 is set**
+  (`[12DE] & 2`, i.e. map byte bit 7, `624C-6263`). Otherwise it indexes the compass table
+  `DS:18FB` directly. That's the same gate the drone AI already applies to these same tables.
+- **Map attribute bit 0 reverses the push** (map byte bit 6, `626E-6274`: heading `^ 0x80`).
+- **Each component is clamped.** `2·sin(heading)` for X and `2·sin(heading − 0x40)` for Y (`DS:10A0`,
+  the Y index wrapped at `62A2-62AB`) is built as `IMUL 0x100` / take AH / sign-extend / `SHL 1`. It
+  is then clamped to `[reverseLimit [12A0], maxSpeedCur [129C]]` (signed, `628A-629A` and
+  `62BC-62CC`) before the add.
+
+The speed cap (0x100, signed `JL`, `62D4-62DC`) was already right. `589C` confirms `[12DE]` is the
+map byte `>> 6`, which is the port's `mapAttr`.
+
+**Where it runs.** Per the port's terrain table (`TERRAIN_ROWS` with its real row overflow), `6231`
+is dispatched for round 9 (RUFFTRUX) terrain 3–5 and, through the overflow, round 8 terrain 6–8.
+
+**Port.** `terrain.js`'s `h6231` has been rewritten to the bytes and exported for the tests.
+
+**Tests.** `check-step.mjs` covers, against hand-computed pushes from the real tables:
+- no remap with bit 1 clear;
+- the remap with bit 1 set, in a case where it changes the result;
+- the reversal;
+- the round-2 mask;
+- both clamp bounds;
+- the signed speed cap.
+
+Three mutations are caught, including the old always-remap. `check-rounds`, `check-finish`,
+`trace` (13/20) and `ai` (59/60) are unchanged.
+
+Not captured live.

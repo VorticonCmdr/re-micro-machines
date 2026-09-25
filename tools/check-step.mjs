@@ -765,5 +765,47 @@ function newCar(fields) {
   check('round 3: a 0xFF progress on the bit-4 wall step knocks out at once (57C4 -> 5842), no wall response', car.state === 0xd && !hit.blocked)
 }
 
+// The conveyor push `6231-62E2` (docs/engine.md §9cd), byte-exact: the remap only with map
+// attribute bit 1, the reversal with bit 0, the per-component clamp, the round-2 nibble mask.
+{
+  const { h6231 } = await import('../src/engine/terrain.js')
+  const { SINE8, DIR_COMPASS_TABLE, DIR_REMAP_TABLE } = await import('../src/data/engine-tables.js')
+  const mk = (f) => ({ velX: 0, velY: 0, speed: 0x80, maxSpeedCur: 0x400, reverseLimit: -0x200, dirByte: 0x03, mapAttr: 0, levByte: 0x40, ...f })
+  const push = (h) => [2 * SINE8[h], 2 * SINE8[(h - 0x40) & 0xff]]
+
+  let car = mk({})
+  h6231(car, { round: 9 })
+  let [px, py] = push(DIR_COMPASS_TABLE[3])
+  check('conveyor: map attribute bit 1 clear -> the raw nibble indexes the compass table, no remap (624C)', car.velX === px && car.velY === py)
+
+  car = mk({ mapAttr: 2, levByte: 0x00 })
+  h6231(car, { round: 9 })
+  ;[px, py] = push(DIR_COMPASS_TABLE[DIR_REMAP_TABLE[0][3]])
+  check('conveyor: bit 1 set -> through the LEV bucket\'s remap row first (6252-6263)', car.velX === px && car.velY === py)
+  check('conveyor: the remap really changes the push in this case (the test discriminates)', DIR_REMAP_TABLE[0][3] !== 3 && px !== push(DIR_COMPASS_TABLE[3])[0])
+
+  car = mk({ mapAttr: 1 })
+  h6231(car, { round: 9 })
+  ;[px, py] = push(DIR_COMPASS_TABLE[3] ^ 0x80)
+  check('conveyor: bit 0 reverses the push (626E-6274)', car.velX === px && car.velY === py && px === -push(DIR_COMPASS_TABLE[3])[0])
+
+  car = mk({ dirByte: 0x0b })
+  h6231(car, { round: 2 })
+  ;[px, py] = push(DIR_COMPASS_TABLE[3])
+  check('conveyor: round 2 masks the nibble with 7 (6246)', car.velX === px && car.velY === py)
+
+  car = mk({ maxSpeedCur: 10, reverseLimit: -10, dirByte: 0 }) // compass[0]=0x40: sin 0x40 = max, sin 0 = 0
+  h6231(car, { round: 9 })
+  check('conveyor: each component clamped to [reverseLimit, maxSpeedCur] (628A-629A / 62BC-62CC)', car.velX === 10 && car.velY === Math.max(-10, Math.min(10, 2 * SINE8[0])))
+  car = mk({ maxSpeedCur: 10, reverseLimit: -10, dirByte: 4 }) // compass[4]=0xC0: sin 0xC0 = -max
+  h6231(car, { round: 9 })
+  check('conveyor: ...and the lower bound too', DIR_COMPASS_TABLE[4] === 0xc0 && car.velX === -10)
+
+  car = mk({ speed: 0x300 }); h6231(car, { round: 9 })
+  const fast = car.speed
+  car = mk({ speed: -0x300 }); h6231(car, { round: 9 })
+  check('conveyor: speed capped at 0x100, signed (62D4-62DC)', fast === 0x100 && car.speed === -0x300)
+}
+
 console.log(bad ? `${bad} check(s) failed` : 'check-step: idle + driving runs clean (no NaN, world stays toroidal); checkpoint/lap rule holds (no lap counted with a checkpoint outstanding, counted once cleared); off-track collision response matches the real early-return/tick-reset/sfx bytes; tile-index overflow resolves to real partial data where the file has it and a defined zero fallback otherwise; shared col/dir/.BRK buffers replicate the real cross-race leftover-byte carry-over when a caller opts in; the no-throttle steer-floor/coast-decay speed jump replays exactly against the live capture, in isolation and through a real runStep')
 process.exitCode = bad ? 1 : 0

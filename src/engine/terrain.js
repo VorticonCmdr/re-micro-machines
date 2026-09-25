@@ -82,16 +82,29 @@ function h61b0(car, ctx) { // HandleTerrainRoughSurfaceSfx6
   car.speed = Math.min(car.speed, 0x200)
 }
 
-// UNKNOWN_conveyor_push_formula: "push v along the .DIR heading x2" isn't a fully specified
-// formula; read as adding 2x the heading's sine/cosine to velX/velY (the same table the rest of
-// the engine uses for heading->vector), not verified against a trace.
-function h6231(car, ctx) { // FUN_1000_6231 (conveyor/current)
-  const bucket = (car.levByte >> 5) & 3
-  const lowNibble = car.dirByte & (ctx.round === 2 ? 7 : 15)
-  const heading = DIR_COMPASS_TABLE[DIR_REMAP_TABLE[bucket][lowNibble]]
-  car.velX = toI16(car.velX + 2 * SINE8[heading])
-  car.velY = toI16(car.velY + 2 * SINE8[(heading - 0x40) & 0xff])
-  car.speed = Math.min(car.speed, 0x100)
+/**
+ * `FUN_1000_6231`, the conveyor/current push (docs/engine.md §9cd, byte-exact from `6231-62E2`):
+ * - the `.DIR` low nibble (`& 7` in round 2, `624C`) indexes the compass table `DS:18FB` directly,
+ *   or, only when map attribute bit 1 is set (`[12DE] & 2`), through the LEV byte's bucket row of
+ *   the remap table `DS:191B` first (`624C-6263`);
+ * - map attribute bit 0 reverses the push (`626E-6274`: heading `^ 0x80`);
+ * - each component is `2 * sin` (`SINE8` at `DS:10A0`; Y uses `heading - 0x40`), clamped to
+ *   `[reverseLimit, maxSpeedCur]` (`628A-629A`/`62BC-62CC`, signed) and added to velX/velY;
+ * - speed is capped at 0x100 (`62D4-62DC`, signed).
+ */
+export function h6231(car, ctx) { // FUN_1000_6231 (conveyor/current)
+  let idx = car.dirByte & (ctx.round === 2 ? 7 : 15)
+  if (car.mapAttr & 2) idx = DIR_REMAP_TABLE[(car.levByte >> 5) & 3][idx]
+  let heading = DIR_COMPASS_TABLE[idx]
+  if (car.mapAttr & 1) heading ^= 0x80
+  const clamp = (v) => {
+    if (v > toI16(car.maxSpeedCur)) v = toI16(car.maxSpeedCur) // 628A-6290
+    if (v < car.reverseLimit) v = car.reverseLimit // 6294-629A
+    return v
+  }
+  car.velX = toI16(car.velX + clamp(2 * SINE8[heading]))
+  car.velY = toI16(car.velY + clamp(2 * SINE8[(heading - 0x40) & 0xff]))
+  if (car.speed >= 0x100) car.speed = 0x100
 }
 
 function h63d6(car) { car.puffSrcWet = 1 } // HandleTerrainWetPuffTrigger
