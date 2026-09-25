@@ -260,7 +260,8 @@ docs, (6) commit.
   validates this reference model, not `flow.js` directly. **The actual regression fix shipped is
   simpler: a plain `setTimeout(KEY_WAIT_TIMEOUT_TICKS * INTRO_TICK_MS)`** (the SAME pattern
   `PRESS_ANY_KEY`'s own `pressAnyKeyTimer` already uses) wired into `flow.js`'s `RACE_INTRO` and
-  `ELIMINATED` phases (`raceIntroTimer`/`eliminatedTimer`), using only the timeout CONSTANT
+  `ELIMINATED` phases (`raceIntroTimer`/`eliminatedTimer` -- **both deleted in M3.70, replaced by
+  the real per-tick `179B` wait, see the next bullet**), using only the timeout CONSTANT
   `keyWaitStep` also encodes -- none of that model's other distinctions affect a plain timer. Still
   open, NOT fixed by this commit: neither screen models `179B`'s own real `fireHeld`/
   `anyKeyReleased` release-latch exit or stage-1 debounce at all -- both still dismiss only via the
@@ -304,6 +305,16 @@ docs, (6) commit.
   lost again. Live-verify the release-latch exit and
   the stage-1 debounce specifically (neither was exercised by M3.69's own live pass, which only
   confirmed the timeout number).
+  **Scope item (1) DONE 2026-09-25 (M3.70, docs/engine.md §9bp):** `keyWaitStep` is wired into
+  `RACE_INTRO` and `ELIMINATED` through a new `waitScreenStep` composition in `keyWait.js` (pre-wait
+  work with input ignored, then `179B`'s own entry with the `menuReleaseTracker.reset()`, then the
+  real two-stage wait), fed per tick by P1|P2 fire bits (session-lifetime readers, so a fire held
+  over from the previous screen is debounced) and the release tracker. The `setTimeout`
+  stopgap and the keydown dismiss are deleted. `[PROVEN]` live in the port for both screens: the
+  release-latch exit (keydown does nothing, keyup dismisses), the stage-1 debounce (RACE_INTRO,
+  including a fire pressed on PRESS_ANY_KEY and held; synthetic events, so the no-auto-repeat
+  case), and the ~700-tick timeout, measured from `179B`'s
+  entry. Remaining: items (2) and (3). The box stays unticked until they have their own commits.
 - [x] **Tournament board** (`1000:18d8`): the `CASE.CHR` map with `MINATURE` icons at the
   positions in `DS:0312` (26 words, §9t). It is gated on `[43A]=1`. Find exactly when it is shown
   in `RunTournamentLoop 1000:10a0`.

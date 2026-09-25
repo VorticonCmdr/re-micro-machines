@@ -167,10 +167,9 @@ export function hasRaceIntro(state) {
  * so whatever the ISR latched during the slide loop is wiped the instant `179B` starts, and only a
  * release that happens AFTER that point can register. This is provable for a key PRESSED AND
  * RELEASED entirely inside the hold. It does NOT cover a key still HELD when the hold ends: DOS
- * exits `179B` on that key's own later release (`17C9`), while this port's own `confirm()` needs a
- * fresh `keydown` -- the same release-vs-keydown mismatch already recorded as
- * `UNKNOWN_outcome_screen_timeout` (docs/engine.md §10, under the §9bb registry entry), not
- * re-fixed here. **Mechanism INFERRED, not observed, docs/engine.md §9bn/`input.js`: the ISR's own
+ * exits `179B` on that key's own later release (`17C9`). (This port used to need a fresh `keydown`
+ * here instead; since docs/engine.md §9bp, `flow.js` runs the real `179B` wait via
+ * `keyWait.js`'s `waitScreenStep`, so it too exits on a release.) **Mechanism INFERRED, not observed, docs/engine.md §9bn/`input.js`: the ISR's own
  * press handler (`2F65-2F6C`) re-tracks a key into `[0x107F]` on the next make code it sees after
  * the reset, and a real PC keyboard sends typematic auto-repeat make codes for a continuously-held
  * key -- so a key held past the typematic delay should get re-tracked this way, matching this

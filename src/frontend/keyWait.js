@@ -27,10 +27,15 @@
 // (`17EC`/`17F1`), then -- unlike stage 1 -- a HELD fire is what EXITS (`17F3`/`17F8`: `JZ` loops
 // back only while fire is NOT held; a fresh press falls through to exit).
 //
-// A key already HELD when this function is entered still gets a correct eventual release, per real
-// PC keyboard typematic auto-repeat re-tracking the key shortly after the entry-time
-// `[0x107F]=0` reset (`src/engine/input.js`'s own `createMenuReleaseTracker`, corrected the same
-// session this file was added).
+// A key already HELD when this function is entered is INFERRED (not observed live) to still get a
+// correct eventual release, per real PC keyboard typematic auto-repeat re-tracking the key shortly
+// after the entry-time `[0x107F]=0` reset (`src/engine/input.js`'s own `createMenuReleaseTracker`,
+// corrected the same session this file was added). A synthetic `dispatchEvent` keydown has no
+// auto-repeat, so a live test that holds a key across the entry sees the no-repeat behaviour: the
+// key is never re-tracked and its release never latches.
+//
+// Wired into `flow.js` for RACE_INTRO and ELIMINATED via `waitScreenStep` below (docs/engine.md
+// §9bp), replacing M3.69's plain-`setTimeout` stopgap and the old keydown-edge dismiss.
 
 export const KEY_WAIT_TIMEOUT_TICKS = 0x2bc // 700 ticks, ~10s at 70Hz -- 1000:17B5/17D7's own shared comparand (DS:0002)
 
@@ -64,4 +69,39 @@ export function keyWaitStep(state, input = {}) {
   // STAGE2
   if (input.fireHeld) return { exit: 'dismiss' } // 17F3/17F8: a fresh press exits
   return { exit: null } // 17F8: JZ 17D7 -- stay in stage 2, keep waiting
+}
+
+/**
+ * A whole `179B`-terminated screen, as `flow.js` drives it (GOAL-DOS-PARITY.md P3 "Wait-screen
+ * input parity", docs/engine.md §9bp): some pre-wait work that polls NO input (the race-intro's own
+ * slide hold, `raceIntroHoldTicks`; the elimination screen's own wobble bounce, `1000:174D-1789`,
+ * `eliminationStep`), then `179B` itself. `preStep()` runs one tick of that pre-wait work and
+ * returns `true` on the tick it finishes; input on those ticks is ignored, matching both real loops
+ * never polling it. The tick it finishes returns `entered: true` -- the caller's cue to run
+ * `179B`'s own entry (`179F-17B0`: the tick counter reset, which `keyWaitInitialState` is, AND the
+ * release-latch clear, `[0x107F]=0`/`[0x107E]=0`, which is `menuReleaseTracker.reset()` in the
+ * port -- a key released or tracked during the pre-wait work is discarded there, not queued).
+ * `179B`'s own first wait tick is the NEXT call, not this one: the real entry falls straight into
+ * `17B5`'s timeout check and only then waits for a tick. Pass `preDone = true` for a screen with no
+ * pre-wait work at all (a zero-tick hold), so it enters `179B` immediately rather than one tick
+ * late. Returns `keyWaitStep`'s own `{ exit }` shape, plus `entered`.
+ */
+export function waitScreenInitialState(preDone = false) {
+  return { wait: preDone ? keyWaitInitialState() : null }
+}
+
+export function waitScreenStep(state, input, preStep) {
+  if (state.wait == null) {
+    if (!preStep()) return { exit: null, entered: false }
+    state.wait = keyWaitInitialState() // 179F: [0x2]=0
+    return { exit: null, entered: true } // 17AB/17B0: the caller clears the release latch now
+  }
+  return { ...keyWaitStep(state.wait, input), entered: false }
+}
+
+/** `raceIntroHoldTicks`' own pre-wait work as a `preStep`: returns `true` on the `holdTicks`-th
+ * call. `holdTicks` must be >= 1 (a zero hold is `waitScreenInitialState(true)` instead). */
+export function holdTicksPreStep(holdTicks) {
+  let left = holdTicks
+  return () => --left <= 0
 }

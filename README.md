@@ -43,8 +43,10 @@ boot chain through character select — the title screen, SELECT GAME / ONE PLAY
 character-select carousel — reads the same LEFT/RIGHT/FIRE keys your copy's `SETTINGS.DAT`
 configures (both players' own bindings work at every menu level except character select, which is
 P1 only, exactly as the original does — see `docs/engine.md` §9av-§9ax); everything after the
-character picks still uses plain arrow keys and Space/Enter, until `GOAL-DOS-PARITY.md`'s
-remaining P3 items land.
+character picks mostly still uses plain Space/Enter, until `GOAL-DOS-PARITY.md`'s remaining P3
+items land. The exceptions are the race-intro and "IS OUT!!" screens, which now run the original's
+own key wait: any key moves on when you RELEASE it, a fire key held into the screen must be let go
+first, and after ~10 s they move on by themselves (`docs/engine.md` §9bp).
 
 ## Setting up the game files for development
 

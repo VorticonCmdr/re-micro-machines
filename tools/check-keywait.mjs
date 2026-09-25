@@ -9,8 +9,18 @@
 //    stage 2); stage 2 exits on the OPPOSITE fire condition (a fresh press dismisses);
 //  - a release latch dismisses from either stage, checked before the fire-held branch;
 //  - the timeout fires identically from either stage.
+// And the whole-screen composition flow.js drives for RACE_INTRO/ELIMINATED (waitScreenStep,
+// docs/engine.md §9bp):
+//  - input during the pre-wait work (the slide hold / the wobble bounce) is ignored entirely;
+//  - 179B's own entry (`entered`, the caller's release-latch clear) lands on exactly the tick the
+//    pre-wait work finishes, and the wait's own first tick is the NEXT call;
+//  - the timeout counts from that entry, not from the screen's own start;
+//  - a fire held across the entry is debounced (stage 1), a fresh press after release dismisses;
+//  - a zero hold enters the wait immediately.
 //   node tools/check-keywait.mjs
-import { keyWaitInitialState, keyWaitStep, KEY_WAIT_TIMEOUT_TICKS } from '../src/frontend/keyWait.js'
+import { keyWaitInitialState, keyWaitStep, KEY_WAIT_TIMEOUT_TICKS, waitScreenInitialState, waitScreenStep, holdTicksPreStep } from '../src/frontend/keyWait.js'
+import { eliminationInitialState, eliminationStep } from '../src/frontend/elimination.js'
+import { raceIntroHoldTicks } from '../src/frontend/tournament.js'
 
 let bad = 0
 function check(name, cond) {
@@ -117,5 +127,72 @@ check('KEY_WAIT_TIMEOUT_TICKS is 700 (0x2BC)', KEY_WAIT_TIMEOUT_TICKS === 700)
   check('timeout exits on call index === KEY_WAIT_TIMEOUT_TICKS (0-indexed), the call AFTER reaching it', timeoutExitTick === KEY_WAIT_TIMEOUT_TICKS)
 }
 
-console.log(bad ? `${bad} check(s) failed` : 'check-keywait: the shared 1000:179B wait -- its combined ~700-tick timeout (checked before each tick, not after), its stage transition sharing one budget, and its opposite stage1/stage2 fire-held exit conditions -- all match the disassembly')
+// 11. waitScreenStep: the real Challenge race-intro hold (121 ticks), input ignored during it.
+{
+  const HOLD = raceIntroHoldTicks({ raceIndex: 3, format: 'challenge', pendingBonusRace: false })
+  check('the Challenge race-intro hold is 121 ticks', HOLD === 121)
+  const s = waitScreenInitialState()
+  const pre = holdTicksPreStep(HOLD)
+  let enteredAt = null
+  for (let i = 1; i <= HOLD + 5 && enteredAt == null; i++) {
+    const r = waitScreenStep(s, { fireHeld: true, anyKeyReleased: true }, pre)
+    check(`hold tick ${i}: never exits, whatever the input`, r.exit === null)
+    if (r.entered) enteredAt = i
+  }
+  check('179B is entered on exactly the last hold tick', enteredAt === HOLD)
+  check('entry resets the wait to STAGE1 at 0 ticks (the entry tick itself is not a wait tick)', s.wait.phase === 'STAGE1' && s.wait.ticks === 0)
+  const r = waitScreenStep(s, { anyKeyReleased: true }, pre)
+  check('after entry, a release latch dismisses on the next call', r.exit === 'dismiss' && r.entered === false)
+}
+
+// 12. The timeout counts from 179B's own entry: exit on call HOLD + TIMEOUT + 1, not before.
+{
+  const HOLD = 121
+  const s = waitScreenInitialState()
+  const pre = holdTicksPreStep(HOLD)
+  let exitAt = null
+  for (let i = 1; i <= HOLD + KEY_WAIT_TIMEOUT_TICKS + 5; i++) {
+    const r = waitScreenStep(s, {}, pre)
+    if (r.exit) { exitAt = i; check('no input: the exit is a timeout', r.exit === 'timeout'); break }
+  }
+  check('timeout exits on call HOLD + 700 + 1 (hold, entry on its last tick, 700 wait ticks, then the check)', exitAt === HOLD + KEY_WAIT_TIMEOUT_TICKS + 1)
+}
+
+// 13. A fire held across the entry is debounced: stays until released, then a fresh press dismisses.
+{
+  const s = waitScreenInitialState()
+  const pre = holdTicksPreStep(10)
+  for (let i = 0; i < 10; i++) waitScreenStep(s, { fireHeld: true }, pre)
+  for (let i = 0; i < 30; i++) check(`held fire across entry, wait tick ${i}: no exit`, waitScreenStep(s, { fireHeld: true }, pre).exit === null)
+  check('still STAGE1 while held', s.wait.phase === 'STAGE1')
+  check('release (no latch): no exit, into STAGE2', waitScreenStep(s, { fireHeld: false }, pre).exit === null && s.wait.phase === 'STAGE2')
+  check('fresh press: dismiss', waitScreenStep(s, { fireHeld: true }, pre).exit === 'dismiss')
+}
+
+// 14. A zero hold (preDone): the very first call is already a wait tick.
+{
+  const s = waitScreenInitialState(true)
+  const r = waitScreenStep(s, {}, () => { throw new Error('preStep must not run') })
+  check('zero hold: first call is a wait tick, not an entry', r.entered === false && r.exit === null && s.wait.ticks === 1)
+  check('holdTicksPreStep(1) finishes on its first call', holdTicksPreStep(1)() === true)
+}
+
+// 15. ELIMINATED's own composition: the real wobble bounce as the pre-wait work.
+{
+  const e = eliminationInitialState()
+  const s = waitScreenInitialState()
+  let enteredAt = null
+  let bounceTicks = 0
+  const probe = eliminationInitialState()
+  while (!eliminationStep(probe).done) bounceTicks++
+  bounceTicks++ // the call that reports done
+  for (let i = 1; i <= 400 && enteredAt == null; i++) {
+    const r = waitScreenStep(s, { fireHeld: true, anyKeyReleased: true }, () => eliminationStep(e).done)
+    check(`bounce tick ${i}: never exits, whatever the input`, r.exit === null)
+    if (r.entered) enteredAt = i
+  }
+  check('179B is entered on exactly the tick the bounce reports done', enteredAt === bounceTicks && e.done)
+}
+
+console.log(bad ? `${bad} check(s) failed` : 'check-keywait: the shared 1000:179B wait -- its combined ~700-tick timeout (checked before each tick, not after), its stage transition sharing one budget, and its opposite stage1/stage2 fire-held exit conditions -- all match the disassembly; and the whole-screen composition flow.js drives for RACE_INTRO/ELIMINATED ignores input before 179B\'s own entry, enters it on the right tick, and times out from there')
 process.exitCode = bad ? 1 : 0

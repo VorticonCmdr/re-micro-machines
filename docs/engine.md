@@ -10396,7 +10396,9 @@ screens still dismiss ONLY via the existing keydown-edge-triggered `onKeydown`->
 `UNKNOWN_outcome_screen_timeout` for other screens, now ALSO true here. Driving `keyWaitStep` from a
 real per-tick loop (fed by P1|P2 fire bits and the existing `menuReleaseTracker`, replacing the
 keydown-only dismiss for these two phases) is real, un-scoped follow-up work, not part of this
-commit.
+commit. **SUPERSEDED 2026-09-25 (M3.70, §9bp): `keyWaitStep` is now wired into both phases via
+`waitScreenStep`; the `setTimeout` stopgap (`raceIntroTimer`/`eliminatedTimer`/
+`armEliminatedTimeout`) and the keydown-edge dismiss described in this paragraph are deleted.**
 
 **Tests.** `tools/check-keywait.mjs` (new, `npm run keywait`): 69 distinct assertions (all 69
 executed) validating `keyWaitStep`'s own REFERENCE MODEL against the disassembly -- the timeout's
@@ -10423,7 +10425,9 @@ arms and really fires with no input. **The measured `~8.6s` does NOT itself conf
 duration** -- `performance.now()` was captured in a SEPARATE tool call, after an EARLIER
 `confirm()` and an explicit 300ms wait, so an unmeasured gap sits before the poll's own start; the
 duration itself is simply the `KEY_WAIT_TIMEOUT_TICKS * INTRO_TICK_MS` code literal, not something
-this measurement bounds. `ELIMINATED` was NOT exercised live at all this session -- the
+this measurement bounds. **SUPERSEDED 2026-09-25 (M3.70, §9bp): the `setTimeout` mechanism this
+live result proves is deleted; §9bp re-proves the timeout under the new per-tick loop, for BOTH
+screens.** `ELIMINATED` was NOT exercised live at all this session -- the
 `armEliminatedTimeout()`/`forceEliminationSteps` refactor is `[STATIC]` only, unit-untested-live,
 resting on sharing the exact same code shape as the tested `RACE_INTRO` path. **The earlier failed
 attempt at this same live test, using the `computer` tool's own `key` action, has TWO real causes,
@@ -10461,3 +10465,98 @@ tool's own `key` action ALSO intermittently stopped reaching the page entirely t
 identified) -- driving `window.dispatchEvent(new KeyboardEvent('keydown',{bubbles:true,
 code:'Enter'}))` directly worked reliably every time it was tried instead; reaching TITLE from LOGO
 costs exactly 4 real `Enter` presses/dispatches (3 for CODECARD, 1 for OPTIONS), not 2.
+
+## 9bp. Wait-screen input parity, part 1: `179B` wired into RACE_INTRO and ELIMINATED (2026-09-25)
+
+**Purpose.** GOAL-DOS-PARITY.md P3's "Wait-screen input parity" bullet, scope item (1) only. §9bo
+wrote `keyWaitStep` as a reference model and shipped a plain `setTimeout` for the timeout alone;
+both screens still dismissed on a keydown edge (Space/Enter via `onKeydown`->`confirm()`), which is
+not what `179B` does. `179B-17FE` re-disassembled for this item (27 instructions, unchanged from
+§9ba/§9bn): `179F` `[0x2]=0`, `17A5` `[0x1080]=0` (so `[0x108B]` is both players' bits combined),
+`17AB`/`17B0` `[0x107F]=0`/`[0x107E]=0` (the release latch cleared), then stage 1 (`17B5-17D5`) and
+stage 2 (`17D7-17F8`), exits on `[0x107E]!=0` (any released key) or the stage's own `[0x108B]&8`
+condition, or the shared `>=0x2BC` timeout. `[STATIC]`.
+
+**What changed.** `keyWait.js` gains `waitScreenInitialState`/`waitScreenStep`/`holdTicksPreStep`:
+a screen's own pre-wait work (the race intro's `raceIntroHoldTicks` slide hold; the elimination
+screen's `1000:174D-1789` bounce, `eliminationStep`) runs first with input ignored, and on the tick
+it finishes, `waitScreenStep` enters `179B` (`keyWaitInitialState`) and returns `entered: true`, the
+caller's cue to call `menuReleaseTracker.reset()` (the `17AB`/`17B0` clear). The wait's own first
+tick is the next call. `flow.js`'s `RACE_INTRO` and `ELIMINATED` now run a per-tick RAF loop
+(`raceIntroTick`/`eliminationTick`) feeding `waitScreenStep` with `readWaitInput`: `fireHeld` =
+`(p1.read() | p2.read()) & 8`, `anyKeyReleased` = `escReleased || otherReleased` from the shared
+`menuReleaseTracker`. The P1/P2 readers (`waitReaders`) are SESSION-lifetime, created once and
+recreated only when `optionsConfirm` changes the bindings, because `createKeyboardReader` learns a
+held key only from its keydown. The real ISR keeps `[0x108B]` current all session long, so a fire
+pressed on the PREVIOUS screen is still held when `179B` starts and stage 1 debounces it. The first
+draft created the readers at phase entry. That misses the ordinary case: the keydown that confirms
+PRESS_ANY_KEY (or leaves BOARD) is the event that enters RACE_INTRO, and a listener added while that
+event is dispatching never receives it. `179B` then skipped straight to stage 2. An advisor review
+caught this, and it was reproduced live before the fix (keydown S at PRESS_ANY_KEY, held: STAGE2 at
+entry). Deleted: `raceIntroTimer`,
+`eliminatedTimer`, `armEliminatedTimeout`, `raceIntroHoldUntil`, and both phases' keydown dismiss
+(`onKeydown` now returns early for them, as it does for BOARD/CHAR_SELECT). `confirm()` keeps a
+RACE_INTRO/ELIMINATED branch as a debug entry only (a no-op before `179B` is entered). New debug
+hooks: `forceRaceIntroSteps(n, {fireHeld, anyKeyReleased})`, `forceEliminationSteps` now takes the
+same input, and `getKeyWait()` returns `{ inWait, stage, ticks }`.
+
+**Behaviour changes a player sees.** Any key now dismisses on its RELEASE, not its press (a fire
+key additionally dismisses on a fresh PRESS in stage 2). A fire already held when the wait starts
+must be released first. A key pressed or released during the slide hold or the bounce is discarded.
+The ~10s timeout counts from `179B`'s own entry and runs on game ticks, so, like BOARD's own
+720-tick timeout, it does not advance while the tab is hidden (RAF is paused), unlike the deleted
+`setTimeout`.
+
+**Tests.** `npm run keywait` grows from 69 to 376 executed assertions (blocks 11-15 are the
+composition): input ignored on every hold/bounce tick, entry on exactly the last hold tick (121 for
+a Challenge race) and on exactly the tick the real bounce reports done, the timeout on call
+`hold + 700 + 1`, the held-fire debounce across entry, and the zero-hold case. Reintroduction-proven
+with four mutations of `waitScreenStep`/`holdTicksPreStep`: letting a release through during the
+hold (263/376 fail), counting the entry tick as a wait tick (4/376), ignoring `preDone` (the
+script throws), a one-tick-longer hold (3/376); all restored, clean. The flow wiring itself has no headless test
+(`flow.js` is browser-only); it is covered by the live pass below. Full regression suite plus
+`build` clean.
+
+**Live verification, `[PROVEN]` in the port (not DOS-side).** `game.html` in Chrome, driven through
+`window.mmGame` plus `window.dispatchEvent(new KeyboardEvent(...))`. The tab reported
+`document.visibilityState === 'hidden'` throughout (with `hasFocus()` true), and a probe showed RAF
+delivering 0 callbacks per second. So `requestAnimationFrame` was replaced in-page with a
+`setTimeout(cb, 16)` shim before entering each tested screen. The real readers, `menuReleaseTracker`,
+`raceIntroTick`/`eliminationTick` and `waitScreenStep` all ran unmodified; only the frame scheduler
+was substituted. The observed tick rate was ~70/s (105 ticks in ~1.5s). Race intros were reached via
+H2H, `tournament.raceIndex = 1` set at PRESS_ANY_KEY, then `confirm()` (a 59-tick hold).
+- RACE_INTRO release-latch exit: after entry, keydown Enter left the phase at `RACE_INTRO`
+  (STAGE2, ticks 117); keyup Enter moved it to `RACING`. The deleted code advanced on the keydown.
+- RACE_INTRO stage-1 debounce, first draft (per-phase readers): keydown `KeyS` (P1 fire) during
+  the hold, no keyup. 1.5s after entry the phase was still `RACE_INTRO` in STAGE1 (ticks 106).
+  Keyup S: still `RACE_INTRO`, now STAGE2 (ticks 162), with no dismiss, because the key was
+  untracked after the entry reset and so its release set no latch. A second keydown S: `RACING`.
+- RACE_INTRO stage-1 debounce, final code (session readers), the discriminating case: keydown S AT
+  PRESS_ANY_KEY (it confirms that screen and enters RACE_INTRO), no keyup. The first draft showed
+  STAGE2 at 9 ticks after entry. With the fix: STAGE1 at 72 ticks, 1s after entry. Keyup S: STAGE2
+  (ticks 106), no dismiss. A fresh keydown S: `RACING`.
+- RACE_INTRO timeout, no input, final code: the 59-tick hold took 863ms (843ms nominal), then the
+  wait took 10.00s (700 ticks = 10.0s) before leaving for `LOADING`, with ticks last seen at 699.
+  (A first-draft run gave the same: ~10.9s for hold plus wait.)
+- ELIMINATED (reached by setting `tournament.pendingElimination` at PRESS_ANY_KEY, then `confirm()`),
+  timeout, no input: the bounce took ~2.09s (144 ticks = 2.06s), then the wait took 10.02s (700
+  ticks = 10.0s) and left for `CHAR_SELECT` (the replacement picker).
+- ELIMINATED release-latch exit, final code, fresh load: the bounce took 2.07s; then keydown Enter
+  left it in STAGE2 (ticks 57), and keyup Enter moved it to `CHAR_SELECT`. A first-draft run also
+  saw an Enter whose keydown ENTERED the screen (from OUTCOME) and whose keyup landed mid-bounce: it
+  was discarded, and the wait later sat at 520 ticks with no dismiss.
+- The RACE_INTRO release-latch exit and the ELIMINATED timeout were measured on the first draft
+  only. The reader fix touches only `fireHeld`, not the release tracker or the tick loop, and the
+  same paths were re-run on the final code for the other screen.
+- No console errors on the final-code loads (console tracking was active across them).
+
+**What this does NOT prove.** The debounce result is the no-auto-repeat case: `dispatchEvent`
+sends no typematic repeats, so a synthetic held key is never re-tracked by the release tracker after
+the reset (the session readers do still see it as held, which is the stage-1 part). With a real
+keyboard, auto-repeat keydowns (`input.js`'s `onDown` does not filter `e.repeat`) are INFERRED to
+re-track the held key, so its release WOULD dismiss (the same inference as DOS, §9bo), not observed.
+Nothing here is a DOS-side measurement: the DOS timeout value is the `[STATIC]` `0x2BC` compare.
+The H2H race-info screen's own `179B` call (`1000:2071`) stays unwired (P4). Scope items (2)
+(`UNKNOWN_outcome_screen_timeout`, `1C1B`) and (3) (the four `17FF` callers) are still open, so the
+GOAL-DOS-PARITY.md bullet stays unticked.
+
