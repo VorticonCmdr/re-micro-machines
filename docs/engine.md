@@ -11038,7 +11038,8 @@ NO_BONUS. And `[0x310]` keeps counting races run, not the index.
 **Tests.** `tools/check-raceskip.mjs` (new, `npm run raceskip`): the gates (no cheat, another key, no
 release); `+`/`-`, the stop at 0x19, the wrap from 0, chaining, the track; a qualifier-prologue skip
 still judged by the qualifier rule (2nd place passes) and followed by the picker, and `-` from the
-qualifier to 0x19 then a pass going straight to the champion (`1101`); an H2H loop race skipped to
+qualifier to 0x19 then a pass going straight to the champion (`1101`) **(CORRECTED in the
+follow-up below: the picker comes first)**; an H2H loop race skipped to
 0 judged as ONE_LIFE_LOST and keeping the loop position across the re-run; a bonus-intro skip
 giving a regular intro and NO_BONUS; `[0x310]` staying put (index 3 with count 2: no elimination).
 Reintroduction-proven with six mutations: the position moving with the index (the test crashes),
@@ -11066,3 +11067,27 @@ judging of a skipped qualifier race (unit-tested).
 other one-player screen or input path that differs from DOS outside P5 (the race and the pause),
 P6 (joystick and mouse) and the open `UNKNOWN_race_reader_low_bits`, within what byte-pattern
 searches can see.
+
+**Follow-up, same day (advisor review of `9909148`).**
+- **The picker comes before the champion.** In `10A0` the qualifier's own picker (`10EF-10F6`) runs
+  BEFORE `10F9`'s increment and `1101`'s past-the-last-race test. So a qualifier the skip moved to
+  0x19 goes, once passed: PASSED, the picker (three carousel picks and `1A4A`'s own PRESS ANY KEY),
+  then the champion screen. The first version went straight to the champion screen, because
+  `needsOpponentPick` required `!over` and `flow.js`'s `nextAfterOutcome` tested `over` first. Now
+  `needsOpponentPick` excludes only a FAILED qualifier (`over && !champion`, since `10E4` returns
+  before `10F6`), and `nextAfterOutcome` checks it before the `over` branch. `check-raceskip.mjs`
+  now expects the picker there, and that a failed qualifier still skips it; the old guard fails it.
+- **The eviction cursor `[0x346]` is session-lifetime.** It is `0x0C1E` (slot 0) in the image, and
+  its only writers are `16AB` (the `[28C1]==3` set-up) and `16BE` (the advance, `+0x1B` wrapping
+  past `0xC54` to `0xC1E`). No tournament start resets it. In normal play the first eviction of every
+  tournament happens at `[28C1]==3` and re-initialises it, so the carry-over is invisible; after a
+  skip an eviction can come first, and then DOS advances from whatever the session left. The port's
+  `_evictionSlotCursor` was per-tournament (`null`, which `(null+1)%3` happened to turn into slot 1,
+  the same as DOS's fresh-session `0xC1E + 0x1B`). Now `initTournament` takes it (default 0) and
+  `flow.js` carries the previous tournament's value into the next. Tested (the first such eviction
+  from a fresh session lands on slot 1; a carried-over 2 wraps to slot 0).
+- **The music does not restart on a skip.** `11F8` asks the driver `AH=9` (is tune 4 current?) and
+  only then `AH=4`; the port's `raceIntroMusic` calls `playTune(4)` directly, but the port's own
+  driver model (`si2Player.js`, `CmdPlayTune`) already ignores a tune that is current, so tune 4
+  keeps playing through a skip in both.
+

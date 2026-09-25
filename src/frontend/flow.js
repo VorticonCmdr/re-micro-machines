@@ -494,7 +494,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       lastOnePlayerSelection = exit === 'confirm' ? selection : 0 // 1000:0360 -- unconditional, unlike SELECT GAME's own guarded write
       if (exit === 'cancel') { enterSelectGame(); return } // 0220's own CLC;RET after CALL 02e0 -- straight back to SELECT GAME, no tune restart, no title
       // selection 1 = LEFT = Head to Head vs CPU (0fbf); 2 = RIGHT = Challenge (102b)
-      tournament = initTournament({ format: selection === 1 ? 'twocar' : 'challenge' })
+      tournament = initTournament({ format: selection === 1 ? 'twocar' : 'challenge', evictionSlotCursor: tournament?._evictionSlotCursor ?? 0 }) // [0x346] carries over within the session
       subMenuMusic(sound) // docs/sound.md tune table: "2 all sub-menus" -- confirmed live on this screen
       enterCharSelect(lastPick.player, 'player')
     })
@@ -1037,6 +1037,10 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
    * SELECT GAME redrawn directly, no tune restart, no title -- P2's second item), or the next
    * race. */
   function nextAfterOutcome() {
+    // 10F6's picker runs BEFORE 10F9/1101's champion test: a qualifier the race skip moved to the
+    // last race, once passed, still gets the picker before the champion screen (docs/engine.md §9bu).
+    // Only a FAILED qualifier (10E4 -> RET) skips it -- needsOpponentPick's own !over-unless-champion.
+    if (needsOpponentPick(tournament)) { enterOpponentPick(); return }
     if (tournament.over) {
       if (tournament.champion) { enterChampion(); return }
       enterSelectGame()
@@ -1046,7 +1050,8 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     // bonus-trigger check or its [28C1] INC -- so a just-evicted opponent's own "IS OUT!!" bounce
     // (P3's third item) comes before EITHER the initial-pick trigger below or the board (docs/engine.md §9ba).
     if (tournament.pendingElimination) { enterEliminatedScreen(); return }
-    if (needsOpponentPick(tournament)) { enterOpponentPick(); return } // 10a0's own CALL 1A4A, right after a Challenge qualifier PASS, before the [28C1] INC (P3's second item)
+    // (needsOpponentPick -- 10a0's own CALL 1A4A, right after a Challenge qualifier PASS, before the
+    // [28C1] INC, P3's second item -- is checked at the top, above)
     if (shouldShowBoard(tournament)) { enterBoard(); return } // 115c's own CALL 18d8, before the next race's own intro
     startNextRace()
     paintMenu()

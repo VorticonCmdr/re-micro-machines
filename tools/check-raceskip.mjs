@@ -68,7 +68,11 @@ check('the last race index is 0x19', ORDER_TABLE_LAST_INDEX === 0x19)
   applyRaceSkip(t, SUB, true)
   check('- from the qualifier intro wraps to the last race, still the qualifier position', t.raceIndex === ORDER_TABLE_LAST_INDEX && isInQualifier(t))
   reportRaceResult(t, { finishPosition: 1 })
-  check('passing it: 10F9 goes past 0x19, straight to the champion (1101)', t.champion && t.over)
+  check('passing it: 10F9 goes past 0x19, so the champion follows (1101)', t.champion && t.over)
+  check('... but the picker (10F6) still runs first, before 10F9/1101', needsOpponentPick(t))
+  const f = initTournament({ format: 'challenge' })
+  reportRaceResult(f, { finishPosition: 3 })
+  check('a FAILED qualifier never reaches the picker (10E4 -> RET)', f.over && !f.champion && !needsOpponentPick(f))
 }
 
 // 4. A loop race skipped to 0 is a regular race, and stays one across an H2H loss re-run.
@@ -114,6 +118,11 @@ check('the last race index is 0x19', ORDER_TABLE_LAST_INDEX === 0x19)
   t.raceCountOffset = 3 - t.raceIndex + 0 // put [0x310] at 3: a count that DOES hit the schedule
   reportRaceResult(t, { finishPosition: 1 })
   check('index 2 passed with count 3: an elimination (count 3 % 3 == 0)', !!t.pendingElimination)
+  check('with no [28C1]==3 set-up yet, the cursor advances from the session value: 0 (0xC1E) + 1 = slot 1 (16B0-16BE)', t.pendingElimination.slot === 1)
+  const u = initTournament({ format: 'challenge', evictionSlotCursor: 2 })
+  u.opponents = [1, 2, 4]; u.playerCharacter = 0; u.raceIndex = 2; u.qualifierOverride = false; u.raceCountOffset = 1
+  reportRaceResult(u, { finishPosition: 1 })
+  check('a later tournament in the session continues from the carried-over cursor: 2 + 1 wraps to slot 0', u.pendingElimination?.slot === 0)
 }
 
 console.log(bad ? `${bad} check(s) failed` : 'check-raceskip: the 25011968 cheat\'s keypad +/- race skip (1398-13E0) -- its gates, the 0x19 stop and 0 wrap, and the loop position and [0x310] staying put while [28C1] moves -- matches the disassembly')

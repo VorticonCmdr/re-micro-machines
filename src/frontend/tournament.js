@@ -59,7 +59,8 @@ export const OUTCOME = {
 
 /** `format: 'challenge'` (4-car, the default) or `'twocar'` (2-car races throughout, NOT the
  * two-human H2H mode -- see the file header). */
-export function initTournament({ format = 'challenge' } = {}) {
+/** `evictionSlotCursor`: the session's own `[0x346]` (see `_evictionSlotCursor` below). */
+export function initTournament({ format = 'challenge', evictionSlotCursor = 0 } = {}) {
   return {
     format,
     raceIndex: 0, // index into ORDER_TABLE; 0 = the qualifier (docs/engine.md §7: "Qualifier = entry 0")
@@ -87,7 +88,12 @@ export function initTournament({ format = 'challenge' } = {}) {
     // screen for `victim`, then re-runs the interactive picker to fill `state.opponents[slot]`, then
     // clears this. Never set for a no-op eviction check (docs/engine.md §9ba).
     pendingElimination: null,
-    _evictionSlotCursor: null, // 1000:0346: which of the 3 opponent slots (0-2) is next up for eviction
+    // 1000:0346: which of the 3 opponent slots (0-2) is next up for eviction. SESSION-lifetime in DOS:
+    // 0x0C1E (slot 0) in the image, written only at 16AB (the [28C1]==3 set-up) and 16BE (the
+    // advance), never reset when a tournament starts -- the caller carries it across tournaments
+    // (docs/engine.md §9bu). It only matters when an eviction happens before any [28C1]==3 set-up in
+    // this tournament, which the 25011968 cheat's race skip makes possible.
+    _evictionSlotCursor: evictionSlotCursor,
   }
 }
 
@@ -420,7 +426,9 @@ export function opponentCharactersFor(state) {
 export function needsOpponentPick(state) {
   // position-keyed (10F6, right after the qualifier's own judging): past the qualifier with nobody
   // picked yet -- the same thing `raceIndex === 1` meant before the race skip could decouple them
-  return state.format === 'challenge' && !state.over && !isInQualifier(state) && state.opponents.every((o) => o === null)
+  // !(over && !champion): a FAILED qualifier (10E4 -> RET) never reaches 10F6; a passed one does,
+  // even when the race skip made it the last race and 10F9/1101 then go straight to the champion
+  return state.format === 'challenge' && !(state.over && !state.champion) && !isInQualifier(state) && state.opponents.every((o) => o === null)
 }
 
 /**

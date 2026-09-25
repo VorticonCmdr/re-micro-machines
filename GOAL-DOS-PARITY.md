@@ -633,7 +633,9 @@ docs, (6) commit.
   (`isInQualifier`/`raceCountOf`, a no-behaviour-change step first); `applyRaceSkip`; `npm run
   raceskip`; `[PROVEN]` live in the port (chained `+`/`-` skips, no skip without the cheat or on a
   fire press or ESC release, H2H `-` to 0 straight into the race, a Challenge qualifier-intro skip
-  keeping the qualifier position).
+  keeping the qualifier position). Follow-up (§9bu): the qualifier's picker now runs before the
+  champion screen when a skipped qualifier was the last race, and the eviction cursor `[0x346]`
+  is session-lifetime, as in DOS.
 
 ### P4: two-human Head to Head
 - [ ] Port `FUN_1000_1e20` → `1ef1` / `RunHeadToHeadTournament 1000:1faf` / `2329` / `256e`: the WON/LOST
