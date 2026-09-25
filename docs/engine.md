@@ -5935,7 +5935,7 @@ TANKS/a cheat spot actually lets a shot fire. The release tick's own speed jump 
 
 **2026-09-25 (§9cf), Part R closed:** `UNKNOWN_lev_low_bits` (no reader), `UNKNOWN_map_attr_bits` (bit 1 = mirrored flow field), `UNKNOWN_cheats_type` (`[2917]`/`[291B]` write-only), `UNKNOWN_race_reader_low_bits` (no control-byte reader; the pause's cheat-gated F1+F2/F2+F3 combos found instead), `UNKNOWN_pr0_header_use` (tile 0), `UNKNOWN_sfx_semantics` (consistent; not yet listened to), `UNKNOWN_microu_runs_standalone` (yes, `[PROVEN]`), `UNKNOWN_gfx1_header`, `UNKNOWN_unp_version` (4.11), `UNKNOWN_ph0_1140_1380` (unused knockout slot 5). The race-draw helpers are all named; four port divergences (puffs/splash, paint order, projectile tail icon) and the pause combos went to GOAL P5.
 
-**2026-09-25 (§9ce):** the round-2 bathtub plughole (`62E3`) is ported and live-proven. New open item: `UNKNOWN_stale_animtimer_port` -- `[12B0]` is not bumped in state 0 (`309F`) and not zeroed by the 0→1/0→D entries `62E3`/`6169`/`5FAC`, so those animations start from the value the car entered state 0 with (94 after the countdown, live); the port starts them from 0 (GOAL P5).
+**2026-09-25 (§9ce):** the round-2 bathtub plughole (`62E3`) is ported and live-proven. `UNKNOWN_stale_animtimer_port` **resolved and ported 2026-09-25 (§9cg)** -- `[12B0]` is not bumped in state 0 (`309F`) and not zeroed by the 0→1/0→D entries `62E3`/`6169`/`5FAC`, so those animations start from the value the car entered state 0 with (94 after the countdown, live); the port starts them from 0 (GOAL P5).
 
 `UNKNOWN_tile_index_overflow` **resolved 2026-09-22 (§9ac): three real cases across all 29 races,
 not just the two on record -- round 8 (tile 58, `.COL` only) and round 9 (tile 60, `.COL`+`.DIR`)
@@ -12006,3 +12006,63 @@ Live in DOSBox: `MICROU` typed at `C:\` with no `MICRO.COM` and no `SM.EXE`.
 - **`UNKNOWN_1254_1256`** was already closed in §9v, and was re-confirmed dead (agent: no literal,
   base-register, string-op or data-pointer access). The static values follow `(car+1)·0x2400` and
   `car·0x3600`.
+
+## 9cg. `animTimer` `[12B0]`: the one real bump, ported (2026-09-25)
+
+GOAL-DOS-PARITY.md P5, `UNKNOWN_stale_animtimer_port` (found in §9ce). `[STATIC]` from `3094-30B7`,
+`73E7-73F4`, `82BE-8338` and `849B-851E`, and `[PROVEN]` where marked by live DOSBox reads of ROUND21.
+
+**The real mechanism.**
+- `RunRaceMainLoop`'s per-car pass runs after the render, and the render is what calls the state
+  handlers.
+  - The pass does `7429`, then `CMP [BX+12AE],0 / JZ` (`309F`), then `73E7`.
+  - `73E7` does `INC [BX+12B0]` (`73F4`), except in round 9 for any BX but 0 (`73E7-73F3`).
+- It is the only increment of `[12B0]` in the binary. Every state handler (`880A`, `7F62`, `7EFA`,
+  `82BE`) only compares, so each sees the value the previous pass left.
+- State 0 never bumps. State A (the start countdown) does, and `84E5-84F7` (A → 0) does not zero it.
+- **Live `[PROVEN]`:** `[26D5]` and car 0's `[12B0]` climb together, and at `[26D5]=0x60` the car
+  enters state 0 with `[12B0]=95`. `[263A]` was 1 throughout. The earlier §9ce runs read 94. The
+  likely cause is one iteration with `[263A]=2`, which advances `[26D5]` twice; that is not proven.
+- The zeroing writers (disp16 scan) are `42D2`, `6468`, `6507`, `6D06`, `6F6A`, `7282`, `76A6`,
+  `76BE`, `7F57`, `7FC5`, `8310` and `8924`. None is on the 0→1 plughole entry `62E3`, or on any 0→D
+  entry (`5852`, `5842`, `5B52`/`5B83`, `5CA6`, `5FAC`, `6169`, `74C0`, `7A57`).
+- **`82BE`'s cursor** is `[12B8]` (`animStep2`). Each call:
+  - reads `threshold = [289D + 2·step]` and `frame = [28AB + 2·step]`;
+  - on frame −1 it ends: `8308` zeroes `[12B8]` and `[12B0]`, and the state becomes 0 or 7;
+  - otherwise it draws, then advances **one** step if `[12B0] >= threshold` (`82FB-8301`, signed).
+- So a car entering 0xD with a stale timer takes one step per call, 7 calls in all. From a zeroed
+  timer the handler sees 0, 1, 2, …, advances at 4/8/…/24, and ends on call 26.
+- **Live `[PROVEN]`:** car 0, poked into 0xD with `[12B0]=95`, stepped `[12B8]` 0→6 on consecutive
+  ticks while the timer read 96…101. It left for state 7 on the 7th call, and state 7 zeroed the
+  timer. The state 2 that followed advanced its first step on the tick its handler saw 4. The §9ce
+  plughole fall (state 1 from 94) lasted about 12 ticks.
+
+**What the port did.** It bumped `animTimer` inline in each handler (states 1/2/4/5/0xD), and only
+for 0xB/0xC in the pass. It never bumped it in state A, so every car entered state 0 with 0. The
+knockout used a `findIndex` rescan that a large timer would jump straight to the end of. The result
+was right only for entries that zero the timer, one tick early. A plughole fall right after the
+start took 81 steps instead of ~12, and a knockout from the start timer took 26 calls instead of 7.
+
+**Port.**
+- `step.js`'s `animTimerPass(car, bx, ctx)` is the pass's `73E7` bump. It runs on `cars[bx]`, so
+  7429's BX clobber is modelled directly, and `twocar.js`'s `skipAnimBump` flag is gone.
+- The inline bumps in `states.js` are removed (`animTableDone` and `bumpAnimTimerRound9Gated` are
+  deleted).
+- `stepKnockoutAnim` walks `animStep2` one step per call. It keeps `_koDrawStep`, the step the call
+  drew, and `raceView.js`'s `carAnimationFrame` reads that.
+
+**Measured.** In the port, every car now enters state 0 with 95, and a ROUND22 plughole fall right
+after the start is 12 steps. `trace` (13/20), `ai` (59/60), `rounds`, `finish`, `twocar` and
+`tournament` pass.
+
+**Tests.**
+- `check-step`:
+  - the pass's gates: state 0, state A, round 9, 16-bit;
+  - the knockout from 95 (7 calls) and from 0 (26 calls);
+  - the countdown leaving 95 through `runStep`;
+  - the short and the full plughole fall.
+
+  Seven of the eight new checks fail on the old source; the full-fall check passes either way.
+- `check-play`'s state tests now run the pass after `runStates` (the real order), and its
+  expectations moved by the one tick the old inline bump was early.
+- `check-twocar` shows the commit lag through the pass instead of a flag.

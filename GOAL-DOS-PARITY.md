@@ -759,7 +759,7 @@ docs, (6) commit.
   2, and unported. It pulls state-0 cars within ±60px of world (0x650, 0xB70) toward the centre, and
   inside ±12px drops them in (state 1, `[1382]=0x46`, a 4-step drift). Read in full in §9cd. Port it
   with a `check-step` test.
-- [ ] **`UNKNOWN_stale_animtimer_port`** (§9ce, found live). `73E7` bumps `[12B0]` only for cars not
+- [x] **`UNKNOWN_stale_animtimer_port`** **Done (§9cg, M3.87): one `73E7` bump in the per-car pass, `82BE`'s one-step cursor; live-proven.** (§9ce, found live). `73E7` bumps `[12B0]` only for cars not
   in state 0 (`309F`), and the 0→1 entry `62E3` and every 0→D entry (`5852`, `5842`, `5B52`/`5B83`, `5CA6`, `5FAC`, `6169`,
   `74C0`, `7A57`) don't zero it; only the hazard entries `6468`/`6507` do. Their
   animations start from the value the car entered state 0 with: 94 after the countdown, 0 after a

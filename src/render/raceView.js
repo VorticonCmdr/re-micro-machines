@@ -309,11 +309,10 @@ function drawProjectile(dst, w, h, camX, camY, ph0, car) {
 export function carAnimationFrame(car, round) {
   const state = car.state
   if (state === 2 || state === 0xd) {
-    // 82BE: idx = the KNOCKOUT_DURATIONS threshold animTimer hasn't yet crossed -- states.js's own
-    // stepKnockoutAnim computes the identical index internally (the same findIndex) without
-    // persisting it; re-derived here, read-only, for drawing.
-    const idx = KNOCKOUT_DURATIONS.findIndex((t) => (car.animTimer ?? 0) <= t)
-    if (idx === -1) return { drawBody: true, overlay: null } // state should already have transitioned away by render time; safe fallback
+    // 82BE: the step this tick's handler drew (states.js `stepKnockoutAnim` keeps it before its own
+    // advance), else the cursor [12B8] itself.
+    const idx = car._koDrawStep ?? car.animStep2 ?? 0
+    if (KNOCKOUT_FRAME_IDS[idx] === undefined || KNOCKOUT_FRAME_IDS[idx] === 0xffff) return { drawBody: true, overlay: null } // already transitioned; safe fallback
     const drawBody = state === 2 ? idx >= 3 : idx <= 3 // state 2: last 3 of 6 steps; state 0xD: first 4
     const frame = KNOCKOUT_FRAME_IDS[idx]
     return { drawBody, overlay: frame >= 0 && frame <= 4 ? { source: 'knockout', frame } : null }

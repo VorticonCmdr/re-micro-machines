@@ -285,10 +285,8 @@ export function stepDropIn(car, ctx, raceState) {
 }
 
 /**
- * The drift-application half of `73e7` (`1000:7414-7424`) -- NOT the whole function: `73e7` also
- * bumps `animTimer` unconditionally, but every state that uses `driftDX/DY/Steps` (1, 4, 5) already
- * increments its own `animTimer` inline via `animTableDone` (states.js) -- porting `73e7`'s own
- * increment too would double-count it every tick. Only ported here: apply `driftDX/DY` and count
+ * The drift-application half of `73e7` (`1000:7414-7424`); its `animTimer` bump is step.js's
+ * `animTimerPass`, called just before this (docs/engine.md §9cg). Ported here: apply `driftDX/DY` and count
  * down `driftSteps` while in states {1, 4, 5}, the exact gate `1000:73f8-740b` checks. Also ports
  * `73e7`'s own round-9 quirk (`1000:73e7-73f3`): non-car-0 cars skip this entirely in round 9.
  */

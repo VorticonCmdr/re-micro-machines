@@ -374,13 +374,22 @@ export function runStep(world, cars, controls, raceState, ctx) {
     const bx = twoCar && grounded ? stepExchange(i, cars, raceState, ctx) : i
     if (typeof bx === 'number') {
       const t = cars[bx]
-      // 73F4's animTimer bump for a car in 0xB/0xC (the port's own handlers bump states 1/2/4/5/0xD
-      // inline, so only these need it here -- their animTimer is read by nothing but the swap-tick
-      // guard below).
-      if (t.state === 0xb || t.state === 0xc) t.animTimer = (t.animTimer + 1) & 0xffff
+      // 309F-30A6 -> 73E7-73F4: the ONE animTimer bump, for every car not in state 0 (state A
+      // included), except, in round 9, every car but car 0 (BX==0). The state handlers above only
+      // compare it, so they see the value this pass left last step, as 82BE/880A/7F62/7EFA do from
+      // render. State 0 never bumps and 62E3/6169/5FAC/... don't zero it, so those animations start
+      // from whatever the car entered state 0 with (docs/engine.md §9cg).
+      animTimerPass(t, bx, ctx)
       applyScriptedDrift(t, ctx, bx === 0)
       updateProjectileFlight(t)
     } else applyScoreSlotGarbage(cars[0], bx.scoreSlot, ctx) // a blink swap tick: BX = the bar value
     updatePuffsAndSplashes(car, ctx)
   })
+}
+
+/** `309F-30A6` -> `73E7-73F4`: the per-car pass's animTimer bump, the only one there is -- for a car not
+ * in state 0 (state A included), and in round 9 only for car 0 (`BX==0`). `bx` is the car index the
+ * pass holds (7429 can leave another car's). docs/engine.md §9cg. */
+export function animTimerPass(car, bx, ctx) {
+  if (car.state !== 0 && !(ctx.round === 9 && bx !== 0)) car.animTimer = ((car.animTimer ?? 0) + 1) & 0xffff
 }

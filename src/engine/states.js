@@ -10,7 +10,7 @@
 // (state 4's own fall animation ends there) doesn't get stuck forever: it skips straight to the
 // sequencer's own documented terminal action (drop back in at the current position, state 0).
 
-import { KNOCKOUT_DURATIONS, LEV_NUDGE_TABLE, LEV_HEADING_TABLE, STATE1_ANIM_ROUND2, STATE1_ANIM_DEFAULT, STATE1_ANIM_A, STATE1_ANIM_B, FALL_ANIM, CRASH_ANIM, SINE8 } from '../data/engine-tables.js'
+import { KNOCKOUT_DURATIONS, KNOCKOUT_FRAME_IDS, LEV_NUDGE_TABLE, LEV_HEADING_TABLE, STATE1_ANIM_ROUND2, STATE1_ANIM_DEFAULT, STATE1_ANIM_A, STATE1_ANIM_B, FALL_ANIM, CRASH_ANIM, SINE8 } from '../data/engine-tables.js'
 import { wrapWorld, mul2Floor256, toI16 } from './int16.js'
 import { queryWorldAt } from './collide.js'
 import { stepDropIn, resetDropInSlot } from './dropin.js'
@@ -26,25 +26,18 @@ function stepDriving(car, ctx) {
 
 /**
  * States 2 and D (`HandleCarState2or0DKnockoutAnim`, 82BE): the shared re-appear/knockout
- * animation, `KNOCKOUT_DURATIONS` walked by `animTimer` until the 0xFFFF sentinel, then transition
- * to `endState` (0 for state 2, 7 for state D). Frame selection (`KNOCKOUT_FRAME_IDS`) is drawing
- * only and not needed for the headless step.
- *
- * Known simplification (flagged by an adversarial review pass, not fixed): in the real game 82BE
- * runs from render (`90c5`), which happens *before* `73e7` bumps `animTimer` for this same
- * iteration (docs/engine.md §2/§4), so a handler call sees last iteration's already-bumped value.
- * This function bumps-then-tests in one call, one tick earlier than that. Reproducing the real
- * order needs `animTimer` bumped in its own pass after `runStates` (mirroring `73e7`'s place in
- * `RunRaceMainLoop`), which isn't worth the restructuring for M3.3's headless-only, no-animation
- * scope -- every duration boundary here is off by at most one 35Hz tick.
+ * animation, then `endState` (0 for state 2, 7 for state D). The cursor is `animStep2` ([12B8]):
+ * each call reads frame `KNOCKOUT_FRAME_IDS[step]` (-1 ends it, 82D6), draws, then advances ONE
+ * step if `animTimer >= KNOCKOUT_DURATIONS[step]` (82FB-8301). `animTimer` is bumped only by the
+ * per-car pass after the handlers (step.js, `73E7`), so a car entering 0xD with a stale timer
+ * (every 0->D entry leaves it alone) steps once per call: a 7-call knockout (docs/engine.md §9cg).
+ * `car._koDrawStep` keeps the step this call drew, for the renderer.
  */
 function stepKnockoutAnim(car, endState, raceState, ctx) {
-  // A car the post-commit 73E7 missed (7429's BX clobber, twocar.js `stepExchange`) tests the value it
-  // was reset to, one step behind the other car (docs/engine.md §9an).
-  if (car.skipAnimBump) car.skipAnimBump = 0
-  else car.animTimer = (car.animTimer ?? 0) + 1
-  const idx = KNOCKOUT_DURATIONS.findIndex((t) => car.animTimer <= t)
-  if (idx === -1 || KNOCKOUT_DURATIONS[idx] === 0xffff) {
+  const idx = car.animStep2 ?? 0
+  car._koDrawStep = idx
+  if (KNOCKOUT_FRAME_IDS[idx] === 0xffff || idx >= KNOCKOUT_FRAME_IDS.length) { // 82D6 -> 8308
+    car.animStep2 = 0
     car.state = endState
     car.animTimer = 0
     // 8321: the end of the state-2 reappear clears [2911] (every format) -- the only thing that
@@ -53,11 +46,12 @@ function stepKnockoutAnim(car, endState, raceState, ctx) {
     if (endState === 0 && raceState) raceState.knockoutRequest = 0
     // 8327: state 2's end draws the body once (now in state 0); 0xD's end does not.
     if (endState === 0) markDrawn(car, ctx)
-  } else if (endState === 0 ? idx >= 3 : idx <= 3) {
+  } else {
     // 82DB-82F5: the body is drawn (and the drawn flag written) from index 3 on while re-appearing
     // (state 2), up to index 3 while being knocked out (0xD); the other frames draw only the overlay
-    // (8339). The index is this port's own (one tick early, see above), docs/engine.md §9ao.
-    markDrawn(car, ctx)
+    // (8339), docs/engine.md §9ao.
+    if (endState === 0 ? idx >= 3 : idx <= 3) markDrawn(car, ctx)
+    if (toI16(car.animTimer ?? 0) >= KNOCKOUT_DURATIONS[idx]) car.animStep2 = idx + 1 // 82FB-8301
   }
   // 8332 `MOV [BX+12AA],0`: every path through 82BE converges here, so the drone wall-stuck count
   // is cleared on EVERY tick of states 2/0xD, not only when the animation ends in state 0. With the
@@ -223,14 +217,6 @@ function stepRespawn(car, ctx, raceState) {
   }
 }
 
-/** Shared {threshold,frames} table walk (KNOCKOUT_DURATIONS' own pattern, generalised): true once
- * animTimer has passed every real threshold and only the 0xFFFF sentinel remains. */
-function animTableDone(car, table) {
-  car.animTimer = (car.animTimer ?? 0) + 1
-  const idx = table.threshold.findIndex((t) => car.animTimer <= t)
-  return idx === -1 || table.threshold[idx] === 0xffff
-}
-
 /**
  * State 1, `880A HandleCarState1HazardDeath` (docs/engine.md §9w). Speed and velocity pinned to 0
  * for the whole state. Ends in state 7 (respawn), same as every other knockout path.
@@ -256,30 +242,14 @@ function animTableDone(car, table) {
  * `applyScriptedDrift` already owns and decrements elsewhere in the per-step pipeline; the prior code
  * never checked it for state 1 at all, for any round.
  *
- * Inside the real `880A-8928` itself, `animTimer` (`[BX+0x12B0]`) is only ever COMPARED, never
- * incremented -- confirmed by an exhaustive `search_instructions` sweep of every writer of
- * `[BX+0x12B0]` across the whole binary (docs/engine.md §9w). It's bumped unconditionally, once per
- * active car per tick, by the shared `1000:73E7` (`applyScriptedDrift`'s real namesake), independent
- * of state and of this function's own driftSteps gate -- and every entry point into states 1/2/4/5/D
- * (terrain hazard dispatch, airborne landing, `RespawnCarAtSafePoint`, state E's own entries) zeroes
- * it first. An advisor-directed gating check (every writer, every entry/exit site) confirmed this
- * makes the "bump inline, once per handler call, from a zeroed baseline" shape `animTableDone`
- * (states 2/4/5/D, unchanged below) already uses behaviorally equivalent to the real external
- * increment -- so no five-state refactor was needed, and none was done. State 1 gets the same
- * self-contained inline bump here (not a call into `applyScriptedDrift`, which would double-count
- * against `animTableDone`'s own inline bumps for the OTHER four states it doesn't touch) -- placed
- * unconditionally as this function's first statement (gated, see below) so it also covers the
- * heading-oscillation sub-phase, which the real `73E7` keeps ticking through regardless of what
- * `880A`'s own logic is doing that tick (the prior code's bug was an early `return` skipping its OWN
- * inline bump; this version has no such gap because the bump now happens before any branch).
- *
- * `73E7`'s own increment is gated too, not truly unconditional: `73EE-73F3` skips it entirely for
- * every car except the camera-target car (`ctx.cars[0]`) when `round===9` -- the SAME exclusion
- * `dropin.js`'s `applyScriptedDrift` already carries for its own driftSteps/position half of this
- * same real function. Reproduced here exactly: for a round-9 non-car0 car, `animTimer` stays pinned
- * at whatever it was (0, from entry-zeroing) forever, so such a car that reaches the table-walk phase
- * never crosses `threshold[0]` and never reaches state 7 -- confirmed to be the real game's own
- * behavior, not smoothed over into "every car always progresses."
+ * Inside the real `880A-8928` itself, `animTimer` (`[BX+0x12B0]`) is only ever COMPARED. Its one
+ * increment is `73E7`, run by `RunRaceMainLoop`'s per-car pass AFTER the render that calls this
+ * handler, for every car not in state 0 (`309F`), and in round 9 only for car 0 (`73EE-73F3`) --
+ * ported as step.js's `animTimerPass` (docs/engine.md §9cg). Not every entry zeroes it: the plughole
+ * (`62E3`) doesn't, so a fall right after the start begins with the timer the car kept from the start
+ * countdown (~95) and walks the table one step per call (~12 ticks, live-proven), while the hazard
+ * tiles' entries (`6468`/`6507`) zero it and play the full table. A round-9 non-car0 car's timer
+ * never moves, so it never reaches state 7 -- the real game's own behaviour.
  *
  * `driftSteps` is read here BEFORE its own decrement: `runStates` runs before `applyScriptedDrift` in
  * `step.js`'s per-step order, so this function sees the PREVIOUS tick's already-decremented value,
@@ -311,16 +281,7 @@ function stepHazardDeath(car, ctx) {
   car.speed = 0
   car.velX = 0
   car.velY = 0
-  // 73E7 (73EE-73F3): in round 9 the increment itself is skipped for every car except the
-  // camera-target car (`ctx.cars[0]`) -- the SAME exclusion `dropin.js`'s `applyScriptedDrift`
-  // already carries for its own driftSteps/position piece of this same real function. This gates
-  // only the increment; the rest of this function (oscillation, table-walk, transition) still runs
-  // for every car every tick -- a round-9 non-car0 car that reaches the table-walk phase sees
-  // animTimer permanently pinned at 0, so it never crosses threshold[0] and never reaches state 7.
-  // That is the real game's own behavior, not a port artifact: faithfully reproduced, not smoothed
-  // over.
-  const isCarZero = ctx.cars ? car === ctx.cars[0] : true
-  if (!(ctx.round === 9 && !isCarZero)) car.animTimer = (car.animTimer ?? 0) + 1
+  // animTimer is bumped by the per-car pass after the handlers (step.js, 73E7), not here.
 
   let table
   if (ctx.round === 4 || ctx.round === 9) {
@@ -360,15 +321,6 @@ function stepHazardDeath(car, ctx) {
   }
 }
 
-/** The `73E7` round-9/non-car0 animTimer-increment exclusion (docs/engine.md §9w/§9z), shared by
- * every state with its own self-contained inline bump (1, 4, 5). States 2/D's own inline bump
- * (`animTableDone`) does NOT need this gate -- already established equivalent to the real external
- * increment without it, docs/engine.md §9w. */
-function bumpAnimTimerRound9Gated(car, ctx) {
-  const isCarZero = ctx.cars ? car === ctx.cars[0] : true
-  if (!(ctx.round === 9 && !isCarZero)) car.animTimer = (car.animTimer ?? 0) + 1
-}
-
 /**
  * State 4, `7F62 HandleCarState4FallAnimSfx8` (docs/engine.md §9z): fall animation; ends by
  * hiding the car (`active=0`) and handing off to the drop-in sequencer (state 0xE).
@@ -403,7 +355,6 @@ function bumpAnimTimerRound9Gated(car, ctx) {
  */
 function stepFallAnim(car, ctx, raceState) {
   if (raceState && raceState.fallLatch == null) raceState.fallLatch = (ctx.cars ?? []).indexOf(car)
-  bumpAnimTimerRound9Gated(car, ctx)
   if (car.driftSteps) { markDrawn(car, ctx); return } // 7F6D-7F74
   const step = car.animStep ?? 0
   if (FALL_ANIM.threshold[step] === 0xffff) {
@@ -439,7 +390,6 @@ function stepFallAnim(car, ctx, raceState) {
  * might have the same gap; it doesn't, so nothing there needs revisiting.
  */
 function stepCrashAnim(car, ctx) {
-  bumpAnimTimerRound9Gated(car, ctx)
   if (car.driftSteps) { markDrawn(car, ctx); return } // 7EFA-7F01
   const step = car.animStep ?? 0
   if (CRASH_ANIM.threshold[step] === 0xffff) {

@@ -216,8 +216,8 @@ export function twoCarFinishedCar(raceState) {
  * slot's own index on every early exit; P1 (0) on the arm (75F2), a plain blink tick (7633) and the
  * 7742/76D2 commits; P2 (1) on the 770A commit; and on a swap tick `{ scoreSlot }`, the bar value
  * just loaded from [26B6] (7645), which the pass then uses as a "car base" 0..8 bytes into car 0's
- * record (`applyScoreSlotGarbage`). The car that the post-commit 73E7 misses gets `skipAnimBump`:
- * its 0xD animation runs one step behind the other's (states.js `stepKnockoutAnim`).
+ * record (`applyScoreSlotGarbage`). The pass bumps `animTimer` on `cars[bx]` (step.js), so the car
+ * the post-commit 73E7 misses runs its 0xD animation one step behind the other's.
  */
 export function stepExchange(carIndex, cars, raceState, ctx) {
   const m = raceState.twoCar
@@ -247,12 +247,12 @@ export function stepExchange(carIndex, cars, raceState, ctx) {
   if (!m.matchOpen) { // 76C2 JNZ 7742: the finish block already decided the match
     raceState.raceOverCount = 2 // 7742
     if (p1.drawnThisFrame) ctx.sound?.playSfx(0x10) // 7748 (BX is P1 here)
-    if (m.spotlight === 1) p2.skipAnimBump = 1 // BX=P1 (768A): the post-commit 73E7 goes to car 0, car 1 misses it
+    // BX=P1 (768A): the post-commit 73E7 goes to car 0, so car 1 misses it -- the pass bumps cars[bx]
     return 0
   }
   const p1Scored = m.spotlight === 0 // 76CC
   const scorer = p1Scored ? p1 : p2
-  if (!p1Scored) p1.skipAnimBump = 1 // 770A BX=P2: car 0's own pass already ran before this commit reset it
+  // 770A BX=P2: car 0's own pass already ran before this commit reset it, so it starts one behind
   if (toI16(scorer.lapsRemaining) > 0) { // 76D6/770E
     m.spotlight = NONE // 76DD/7715
     m.score += p1Scored ? 1 : -1 // 76E3 INC / 771B DEC

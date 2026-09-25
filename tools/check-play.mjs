@@ -28,6 +28,7 @@ import { droneControlByte } from '../src/engine/ai.js'
 import { initCameraState, updateCamera } from '../src/engine/camera.js'
 import { viewCoord, inClipWindow } from '../src/engine/drawn.js'
 import { carAnimationFrame } from '../src/render/raceView.js'
+import { animTimerPass } from '../src/engine/step.js'
 import { recordingReader, createTapeReader } from '../src/engine/input.js'
 import { updateCheckpointsAndLaps } from '../src/engine/checkpoints.js'
 import { checkpointList } from '../src/data/engine-tables.js'
@@ -87,7 +88,8 @@ function runRace(setup, car0Reader) {
  */
 function checkNewStates() {
   const car = { state: 4, animTimer: 0, active: 1, subState: 0, height: 0, zVel: 0 }
-  return import('../src/engine/states.js').then(({ runStates }) => {
+  return import('../src/engine/states.js').then(({ runStates: runStatesOnly }) => {
+    const runStates = (cars, rs, ctx) => { runStatesOnly(cars, rs, ctx); cars.forEach((c, i) => animTimerPass(c, i, ctx)) }
     const raceState = {}
     let sawStateE = false
     for (let i = 0; i < 60 && !sawStateE; i++) {
@@ -119,7 +121,8 @@ function checkNewStates() {
  * exact landing on 0 is something only the correct wraparound-aware bucket logic produces.
  */
 function checkStateOneOscillator() {
-  return import('../src/engine/states.js').then(({ runStates }) => {
+  return import('../src/engine/states.js').then(({ runStates: runStatesOnly }) => {
+    const runStates = (cars, rs, ctx) => { runStatesOnly(cars, rs, ctx); cars.forEach((c, i) => animTimerPass(c, i, ctx)) }
     const wrapCar = { state: 1, animTimer: 0, active: 1, heading: 200 }
     for (let i = 0; i < 14; i++) runStates([wrapCar], {}, { round: 4 })
     check('state 1 oscillator (round 4): heading=200 converges to 0 via the short wraparound path in exactly 14 ticks', wrapCar.heading === 0)
@@ -347,7 +350,8 @@ async function checkTileAnimations() {
  * reaching 4 at the correct tick instead -- the actual observable the real sfx gate depends on.
  */
 function checkStateFourFiveDriftGate() {
-  return import('../src/engine/states.js').then(({ runStates }) => {
+  return import('../src/engine/states.js').then(({ runStates: runStatesOnly }) => {
+    const runStates = (cars, rs, ctx) => { runStatesOnly(cars, rs, ctx); cars.forEach((c, i) => animTimerPass(c, i, ctx)) }
     // driftSteps gate: table advancement frozen while driftSteps!=0, animTimer keeps ticking
     // underneath it (same shape as state 1's own gate, checkStateOneOscillator above). Held for
     // LONGER than the table's own last real threshold (FALL_ANIM=40, CRASH_ANIM=160) so this is
@@ -378,7 +382,8 @@ function checkStateFourFiveDriftGate() {
       runStates([fallCar], {}, { round: 2 })
       if (fallCar.animStep === 4) fallStep4Tick = fallCar.animTimer
     }
-    check('state 4: animStep reaches 4 exactly when animTimer=8 (not the old ~tick-3/4 firing)', fallStep4Tick === 8)
+    // The handler compares the timer the previous pass left (8) and the pass then bumps it (9): 7F62 runs from render, before 73E7.
+    check('state 4: animStep reaches 4 exactly when the handler sees animTimer=8 (not the old ~tick-3/4 firing)', fallStep4Tick === 9)
 
     const crashCar = { state: 5, animTimer: 0, active: 1, height: 0, zVel: 0 }
     let crashStep4Tick = -1
@@ -386,20 +391,21 @@ function checkStateFourFiveDriftGate() {
       runStates([crashCar], {}, { round: 2 })
       if (crashCar.animStep === 4) crashStep4Tick = crashCar.animTimer
     }
-    check('state 5: animStep reaches 4 exactly when animTimer=16 (not the old ~tick-3/4 firing)', crashStep4Tick === 16)
+    check('state 5: animStep reaches 4 exactly when the handler sees animTimer=16 (not the old ~tick-3/4 firing)', crashStep4Tick === 17)
 
     // Terminal transition completeness: state 4 -> 0xE sets 3 fields the prior code omitted
     // (animStep=0, controlsLocked=1, cameraFarFlag=0), alongside the 4 it already had.
     const fallDone = { state: 4, animTimer: 0, active: 1, height: 0, zVel: 0, controlsLocked: 0, cameraFarFlag: 1 }
     for (let i = 0; i < 45 && fallDone.state === 4; i++) runStates([fallDone], {}, { round: 2 })
-    check('state 4 terminal: active=0, subState=1, state=0xE, animTimer=0, animStep=0, controlsLocked=1, cameraFarFlag=0', fallDone.active === 0 && fallDone.subState === 1 && fallDone.state === 0xe && fallDone.animTimer === 0 && fallDone.animStep === 0 && fallDone.controlsLocked === 1 && fallDone.cameraFarFlag === 0)
+    // animTimer: zeroed at 7FBD, then the same tick's 73E7 bumps it (state 0xE is not 0).
+    check('state 4 terminal: active=0, subState=1, state=0xE, animTimer=0 (+1 from the pass), animStep=0, controlsLocked=1, cameraFarFlag=0', fallDone.active === 0 && fallDone.subState === 1 && fallDone.state === 0xe && fallDone.animTimer === 1 && fallDone.animStep === 0 && fallDone.controlsLocked === 1 && fallDone.cameraFarFlag === 0)
 
     // State 5's terminal sets subState=0 (not 1 -- a real, confirmed difference from state 4, not
     // an inconsistency: state 5 hands off to state 7, which doesn't consume subState the same way
     // state E's own sequencer does).
     const crashDone = { state: 5, animTimer: 0, active: 1, height: 0, zVel: 0, subState: 3 }
     for (let i = 0; i < 200 && crashDone.state === 5; i++) runStates([crashDone], {}, { round: 2 })
-    check('state 5 terminal: state=7, animTimer=0, animStep=0, subState=0', crashDone.state === 7 && crashDone.animTimer === 0 && crashDone.animStep === 0 && crashDone.subState === 0)
+    check('state 5 terminal: state=7, animTimer=0 (+1 from the pass), animStep=0, subState=0', crashDone.state === 7 && crashDone.animTimer === 1 && crashDone.animStep === 0 && crashDone.subState === 0)
 
     // Round-9/non-car0 animTimer exclusion (the same real 73E7 gate state 1 already has,
     // docs/engine.md §9w): a round-9 non-car0 car in state 4 gets no animTimer increment at all
@@ -422,7 +428,8 @@ function checkStateFourFiveDriftGate() {
 }
 
 function checkRespawnSidewaysOffset() {
-  return import('../src/engine/states.js').then(({ runStates }) => {
+  return import('../src/engine/states.js').then(({ runStates: runStatesOnly }) => {
+    const runStates = (cars, rs, ctx) => { runStatesOnly(cars, rs, ctx); cars.forEach((c, i) => animTimerPass(c, i, ctx)) }
     const mk = () => ({ state: 7, subState: 0, active: 1, safeX: 48, safeY: 48, levByte: 0x20, mapAttr: 0 })
     const target = mk() // cars[0] -- the camera-target car, +90 deg rotation
     const other = mk() // not cars[0] -- -90 deg rotation
@@ -480,7 +487,8 @@ async function checkControlLock() {
  */
 async function checkDrawnFlag() {
   const { markDrawn, inClipWindow } = await import('../src/engine/drawn.js')
-  const { runStates } = await import('../src/engine/states.js')
+  const { runStates: runStatesOnly } = await import('../src/engine/states.js')
+  const runStates = (cars, rs, ctx) => { runStatesOnly(cars, rs, ctx); cars.forEach((c, i) => animTimerPass(c, i, ctx)) }
   const { fireProjectile } = await import('../src/engine/projectile.js')
   const clip = (dx, dy) => inClipWindow(dx, dy, -12, 12, 24)
   // View x = dx - 12 is in while -24 < x < 0x100; view y likewise below 0xE0 (the 224-row clip
@@ -512,9 +520,9 @@ async function checkDrawnFlag() {
   check('sticky: state 0 writes (off screen -> 0)', run({ state: 0, active: 1, posX: 100, posY: 100, height: 0, drawnThisFrame: 1 }) === 0)
   check('sticky: state 7 never calls 7D73 -- the flag keeps its value', run({ state: 7, active: 1, subState: 0x46, posX: 100, posY: 100, safeX: 100, safeY: 100, drawnThisFrame: 1 }) === 1)
   check('sticky: state 2 below index 3 draws only the overlay (82E2), no write', run({ state: 2, active: 1, animTimer: 0, posX: 100, posY: 100, height: 0, drawnThisFrame: 1 }) === 1)
-  check('sticky: state 2 from index 3 draws the body (82E9), writes', run({ state: 2, active: 1, animTimer: 12, posX: 100, posY: 100, height: 0, drawnThisFrame: 1 }) === 0)
+  check('sticky: state 2 from index 3 draws the body (82E9), writes', run({ state: 2, active: 1, animStep2: 3, animTimer: 12, posX: 100, posY: 100, height: 0, drawnThisFrame: 1 }) === 0)
   check('sticky: state 0xD up to index 3 draws the body (82F5), writes', run({ state: 0xd, active: 1, animTimer: 0, posX: 100, posY: 100, height: 0, drawnThisFrame: 1 }) === 0)
-  check('sticky: state 0xD past index 3 does not', run({ state: 0xd, active: 1, animTimer: 16, posX: 100, posY: 100, height: 0, drawnThisFrame: 1 }) === 1)
+  check('sticky: state 0xD past index 3 does not', run({ state: 0xd, active: 1, animStep2: 4, animTimer: 16, posX: 100, posY: 100, height: 0, drawnThisFrame: 1 }) === 1)
   check('sticky: state 5 writes only while drifting (7EFA-7F01)', run({ state: 5, active: 1, driftSteps: 3, animTimer: 0, posX: 100, posY: 100, height: 0, drawnThisFrame: 1 }) === 0 &&
     run({ state: 5, active: 1, driftSteps: 0, animTimer: 0, posX: 100, posY: 100, height: 0, drawnThisFrame: 1 }) === 1)
   // `ctx.drawnTick` (docs/engine.md §9ao 8): smoothness 2-4's draw-gate, threaded into markDrawn
@@ -550,7 +558,8 @@ async function checkDrawnFlag() {
 }
 
 async function checkRespawnFields() {
-  const { runStates } = await import('../src/engine/states.js')
+  const { runStates: runStatesOnly } = await import('../src/engine/states.js')
+  const runStates = (cars, rs, ctx) => { runStatesOnly(cars, rs, ctx); cars.forEach((c, i) => animTimerPass(c, i, ctx)) }
   // Rounds 2/8: DEC then test (6FFA-7005) -- subState 0x46 gives 0x45 held calls, then it proceeds.
   {
     const car = { state: 7, subState: 0x46, active: 1, safeX: 480, safeY: 480, levByte: 0, mapAttr: 0 }
@@ -596,7 +605,8 @@ async function checkRespawnFields() {
 async function checkDropIn() {
   const { ROUND3_DROPIN_TABLE } = await import('../src/data/engine-tables.js')
   const { triggerDropIn, stepDropIn, applyScriptedDrift } = await import('../src/engine/dropin.js')
-  const { runStates } = await import('../src/engine/states.js')
+  const { runStates: runStatesOnly } = await import('../src/engine/states.js')
+  const runStates = (cars, rs, ctx) => { runStatesOnly(cars, rs, ctx); cars.forEach((c, i) => animTimerPass(c, i, ctx)) }
 
   check('ROUND3_DROPIN_TABLE has exactly 5 real entries', ROUND3_DROPIN_TABLE.length === 5)
 
@@ -1860,17 +1870,17 @@ async function checkAnimationOverlaysAndRotor() {
     check('rotor: not in state 0xD (7E41)', car.rotorFrame === 1)
   }
 
-  // 3. States 2/0xD: body visibility gate (idx = KNOCKOUT_DURATIONS.findIndex), asymmetric between
+  // 3. States 2/0xD: body visibility gate (idx = the [12B8] cursor, animStep2), asymmetric between
   // the two states, plus the knockout overlay present whenever a valid frame id applies.
   {
-    const early2 = composeRaceView({ words, bank, camera, frames, vehicleSize: size, cars: [{ ...base, state: 2, animTimer: 1 }], view, round: 1, ph0: fakePh0 }).indexed // idx 0
+    const early2 = composeRaceView({ words, bank, camera, frames, vehicleSize: size, cars: [{ ...base, state: 2, animStep2: 0 }], view, round: 1, ph0: fakePh0 }).indexed // idx 0
     check('state 2, idx<3: body absent (drawBody=false)', !contains(early2, BODY))
     check('state 2, idx<3: knockout overlay present', contains(early2, KNOCKOUT))
-    const late2 = composeRaceView({ words, bank, camera, frames, vehicleSize: size, cars: [{ ...base, state: 2, animTimer: 21 }], view, round: 1, ph0: fakePh0 }).indexed // idx 5
+    const late2 = composeRaceView({ words, bank, camera, frames, vehicleSize: size, cars: [{ ...base, state: 2, animStep2: 5 }], view, round: 1, ph0: fakePh0 }).indexed // idx 5
     check('state 2, idx>=3: body present (drawBody=true)', contains(late2, BODY))
-    const earlyD = composeRaceView({ words, bank, camera, frames, vehicleSize: size, cars: [{ ...base, state: 0xd, animTimer: 1 }], view, round: 1, ph0: fakePh0 }).indexed // idx 0
+    const earlyD = composeRaceView({ words, bank, camera, frames, vehicleSize: size, cars: [{ ...base, state: 0xd, animStep2: 0 }], view, round: 1, ph0: fakePh0 }).indexed // idx 0
     check('state 0xD, idx<=3: body present (drawBody=true)', contains(earlyD, BODY))
-    const lateD = composeRaceView({ words, bank, camera, frames, vehicleSize: size, cars: [{ ...base, state: 0xd, animTimer: 21 }], view, round: 1, ph0: fakePh0 }).indexed // idx 5
+    const lateD = composeRaceView({ words, bank, camera, frames, vehicleSize: size, cars: [{ ...base, state: 0xd, animStep2: 5 }], view, round: 1, ph0: fakePh0 }).indexed // idx 5
     check('state 0xD, idx>3: body absent (drawBody=false)', !contains(lateD, BODY))
   }
 
@@ -1927,10 +1937,10 @@ async function checkAnimationOverlaysAndRotor() {
   // a car whose posX/Y has since drifted away from its knockout snapshot must still draw the
   // overlay AT the snapshot, not at the drifted live position.
   {
-    const drifted = { ...base, posX: 1000, posY: 1000, knockoutX: 1000, knockoutY: 1000, state: 2, animTimer: 1 }
+    const drifted = { ...base, posX: 1000, posY: 1000, knockoutX: 1000, knockoutY: 1000, state: 2, animStep2: 0 }
     const bufAtSnapshot = composeRaceView({ words, bank, camera, frames, vehicleSize: size, cars: [drifted], view, round: 1, ph0: fakePh0 }).indexed
     check('knockout overlay: draws at the snapshot when posX/Y still match it', contains(bufAtSnapshot, KNOCKOUT))
-    const stale = { ...base, posX: 1030, posY: 1030, knockoutX: 1000, knockoutY: 1000, state: 2, animTimer: 1 } // posX/Y drifted 30px away
+    const stale = { ...base, posX: 1030, posY: 1030, knockoutX: 1000, knockoutY: 1000, state: 2, animStep2: 0 } // posX/Y drifted 30px away
     const bufStale = composeRaceView({ words, bank, camera, frames, vehicleSize: size, cars: [stale], view, round: 1, ph0: fakePh0 }).indexed
     check('knockout overlay: still anchors on knockoutX/Y even once posX/Y has drifted away (not on the live posX/Y)', contains(bufStale, KNOCKOUT))
     // If drawKnockoutOverlay read posX/Y instead, bufStale's overlay would land 30px off-centre

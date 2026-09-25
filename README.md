@@ -132,11 +132,6 @@ and stays local to your machine.
   (portraits, win/lose poses, vehicle icons and their slides, pixel-checked against DOSBox,
   `docs/engine.md` §9bz), the tournament board screen, the interactive opponent picker, and the
   elimination/replacement screen.
-- The length of a fall into the bathtub plughole, and of knockouts from a knockout tile or a
-  missed checkpoint: DOS reuses a stale animation timer there. A plughole fall right after the start
-  takes ~12 ticks in DOS (live-measured) and 81 in the port; the knockouts are read from the
-  disassembly only (`docs/engine.md` §9ce). Hazard-tile falls zero the timer and are unaffected.
-  The plughole itself is implemented.
 - Four small draw differences found in Part R (`docs/engine.md` §9cf): the wheel puffs' and
   splashes' frame cadence and splash slot/offset, the car layer's paint order (the original draws
   every shadow, then every puff, then every projectile, then every body), and when the projectile's

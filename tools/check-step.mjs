@@ -857,5 +857,51 @@ function newCar(fields) {
   check('plughole: runStep calls it (ROUND22, a car on the plughole drops in)', cars[0].state === 1 && cars[0].subState === 0x46 && cars[0].driftSteps <= 4)
 }
 
+// animTimer [12B0] (docs/engine.md §9cg): one bump, 73E7, in the per-car pass after the state
+// handlers -- never in state 0 (309F), in round 9 only for car 0 -- and the knockout's one-step
+// cursor (82BE, [12B8]); so an entry that doesn't zero the timer plays its animation fast.
+{
+  const { animTimerPass } = await import('../src/engine/step.js')
+  const { runStates } = await import('../src/engine/states.js')
+  const t = (state, animTimer, bx, round = 1) => { const c = { state, animTimer }; animTimerPass(c, bx, { round }); return c.animTimer }
+  check('73E7: no bump in state 0 (309F), a bump in state A and in 0xD', t(0, 94, 0) === 94 && t(0xa, 5, 1) === 6 && t(0xd, 0, 2) === 1)
+  check('73E7: in round 9 only car 0 (BX==0) is bumped (73EE-73F3)', t(1, 3, 0, 9) === 4 && t(1, 3, 2, 9) === 3)
+  check('73E7: a 16-bit counter', t(5, 0xffff, 0) === 0)
+
+  const koCalls = (animTimer) => {
+    const car = { state: 0xd, active: 1, animTimer, animStep2: 0, subState: 0x46, height: 0 }
+    let n = 0
+    while (car.state === 0xd && n < 100) { runStates([car], {}, { round: 1 }); animTimerPass(car, 0, { round: 1 }); n++ }
+    return n
+  }
+  check('82BE: a knockout entered with a stale timer (95, left from the start countdown) steps once per call: 7 calls', koCalls(95) === 7)
+  check('82BE: from a zeroed timer the handler sees 0,1,2,...: steps at 4/8/../24, ends on call 26', koCalls(0) === 26)
+
+  // Through runStep, ROUND22 at its real tournament index: the countdown leaves every car's timer at
+  // the value it enters state 0 with, and a plughole fall right after the start is short (live: ~12
+  // ticks, §9ce); after a respawn (timer zeroed at 7258) the same fall plays its full table.
+  const world = await loadWorld(read, 2, 2)
+  const strt = parseStrtPos(await read('GAME1/STRT_POS.BIN'))
+  const cars = spawnCars(strt, 2, 2, { tournamentIndex: 8 })
+  const ctx = { ...roundCtx(2, 2), tournamentIndex: 8 }
+  const rs = {}
+  let n = 0
+  while (cars[0].state !== 0 && n < 200) { runStep(world, cars, [0, 0, 0, 0], rs, ctx); n++ }
+  check('73E7: the start countdown (state A) bumps the timer, and entering state 0 keeps it', cars.every((c) => c.animTimer === 95))
+  const fall = (car) => {
+    Object.assign(car, { posX: 0x648, posY: 0xb6c, nextX: 0x648, nextY: 0xb6c, velX: 0, velY: 0 })
+    let k = 0
+    do { runStep(world, cars, [0, 0, 0, 0], rs, ctx); k++ } while (car.state === 0 && k < 3)
+    let steps = 0
+    while (car.state === 1 && steps < 400) { runStep(world, cars, [0, 0, 0, 0], rs, ctx); steps++ }
+    return steps
+  }
+  const quick = fall(cars[0])
+  check('plughole fall right after the start: 4 drift steps then one table step per call, ~12 steps (live: ~12 ticks)', quick === 11)
+  cars[0].state = 0; cars[0].animTimer = 0 // as after a respawn's 2 -> 0 (8310)
+  const full = fall(cars[0])
+  check('plughole fall with a zeroed timer plays the round-2 table (80 ticks)', full > 75 && full < 90)
+}
+
 console.log(bad ? `${bad} check(s) failed` : 'check-step: idle + driving runs clean (no NaN, world stays toroidal); checkpoint/lap rule holds (no lap counted with a checkpoint outstanding, counted once cleared); off-track collision response matches the real early-return/tick-reset/sfx bytes; tile-index overflow resolves to real partial data where the file has it and a defined zero fallback otherwise; shared col/dir/.BRK buffers replicate the real cross-race leftover-byte carry-over when a caller opts in; the no-throttle steer-floor/coast-decay speed jump replays exactly against the live capture, in isolation and through a real runStep')
 process.exitCode = bad ? 1 : 0

@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseStrtPos } from '../src/formats/globaldata.js'
 import { loadWorld, loadBrk, roundCtx, spawnCars } from '../src/engine/race.js'
-import { runStep, applySteerAndThrottle } from '../src/engine/step.js'
+import { runStep, applySteerAndThrottle, animTimerPass } from '../src/engine/step.js'
 import { droneControlByte } from '../src/engine/ai.js'
 import { initCameraState, updateCamera } from '../src/engine/camera.js'
 import { initTwoCarMatch, resetCarsAfterKnockout, lineUpBothCars, stepExchange, twoCarFinishedCar, twoCarBanners, twoCarFinalOrder, applyScoreSlotGarbage } from '../src/engine/twocar.js'
@@ -419,12 +419,17 @@ async function settled(round, race) {
   check('BX: arm returns P1 (75F2) even when P2 scores', seq[0] === 0)
   check('BX: the 8 swap ticks return the bar value just shown (7645), at A+1+8j', swaps.join() === '1,9,17,25,33,41,49,57' && seq[1].scoreSlot === 3 && seq[9].scoreSlot === 4)
   check('BX: plain blink ticks return P1 (7633)', seq[2] === 0 && seq[63] === 0)
-  check('BX: the P2 commit returns P2 (770A), and car 0 -- whose own pass already ran -- is flagged to lag a step', seq[64] === 1 && cars[0].skipAnimBump === 1 && !cars[1].skipAnimBump)
-  const c2 = pair({}, {})
-  const r2 = fresh(); r2.twoCar.spotlight = 0
-  let last
-  for (let i = 0; i < 65; i++) last = stepExchange(0, c2, r2, { round: 1 })
-  check('BX: the P1 commit returns P1 (76D2) and nobody lags', last === 0 && !c2[0].skipAnimBump && !c2[1].skipAnimBump)
+  check('BX: the P2 commit returns P2 (770A)', seq[64] === 1)
+  // The lag, through the pass's own 73E7 on cars[bx] (step.js animTimerPass): the commit zeroes both
+  // timers inside car 1's iteration, after car 0's own bump already ran.
+  const commitPass = (spot) => {
+    const cs = pair({}, {}); const r = fresh(); r.twoCar.spotlight = spot
+    for (let i = 0; i < 64; i++) stepExchange(spot, cs, r, { round: 1 })
+    for (let i = 0; i < 2; i++) { const bx = i === spot ? stepExchange(i, cs, r, { round: 1 }) : i; animTimerPass(cs[bx], bx, { round: 1 }) }
+    return cs.slice(0, 2).map((c) => c.animTimer)
+  }
+  check('BX: after the P2 commit car 0 -- whose own pass already ran -- lags car 1 by a step', commitPass(1).join() === '0,1')
+  check('BX: after the P1 commit (76D2, in car 0\'s own iteration) both cars are bumped once and nobody lags', commitPass(0).join() === '1,1')
 }
 {
   // The swap-tick pass on BX = k, byte-exact on car 0's record (73E7 + 51B2 transcription).
