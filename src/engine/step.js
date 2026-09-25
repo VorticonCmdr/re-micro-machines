@@ -346,7 +346,9 @@ export function runStep(world, cars, controls, raceState, ctx) {
 
   // The render's two-car gate (91f2-9205) runs before the car layer's state handlers.
   if (twoCar) twoCarRenderGate(cars, raceState, ctx)
-  runStates(cars, raceState, { ...ctx, world }) // the state-handler dispatch the real game runs from render (90c5)
+  // `hiddenCar`: 7D74's car, which 7D73 leaves before its clip test and rotor call (drawn.js).
+  const hiddenCar = twoCar && raceState.twoCar.hiddenCar != null ? cars[raceState.twoCar.hiddenCar] : null
+  runStates(cars, raceState, { ...ctx, world, hiddenCar }) // the state-handler dispatch the real game runs from render (90c5)
   if (twoCar) {
     // 7d74: the car [2621] names is not drawn (so its drawnThisFrame stays 0) -- as the car layer
     // saw [2621] this frame, before the post-HUD dispatch (9241-9281) below can change it. 7d74 is

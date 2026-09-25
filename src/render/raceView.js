@@ -392,10 +392,9 @@ function drawBank2Overlay(dst, w, h, camX, camY, bank2, size, round, car, frame)
 }
 
 /** `DrawRound8ExtraAnim32 1000:843d` -- CHOPPERS (round 8) only. Read-only: `car.rotorFrame` is
- * advanced by `engine/states.js`'s own `advanceRotorFrame`, called from the game loop's smoothness
- * draw-gate (`mm-re-player-visible` 2026-09-23, docs/engine.md §9aj -- this function used to do the
- * increment itself, which kept the rotor spinning during a PAUSED repaint since pause has no
- * physics to gate it; moved out to keep this a pure render function and to freeze correctly).
+ * advanced by `engine/drawn.js`'s `markDrawn` (its real `INC` at `8470` runs only when this car's
+ * body passed `7D73`'s clip test that render, docs/engine.md §9cb) -- never here, so a paused
+ * repaint doesn't spin it (docs/engine.md §9aj).
  * Gated on state NOT in {2, 0xD} (the body still draws through the knockout/reappear animation's
  * OTHER steps; the rotor specifically doesn't). No z/height offset at all -- round 8's body already
  * forces z=0 (`drawCar`'s own header) -- centred 32×32 on the car's raw world position, 8px larger
@@ -403,10 +402,13 @@ function drawBank2Overlay(dst, w, h, camX, camY, bank2, size, round, car, frame)
  * are ever reachable this way. */
 function drawRotor(dst, w, h, camX, camY, rotorFrames, car) {
   if (!rotorFrames || car.state === 2 || car.state === 0xd) return
-  const dx = wrapDelta(car.posX - camX, WORLD_PX)
-  const dy = wrapDelta(car.posY - camY, WORLD_PX)
+  // 843D-8464 + 8486-8489: v = pos - camera - 4, folded by +0xC00 when <= -12, then -12 -- its own
+  // fold, 4px later than the body's (docs/engine.md §9cb): at pos - camera = -11..-8 the body draws at
+  // the edge but the rotor is folded 3072px away and doesn't.
+  const x = viewCoord(car.posX - camX - 4, -12, 12)
+  const y = viewCoord(car.posY - camY - 4, -12, 12)
   const frame = rotorFrames[((car.rotorFrame ?? 0) >> 1) & 3]
-  blitTransparent(dst, w, h, dx - 16, dy - 16, frame)
+  blitTransparent(dst, w, h, x, y, frame)
 }
 
 /** Shadow -> splash -> puff -> projectile -> body/overlay -> rotor, the real paint order (docs

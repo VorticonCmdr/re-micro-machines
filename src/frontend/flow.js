@@ -26,7 +26,6 @@ import { loadWorld, loadBrk, roundCtx, spawnCars } from '../engine/race.js'
 import { createColDirBuffers } from '../engine/collide.js'
 import { createBrkBuffer } from '../formats/levbrk.js'
 import { runStep } from '../engine/step.js'
-import { advanceRotorFrame } from '../engine/states.js'
 import { droneControlByte } from '../engine/ai.js'
 import { initCameraState } from '../engine/camera.js'
 import { createKeyboardReader, createExtraKeysReader, createPauseKeyReader, createMenuReleaseTracker, recordingReader, SCANCODE_TO_KEY_CODE } from '../engine/input.js'
@@ -974,7 +973,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
             const controls = cars.map((car, i) => (i === 0 ? humanReader.read() : i === 1 && p2Reader ? p2Reader.read() : droneControlByte(car, raceCtx)))
             runStep(world, cars, controls, raceState, raceCtx)
             if (isOver()) { over = true; break } // the exiting step never renders (3081 jumps past 90C5)
-            if (raceCtx.drawnTick) { shouldRender = true; advanceRotorFrame(cars, round); raceState.tileAnimCounter = (raceState.tileAnimCounter ?? 0) + 1 }
+            if (raceCtx.drawnTick) { shouldRender = true; raceState.tileAnimCounter = (raceState.tileAnimCounter ?? 0) + 1 }
             updateEngines(sound, cars, raceCtx, jitter)
           }
         }

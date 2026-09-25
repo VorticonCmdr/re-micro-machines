@@ -4585,7 +4585,7 @@ raceView.js`'s new `drawRotor` draws it centre-anchored on the car's raw world p
 height offset at all**, confirmed by the RE pass -- moot anyway since round 8's body already forces
 z=0), gated on state NOT in `{2, 0xD}`, drawn AFTER the body (matching the real paint order). Frame
 = `(rotorFrame>>1)&3`. `car.rotorFrame` (already an existing, previously-unused `CarRecord` field at
-the right offset) advances via a new `engine/states.js` export, `advanceRotorFrame(cars, round)`,
+the right offset) advances via a new `engine/states.js` export, `advanceRotorFrame(cars, round)` **(CORRECTED, §9cb: it advances only when the body passed `7D73`'s clip; the counter now lives in `drawn.js`'s `markDrawn` and `advanceRotorFrame` is deleted)**,
 called from `play.js`/`flow.js`'s own game loop at the `smoothGate.shouldDraw()` hook -- matching
 the real `843d`'s genuinely smoothness-gated cadence (it sits inside the gated
 `RenderRaceFrameToBackBuffer`, unlike `animTimer`'s own unconditional `73E7`), gated on state NOT in
@@ -11554,3 +11554,44 @@ key events):
 - ESC released 0.3s into a finished race's hold: the frozen frame stayed for the rest of the hold,
   then faded, and the page went to the **title**, not to the result screen.
 - No console errors.
+
+## 9cb. CHOPPERS' rotor (`DrawRound8ExtraAnim32 843d`), re-read and corrected (2026-09-25)
+
+GOAL-DOS-PARITY.md P5 listed `843d` as unported. It was ported in §9aj (the CHOPPERS rotor overlay:
+frame source, paint order, and the state 2/0xD gate), and M3.44 gated its draw on the body's clip
+test. A full re-read of `843d-849A` and of its call site in `7D73` found two remaining differences.
+Both are fixed, `[STATIC]`.
+
+**The bytes:**
+- `7E3A-7E4F`: after the body blit, only in round 8 (`[28BF]==8`) and not in state 0xD or 2, `CALL
+  843d`. It is reached only by falling through `7E25-7E28` (the body's `8BAB` clip passed). `7D74`
+  (the hidden two-car car) jumps to `7E54` before any of this.
+- `843D-8464`: X = `[125C] - [264A] - 4`, folded by `+0xC00` when `<= -12`. Y is the same with
+  `[1268]`/`[264C]`. No height is involved.
+- `8464-846A`: frame = `([1392] >> 1) & 3`.
+- `847E-8496`: source `DS:5EE3 + frame*1024`, X and Y minus 12, a 32×32 clip (`8BAB`) and blit
+  (`8CA4`).
+- `8470`: `INC [BX+1392]`, the counter's only increment, right after the draw call, whatever the
+  clip result.
+
+**What was wrong in the port:**
+1. **The counter advanced for every car on every drawn tick** (`advanceRotorFrame`, called from the
+   game loops). In DOS it advances only when `843D` runs, which means the body passed its clip test
+   that render. So an off-screen chopper's rotor stands still, and when it comes back into view it
+   continues from where it stopped. The counter is now in `drawn.js`'s `markDrawn`, which is the
+   port's `7D73`: round 8, clip passed, state not 2/0xD, not the hidden car (`step.js` passes
+   `hiddenCar`), drawn ticks only. `advanceRotorFrame` is deleted.
+2. **The rotor used a symmetric `wrapDelta`.** `843D` has its own one-sided fold on
+   `pos - camera - 4`, 4px later than the body's (`pos - camera <= -12`). So at `pos - camera` =
+   −11…−8 on either axis, the body draws at the screen's left or top edge, but its rotor is folded
+   3072px away and is not drawn. That's a small quirk of the original, now reproduced.
+   `check-play`'s M3.44 case "delta=-11: rotor still draws normally" encoded the old wrap and is
+   corrected; a delta=−7 case shows the rotor drawing at the edge.
+
+**Tests.** `check-play.mjs`:
+- the counter via `markDrawn`: an on-screen round-8 draw advances it; another round, an off-screen
+  car, a non-drawn tick, the hidden car, state 2 and state 0xD don't; and rendering never does;
+- the fold at delta −11 (body without rotor) and −7 (both).
+
+Not captured live. The fold case needs a chopper at a precise screen edge, and the counter's
+off-screen freeze has no easily visible effect.

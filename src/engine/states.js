@@ -505,27 +505,6 @@ function advanceBannerSlide(car) {
 }
 
 /**
- * CHOPPERS (round 8) rotor frame counter (`INC [BX+1392] 1000:8470`, `mm-re-player-visible`
- * 2026-09-23, docs/engine.md §9aj). Unlike `animTimer` (`73E7`, unconditional every physics tick --
- * this module's own steppers above all advance at that same rate), the real increment is genuinely
- * smoothness-gated: it lives inside `843d`, itself only ever reached from the `[2638]==1`-gated
- * render pass. So this is advanced from the game loop's own `smoothGate.shouldDraw()` hook (once
- * per drawn frame -- `play.js`/`flow.js`, right where they already decide whether to render at
- * all), not from `runStates`/every physics tick like this file's other steppers, and NOT from
- * `raceView.js`'s `drawRotor` (a pure render function -- an earlier draft of this had the increment
- * there, which kept the rotor spinning on every repaint of a PAUSED frame, since pause keeps
- * re-drawing the frozen scene every rAF tick without physics running; caught before shipping).
- * Gated on state NOT in {2, 0xD}, matching `7e3a-7e48`'s own caller-side gate exactly.
- */
-export function advanceRotorFrame(cars, round) {
-  if (round !== 8) return
-  for (const car of cars) {
-    if (car.state === 2 || car.state === 0xd) continue
-    car.rotorFrame = ((car.rotorFrame ?? 0) + 1) & 0xffff
-  }
-}
-
-/**
  * Runs every active car's state-specific step, plus the shared state-A race-start-hold counter.
  * `raceState`: a small object the caller keeps across steps (just `{dropInTimer}` here).
  * `ctx.round`, `ctx.stepIncrement` ([263A], defaults 1), `ctx.world` (for state 7's respawn).

@@ -40,7 +40,7 @@ export function markDrawn(car, ctx) {
   // (docs/engine.md §9ah), deliberately not restructured here.
   if (ctx.drawnTick === false) return
   const cam = ctx.camera
-  if (!cam) { car.drawnThisFrame = 1; return }
+  if (!cam) { car.drawnThisFrame = 1; rotorTick(car, ctx); return }
   const height = car.height ?? 0
   if (ctx.round === 9) {
     const isCarZero = ctx.cars ? car === ctx.cars[0] : true
@@ -52,6 +52,20 @@ export function markDrawn(car, ctx) {
   const h = ctx.round === 8 ? 0 : height
   const f = NORMAL_CAR_FOLD
   car.drawnThisFrame = inClipWindow(car.posX - h - cam.x, car.posY - h - cam.y, f.threshold, f.offset, f.size) ? 1 : 0
+  rotorTick(car, ctx)
+}
+
+/**
+ * CHOPPERS' rotor counter `[BX+1392]` (docs/engine.md §9cb): its only increment, `INC [BX+1392]
+ * 8470`, sits inside `DrawRound8ExtraAnim32 843d`, which `7D73` calls (`7E3A-7E4F`) only after the
+ * body's clip test passed (`7E25-7E28`), in round 8, and not in state 2/0xD; the hidden two-car car
+ * (`7D74`) never gets that far. So only a car whose body was drawn this render advances its rotor.
+ * `ctx.hiddenCar`: the car `[2621]` names this render (`step.js`), or unset.
+ */
+function rotorTick(car, ctx) {
+  if (ctx.round !== 8 || !car.drawnThisFrame) return
+  if (car.state === 2 || car.state === 0xd || car === ctx.hiddenCar) return
+  car.rotorFrame = ((car.rotorFrame ?? 0) + 1) & 0xffff
 }
 
 /** Exported for `render/raceView.js`'s own body/shadow draw position (docs/engine.md §9d,

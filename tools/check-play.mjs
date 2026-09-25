@@ -1568,11 +1568,13 @@ async function checkCarDrawWrapSeam() {
     const onCar = { posX: 9, posY: 500, heading: 0, height: 0, colourOffset: 0, state: 0, rotorFrame: 0 }
     const onCamera = { x: 20, y: 500 }
     const onBuf = composeRaceView({ words, bank, camera: onCamera, frames, vehicleSize: size, rotorFrames, cars: [onCar], view, round: 8 }).indexed
-    // (the rotor's own larger 32x32 box fully contains the body's 24x24 box at the same centre, so
-    // with both frames solid-filled the rotor visually covers the body entirely here -- checking
-    // ROTOR alone is the meaningful assertion; a separate body-only check would need non-overlapping
-    // synthetic geometry, not worth it just to re-confirm what checkCarDrawAnchor already covers)
-    check('rotor gate, delta=-11 (body clip passes by 1px): rotor still draws normally', onBuf.includes(ROTOR))
+    // But 843D's own fold is on pos - camera - 4 (docs/engine.md §9cb): -11 - 4 = -15 <= -12 folds
+    // the rotor by +0xC00, 3072px away -- the body draws at the edge, its rotor doesn't. (Corrected:
+    // this check used to assert the rotor draws here, from the old symmetric wrapDelta.)
+    check('rotor fold, delta=-11: the body draws at the edge but 843D folds the rotor away', onBuf.includes(BODY) && !onBuf.includes(ROTOR))
+    const edgeCar = { posX: 13, posY: 500, heading: 0, height: 0, colourOffset: 0, state: 0, rotorFrame: 0 } // delta -7: -11 > -12, no fold
+    const edgeBuf = composeRaceView({ words, bank, camera: onCamera, frames, vehicleSize: size, rotorFrames, cars: [edgeCar], view, round: 8 }).indexed
+    check('rotor fold, delta=-7: no fold, the rotor draws at the edge with its body', edgeBuf.includes(ROTOR))
 
     // delta = posX-camX = 6-20 = -14: body's own clip test now fails (v=-14-12=-26, -26+24=-2, not
     // >0) -- but the OLD ungated rotor's own larger box (dx-16=-30, spans [-30,2)) still shows a 2px
@@ -1796,7 +1798,7 @@ async function checkAnimationOverlaysAndRotor() {
   const { composeRaceView } = await import('../src/render/raceView.js')
   const { TILE_BYTES, WORLD_TILES } = await import('../src/formats/race.js')
   const { decompress } = await import('../src/formats/lz.js')
-  const { advanceRotorFrame } = await import('../src/engine/states.js')
+  const { markDrawn } = await import('../src/engine/drawn.js')
 
   const BG = 9, BODY = 7, ROTOR = 5, KNOCKOUT = 3, BANK2 = 6
   const view = { w: 64, h: 64 }
@@ -1830,21 +1832,32 @@ async function checkAnimationOverlaysAndRotor() {
     check('rotor: absent while state===0xD', !contains(r8stateD, ROTOR))
   }
 
-  // 2. Rotor counter: advances via advanceRotorFrame (the game-loop hook), NOT via drawing --
-  // rendering the SAME car twice must not itself change rotorFrame (the bug an advisor review
-  // caught: the first draft incremented inside drawRotor, a pure-render function, which kept the
-  // rotor spinning through a paused repaint since composeRaceView is called every rAF tick then).
+  // 2. Rotor counter: its only INC (8470) is inside 843D, reached only when 7D73's body clip test
+  // passed (7E25), in round 8, not in state 2/0xD, and not for the hidden two-car car (7D74) --
+  // so `markDrawn` (7D73's model) advances it, and rendering never does (a paused repaint must not
+  // spin it, docs/engine.md §9aj/§9cb).
   {
     const car = { ...base, state: 0, rotorFrame: 0 }
     composeRaceView({ words, bank, camera, frames, vehicleSize: size, rotorFrames, cars: [car], view, round: 8 })
     composeRaceView({ words, bank, camera, frames, vehicleSize: size, rotorFrames, cars: [car], view, round: 8 })
     check('rotor: composeRaceView is pure -- rendering the same car twice does not advance rotorFrame', car.rotorFrame === 0)
-    advanceRotorFrame([car], 8)
-    check('rotor: advanceRotorFrame does advance it', car.rotorFrame === 1)
+    const cam = { x: 1000 - 128, y: 1000 - 100 }
+    markDrawn(car, { round: 8, camera: cam })
+    check('rotor: an on-screen round-8 body draw advances it (8470)', car.rotorFrame === 1)
+    markDrawn(car, { round: 2, camera: cam })
+    check('rotor: not in any other round (7E3A)', car.rotorFrame === 1)
+    markDrawn(car, { round: 8, camera: { x: 1000 + 600, y: 1000 } })
+    check('rotor: an off-screen car does not advance it (7E28 JC 7E54 skips 843D)', car.rotorFrame === 1 && car.drawnThisFrame === 0)
+    markDrawn(car, { round: 8, camera: cam, drawnTick: false })
+    check('rotor: not on a non-drawn tick (843D is render-only)', car.rotorFrame === 1)
+    markDrawn(car, { round: 8, camera: cam, hiddenCar: car })
+    check('rotor: not for the hidden two-car car (7D74 leaves before the clip test)', car.rotorFrame === 1)
     car.state = 2
-    const before = car.rotorFrame
-    advanceRotorFrame([car], 8)
-    check('rotor: advanceRotorFrame itself is gated on state NOT in {2, 0xD}', car.rotorFrame === before)
+    markDrawn(car, { round: 8, camera: cam })
+    check('rotor: not in state 2 (7E48)', car.rotorFrame === 1)
+    car.state = 0xd
+    markDrawn(car, { round: 8, camera: cam })
+    check('rotor: not in state 0xD (7E41)', car.rotorFrame === 1)
   }
 
   // 3. States 2/0xD: body visibility gate (idx = KNOCKOUT_DURATIONS.findIndex), asymmetric between

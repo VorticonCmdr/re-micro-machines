@@ -752,7 +752,7 @@ docs, (6) commit.
   once racing. Capture the original's value live (Part L) and match it.
 - [ ] **`UNKNOWN_round3_bridge_path`.** `1000:5740-57f7` is unported, including the `683c` ramp path
   that stores progress 12. This is round 3 physics. Port it and add a `check-step`/`check-rounds` test.
-- [ ] **`DrawRound8ExtraAnim32 1000:843d`** (`DS:5EE3`): the CHOPPERS-only 32×32 extra animation
+- [x] **`DrawRound8ExtraAnim32 1000:843d`** (`DS:5EE3`) **Done (§9cb, M3.82): already ported in §9aj; the re-read fixed the counter (advances only when the body passed its clip) and the rotor's own fold.**: the CHOPPERS-only 32×32 extra animation
   (§9d). Disassemble it, find out what it draws, then port it.
 - [ ] **`UNKNOWN_conveyor_push_formula`** (`src/engine/terrain.js:85`). Re-derive it byte-exactly.
 - [ ] **The smoothness 2–4 state/ranking cadence** (§9ah): only the drawn-flag write honours

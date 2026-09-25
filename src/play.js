@@ -19,7 +19,6 @@ import { indexedToRgba, paint } from './render/raster.js'
 import { composeRaceView } from './render/raceView.js'
 import { loadWorld, loadBrk, roundCtx, spawnCars } from './engine/race.js'
 import { runStep } from './engine/step.js'
-import { advanceRotorFrame } from './engine/states.js'
 import { droneControlByte } from './engine/ai.js'
 import { initCameraState } from './engine/camera.js'
 import { createKeyboardReader, createPauseKeyReader, recordingReader } from './engine/input.js'
@@ -188,7 +187,7 @@ export async function bootRace({ canvas, statusEl, pickButton, dropZone, oplStri
     let shouldRender = paused
     if (!paused) {
       acc += dtMs / 1000
-      while (acc >= STEP_DT) { stepOnce(); acc -= STEP_DT; if (raceState.raceOver) break; if (ctx.drawnTick) { shouldRender = true; advanceRotorFrame(cars, ROUND); raceState.tileAnimCounter = (raceState.tileAnimCounter ?? 0) + 1 } }
+      while (acc >= STEP_DT) { stepOnce(); acc -= STEP_DT; if (raceState.raceOver) break; if (ctx.drawnTick) { shouldRender = true; raceState.tileAnimCounter = (raceState.tileAnimCounter ?? 0) + 1 } }
     }
     if (shouldRender && !raceState.raceOver) render(paused) // the exiting step never renders (3081)
     statusEl.textContent = paused ? 'Paused' : raceStatusText(cars[0], raceState, steps)
