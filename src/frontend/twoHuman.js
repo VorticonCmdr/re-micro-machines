@@ -35,9 +35,13 @@
 // two-human racing loop with player-chosen tracks: `[0x8A5]`/`[0x988]`=0 at entry, draw the skill/
 // lifetime-stat screen (`CALL 2481`, unconditional -- but NOT the win-tally digits: `2371: CALL
 // 240A` is `DrawH2HWinRecordDigits`, whose own body -- `240A-2480`, confirmed by
-// `get_function_by_address` -- gates the ENTIRE `[0x98A]`/`[0x98C]` read behind `CMP [0x8A5],0 /
-// JZ 2480`, i.e. jumps straight to its own RET when `[0x8A5]==0` -- so single race draws NO win
-// tally at all, only the skill label and lifetime WON/LOST), `CALL 2193` for the INITIAL track pick
+// `get_function_by_address` -- gates the `[0x98A]`/`[0x98C]` DIGIT DRAW behind `CMP [0x8A5],0 /
+// JZ 2480` -- so single race draws NO win-tally DIGITS -- **CORRECTED, docs/engine.md §9bl: this
+// gate does NOT jump straight to the function's own RET; `240A`'s own body BEFORE this gate
+// unconditionally masks and redraws both players' own portrait panels (`AND [0xC16]/[0xC31],0x4F`
+// then `CALL 0DB0`/`06CC`/`0F3C` -- the portrait, its outline, and the character's own name),
+// regardless of `[0x8A5]` -- single race still gets this portrait panel, only the WON/LOST digit
+// sprites specifically are skipped**), `CALL 2193` for the INITIAL track pick
 // (`BX=0`, a delta of 0 -- re-reads the current cursor without moving it), wait for fire/LEFT/
 // RIGHT/ESC, LEFT/RIGHT both re-call `2193` with `BX=1` -- confirmed by reading the bytes between
 // the two tests, `23E9-23F4`: `BX=1` is set ONCE, before either test, and neither branch changes it
@@ -121,15 +125,15 @@
 // session by disassembling `256E` (`ShowHeadToHeadRaceWinnerTune8`) itself: `25A6-25BE` increments
 // the WINNER's own character record's lifetime wins and the LOSER's lifetime losses, reading the
 // character index via `[0x3FC]`/`[0x3FE]` (the SAME order-array-derived WINNER/LOSER record
-// pointers the WINNER!/LOSER! banner logic uses) `-> [BX+0x13] -> &0xF`. (A second, NOT-hypothetical
-// inconsistency noted, not modelled: `2481`'s own DISPLAY-only read of the SAME fields masks P1's
-// character with `&0x1F` and P2's with `&0xF` -- both are no-ops for any real character index 0-10
-// on their own, but `[0xC16]`/`[0xC31]` are shared portrait-frame fields whose own bit 4 is
-// genuinely TOGGLED by `256E`'s own tail (`26A0-26BD`, the WINNER!/LOSER! banner's blink loop:
-// `XOR 0x10` once per `17FF` timeout iteration, until a keypress), and BOTH tournament's and single
-// race's own re-entries into `2481` happen after that blink has already run -- so P1's own display
-// index genuinely depends on the blink's own exit parity, not modelled here, a concrete note for
-// the screens commit's own `2481` port.)
+// pointers the WINNER!/LOSER! banner logic uses) `-> [BX+0x13] -> &0xF`. (A second inconsistency was
+// noted here, NOT modelled: `2481`'s own DISPLAY-only read of the SAME fields masks P1's character
+// with `&0x1F` and P2's with `&0xF` -- both are no-ops for any real character index 0-10 on their
+// own, but `[0xC16]`/`[0xC31]` are shared portrait-frame fields whose own bit 4 is genuinely
+// TOGGLED by `256E`'s own tail (`26A0-26BD`, the WINNER!/LOSER! banner's blink loop), so P1's own
+// display index was thought to depend on the blink's own exit parity. **CORRECTED, docs/engine.md
+// §9bl: `240A` clears this bit unconditionally before every real `2481` call, including `256E`'s
+// own, so the blink's own exit parity never actually reaches a `2481` read -- this is not a real
+// divergence.**)
 // `DS:09A4` (22 bytes) is `[PROVEN]` this session (both a static Ghidra read and a live DOSBox read
 // on the SAME running session, byte-identical): all zero, confirming these start at 0 and only grow
 // through real play.
@@ -157,10 +161,12 @@
 // below. Called once per race by `RunHeadToHeadTournament` (`206E`) and once per
 // `selectSingleRaceTrack()` invocation by `SelectSingleRaceTrack` itself (`2193`'s own internal
 // `CALL 2216` at `2200` -- NOT from `2329`'s own top-level body; `234B` does write `[0xCDD]=0x56`
-// directly, but the calls between that write and `2200` -- `240A` (returns immediately, `[0x8A5]==0`
-// in this mode), `04B8` on record 4 (`0xC6F`), `2481` (records 0/1 only), `0910` (a plain
-// position-argument string draw, `get_function_by_address`-confirmed but not itself disassembled) --
-// touch neither `[0xCDD]`/`[0xCF8]` nor records 8/9 at all, so the `0x56` value is simply overwritten
+// directly, but the calls between that write and `2200` -- `240A` (skips only its own win-tally
+// digit draw when `[0x8A5]==0`, docs/engine.md §9bl -- its own portrait-panel masking/redraw
+// still runs, on records 0/1, unrelated to records 8/9), `04B8` on record 4 (`0xC6F`), `2481`
+// (records 0/1 only), `0910` (a plain position-argument string draw, `get_function_by_address`-
+// confirmed but not itself disassembled) -- touch neither `[0xCDD]`/`[0xCF8]` nor records 8/9 at
+// all, so the `0x56` value is simply overwritten
 // by `2216`'s own entry-time reset before anything could show it, and single race genuinely DOES
 // animate the full slide on every track-select action, not just once per screen visit). Only the
 // tick COUNT is ported here, matching the established precedent (`tournament.js`'s own
@@ -199,10 +205,12 @@
 // `RunCharacterSelectMenuTune2`/`charSelectStep` twice, once per player, via a pointer swap
 // (`[0x1080]`) this port's own `charSelectStep(state, input, roster)` already supports by taking
 // `input` as a plain parameter -- a wiring commit needs a second `createKeyboardReader` instance for
-// P2's own control device, plus `0B51`'s own port (above), not new carousel logic (open, not chased
-// this session: `1E20` writes no roster byte between its two `09E0` calls, so either `09E0` marks a
-// pick taken internally -- unread, `09E0-0B50`'s own store sites into `DS:0164-016E` not swept -- or
-// nothing does and P2 could pick P1's own character; settle this before wiring). `1EF1`
+// P2's own control device, plus `0B51`'s own port (above), not new carousel logic. RESOLVED (from
+// `09E0`'s own already-captured disassembly): it marks a pick taken internally, on confirm
+// (`0AB5-0AC2`: `OR byte[0x164+[0x160]],0x40`, the SAME "taken" bit `charSelect.js`'s own entry-
+// skip/fire-confirm gate already reads) and releases a slot's own old pick on re-entry
+// (`0A34-0A3B`) -- P2 genuinely cannot pick P1's own already-confirmed character, no new
+// charSelect.js logic needed. `1EF1`
 // (`RunHeadToHeadChooseGameMenu`, the "CHOOSE GAME!" TOURNAMENT/SINGLE RACE picker, its own real
 // resting selection `[0x8A0]` read `0` in the static image, `[STATIC]` -- nothing pre-selected,
 // unlike `SELECT GAME`'s own documented non-zero resting value; its own cancel path, `1FA9`, does
@@ -210,6 +218,95 @@
 // persisted-pick pattern, not `ONE PLAYER GAME`'s reset-on-cancel one) is likewise a third instance
 // of the ALREADY-PORTED `twoItemMenuStep`/`twoItemMenuInitialState` (`frontMenu.js`), needing only a
 // new `screens.js` draw function and a `flow.js` entry, not new menu logic.
+//
+// **`256E`'s own full body (`256E-26BF`, disassembled in full, docs/engine.md §9bl).** Confirms and
+// extends the earlier `UNKNOWN_26B8_polarity` writeup: the DIRECT, proximate winner/loser decision
+// is `[0x3FC]==0xC03` (car 0/P1), read at `256E`'s own entry (`2574`) and immediately re-normalized
+// into `[0x3FC]`(winner)/`[0x3FE]`(loser) (`2587`/`258B`) -- `[0x3FC]`/`[0x3FE]` are themselves
+// freshly resolved EVERY race by `11D5` (called from `216C`/`StopMusicRunRaceReloadAssets`'s own
+// tail, `218F` -- confirmed by `get_xrefs_to`, exactly 2 callers total, the other being one-player's
+// own `SetupTournamentRace`), so this does not go stale across races within a match. `256E` then:
+// increments the win tally (`[0x98A]`/`[0x98C]`) and both characters' own lifetime stats; calls
+// `240A` (`AX=0x64`) -- its own win-tally DIGIT draw is gated on `[0x8A5]`, but it unconditionally
+// masks/redraws both players' own portrait panels first, below -- and the skill labels
+// (`CALL 2481`); draws "WINNER!"/"LOSER!" (`DS:0x966`/`DS:096E`) at the winner's/loser's own actual
+// SCREEN SLOT (P1's own X=0x1D/29 if `[0x3FC]==0xC03` else "LOSER!" there, and symmetrically for
+// P2's own X=0xB1/177) -- i.e. the text always follows whoever actually won, not a fixed per-player
+// position; ORs a POSE-SELECT flag into the portrait records' own `+0x13` field (`[0xC16]`/`[0xC31]`,
+// `2609`/`260D`): `0x0200` for the winner's own record, `0x0300` for the loser's -- ON TOP OF
+// whatever the blink loop (below) later XORs in. **NOT a bug, despite looking like one on its own:**
+// `240A` (`DrawH2HWinRecordDigits`) is called UNCONDITIONALLY at the very start of every per-race
+// setup (`2037`/`2374`) AND again inside `256E` itself (`25C5`, before THIS OR even runs) -- it
+// opens by storing its own Y position, then draws the screen base (`CALL 0400` -- clear, BADGE,
+// header bar), THEN (well before its own `[0x8A5]` gate) does `AND word[0xC16],0x4F` / `AND
+// word[0xC31],0x4F`, clearing bit 4 (the blink toggle) and bits 8-9 (this exact pose-select tag)
+// together. So every
+// `2481` call -- both the one inside a race's own per-race setup and the one inside `256E` -- is
+// immediately preceded by a `240A` call that just reset these bits; there is no window where `2481`
+// can see a stale tag from an earlier race (`2481`'s own `&0x1F`/`&0xF` masks, §9bh, are real but
+// not protecting against this -- the one bit BOTH masks strip that `240A`'s own `0x4F` mask KEEPS,
+// bit 6, is what `0DB0`'s own CH==0/FCNORMAL path turns into frame 13, the "taken" pose; bit 6's
+// own writer is CLOSED, not open -- `1000:170A: OR [BX+0x13],0x40`, the Challenge-only elimination
+// screen's own victim marker. The sprite pool's own slots are SHARED across screens, so a leftover
+// bit from an earlier Challenge session could in principle survive into H2H -- but `0EBA` (H2H's
+// own entry reset, `[0xC16]/[0xC31]=0xB`) and `09E0`'s own clean commit (`0A3B`/`0B37`) together
+// guarantee it cannot, so `2481`'s own masks stripping it is simply defensive). Draws
+// "RESULTS!!" (`DS:095C`, Y=0x3C) and, below it, "TOURNAMENT RACE"/"SINGLE RACE" (`DS:0975`/`0x93A`,
+// picked by `[0x8A5]`, Y=0x4C) -- both via `DrawStringCentred`, font `0xB54`. Fades the palette up
+// (`CALL 32CE`, the SAME "no derivable tick duration" `UNKNOWN_race_intro_prehold` class elsewhere
+// in this file -- not paced here either). Slides the SAME two round-indexed icons `2216` uses
+// (records 8/9, `DS:0x28BF`-indexed frame) into view a SECOND time, but with a FIXED step of 4 (NOT
+// `smoothness*4`) and an EXACT-equality exit (`JZ`, not `JLE`) -- so this slide always takes EXACTLY
+// 22 iterations, at every smoothness setting, landing on X=88/136 (no overshoot, unlike `2216`'s own
+// smoothness-dependent overshoot) at a different Y (`0xB6`/182, vs `2216`'s own `0x46`/70); the FINAL
+// iteration's own exit (`JZ`, taken before the loop's own background-restore calls) leaves the icons
+// drawn on screen, uniquely among every iteration -- they are never erased again before the blink
+// phase begins. Then blinks both portraits' own `+0x13` bit 4 (`XOR ...,0x10`, `26A3`/`26AD`, each
+// followed by `CALL 0DB0` -- a non-destructive "resolve bank+frame to an actual bound sprite, blit
+// once via `053A`, then restore the field" helper, `0DB0-0E01`, disassembled this session: CH (the
+// pose-select flag's own byte) selects among 4 descriptor tables at `DS:0A14`/`0A28`/`0A3C`/`0A50`,
+// and BOTH the WINNER's own bank (`CH==2`, from the `0x0200` OR above) AND the LOSER's own bank
+// (`CH>=3`, from `0x0300`) apply the SAME 5-bit rotate to the frame nibble before lookup -- the two
+// banks differ only in which descriptor table they bind, not in whether the frame rotates (only
+// `CH==1`'s own bank passes the frame through unchanged) -- pixel-animation detail, not ported here) until dismissed --
+// see `raceResultWaitStep`, below, for the exact bounded-wait mechanism (`1000:17FF`, disassembled
+// this session), which both toggles the OUTER `256E` loop's own retry (on a timeout) and the actual
+// dismiss condition (a fresh fire press, or any key's own release latch going nonzero).
+//
+// **`DS:0002`'s own true nature, resolved (closing §9bh's own long-open "source of `v`" item).**
+// `search_byte_patterns "C7 06 02 00"` (the `MOV word ptr [0x2],imm16` IMMEDIATE-STORE encoding
+// only -- not the ISR's own increment, nor any register-mediated store form, neither swept; the
+// reverse `A3 02 00` form has zero hits) finds exactly 13 immediate-store sites. 11 of the 13 reset
+// to `0` (confirmed with the narrower "C7 06 02 00 00 00" pattern), inside: the TITLE
+// SCREEN's own attract loop (`RunTitleScreenAttractLoop`), `RunTwoItemMenu`, `09E0` (character
+// select, `0A75`/`0AE2`), `179B` (the race-intro/elimination-bounce successor wait stage, `179F`),
+// `17FF` itself (`1809`, below), `2329` (single race, `23C2`), and THREE MORE one-player screens
+// (`ShowRaceResultsScreenTune8or6`, `ShowCharacterEliminatedTune6`, one site each of
+// `ShowChampionScreenTune3` and `ShowRaceOutcomeMessageTune8or6`). The OTHER 2 sites -- each
+// function's remaining site, `ShowChampionScreenTune3`'s `1B25: MOV [0x2],0x32` (50) and
+// `ShowRaceOutcomeMessageTune8or6`'s `1D25: MOV [0x2],0x226` (550) -- seed a nonzero value well
+// above that same function's own blink-loop threshold (`>=0xF`/`>0xF`), forcing an immediate
+// first toggle on entry; the loop's own reset-to-0 branch (already counted above) takes over from
+// there, so the counter still behaves like every other site once the loop is running. NEITHER of
+// these is a call into `17FF` -- each is its own short inline loop that only shares the
+// toggle-on-threshold idiom, with its own different (and undebounced) dismiss condition; do not
+// reuse `raceResultWaitStep` for either screen. `17FF` itself has 8 real call sites across 5
+// functions (`get_xrefs_to`, this session), not just `256E`/`ShowRaceOutcomeMessageTune8or6` --
+// see docs/engine.md §9bl for the full list; the other 6 sites are unread this session
+// (`UNKNOWN_17ff_other_callers`). `DS:0002` is
+// therefore NOT a from-boot free-running
+// counter as GOAL-DOS-PARITY.md's own P4 item 1 assumes ("Reproduce `DS:0002` as a 70 Hz tick
+// counter that runs from boot") -- it is a GENERIC, shared "ticks since the last wait-for-input
+// screen began waiting" primitive, reset (or seeded to force an immediate first toggle) by nearly
+// every screen in the game that waits for a
+// keypress. For `nextTrack`'s own `v` (read at `1FDD`, right after `256E` returns from its own final
+// `17FF` call), this means: `v`'s own real source is "ticks elapsed since the WINNER!/LOSER! screen's
+// own MOST RECENT blink-wait window began" -- itself bounded by the SAME real human reaction time
+// that decides when the screen gets dismissed, so the GOAL file's own INTENT ("non-deterministic as
+// the original") survives fully intact even though the literal "runs from boot" mechanism does not.
+// The eventual `flow.js` wiring should seed `v` from ticks-since-the-result-screen's-own-wait-began
+// (this module's own `raceResultWaitStep`, below, is the natural place to track that), not a
+// page-load-relative clock.
 
 import { CHARACTER_NAMES, H2H_TRACK_TABLE, H2H_SKILL_INDEX_TABLE, H2H_SKILL_LABELS, SINGLE_RACE_TRACK_TABLE } from '../data/frontend-tables.js'
 
@@ -277,9 +374,17 @@ export function nextTrack(state, v) {
 /** Reports one race's own outcome. `p1Character`/`p2Character` are each player's own selected
  * character index (0-10, `CHARACTER_NAMES`), needed only to credit the right character's own
  * lifetime stats (in `state.session`) -- this module doesn't own character selection. `p1Won`:
- * whether P1's own car was `[26B8]` at `256E`'s own read (the already-established WINNER!/LOSER!
- * polarity chain, docs/engine.md's `UNKNOWN_26B8_polarity` writeup) -- this module doesn't own race
- * resolution either. Returns `{ matchOver, champion }` -- `champion` is `1`/`2`/`null`, matching
+ * whether `[0x3FC]` (the winner's own car-record pointer) reads `0xC03` (car 0/P1) at `256E`'s own
+ * entry (`2574`, docs/engine.md §9bl) -- `256E` itself normalizes/re-stores this into `[0x3FC]`/
+ * `[0x3FE]` as winner/loser (`2587`/`258B`), so this is the DIRECT, proximate decision site (an
+ * earlier draft of this comment cited `[26B8]` directly, before `256E` was fully disassembled this
+ * session -- corrected here; how, or whether, `[26B8]` itself feeds into `[0x3FC]` upstream was not
+ * traced and is not claimed). `[0x3FC]`/`[0x3FE]` are themselves freshly resolved every race by
+ * `11D5` (called from `216C`'s/`StopMusicRunRaceReloadAssets`'s own tail, `218F`, `get_xrefs_to`-
+ * confirmed exactly 2 callers total) FROM THE SHARED FINISH-ORDER ARRAY (`[2678..267E]`), so this
+ * does not go stale across races within a match -- this module doesn't own race resolution either
+ * way, just reports its outcome. Returns
+ * `{ matchOver, champion }` -- `champion` is `1`/`2`/`null`, matching
  * `1000:2081/208B`'s own real "first to reach 4 wins" ordering (P1 checked first, but only one
  * side's own tally can possibly be 4 after any single race, since exactly one increments per
  * call). */
@@ -312,4 +417,59 @@ export function skillLabel(wins, losses) {
  * ticks the slide runs for before `[0xCDD]` exceeds 88. */
 export function raceInfoSlideTicks(smoothness) {
   return Math.floor(22 / smoothness) + 1 // 226E-22B3: [0xCDD] += smoothness*4 each tick, JLE 0x58
+}
+
+/** `256E`'s own icon slide (`2644-269E`) -- see this file's own header for the full derivation.
+ * UNLIKE `raceInfoSlideTicks`, this one is smoothness-INDEPENDENT: a fixed step of 4 and an
+ * exact-equality exit (`JZ`, not `JLE`) mean it always takes exactly 22 iterations, landing on
+ * X=88/136 with no overshoot. Not a function of anything -- exported as a plain constant. */
+export const RACE_RESULT_SLIDE_TICKS = 22
+
+/** `1000:17FF`'s own bounded wait -- see this file's own header for the full derivation.
+ * **`[0x2]` is zeroed ONCE, at `17FF`'s own entry (`1809`) -- NOT again at the `182C` AWAIT_RELEASE
+ * -> AWAIT_PRESS transition.** Both phases poll the SAME running counter against the SAME `CX`, so
+ * one real `17FF` call has ONE `RACE_RESULT_WAIT_TICKS`-tick BUDGET shared across both phases, not
+ * `RACE_RESULT_WAIT_TICKS` ticks each (a discriminating test transitioning late enough to tell a
+ * shared budget apart from a per-phase one lives in `tools/check-twohuman.mjs`, docs/engine.md
+ * §9bl). A fire button already held over from an
+ * earlier screen does NOT dismiss in AWAIT_RELEASE (`PLAN.md` §8's own live-automation pitfall is
+ * this exact mechanism, caught the hard way) -- it just burns down the SAME shared budget until
+ * either it's released (moving to AWAIT_PRESS with whatever budget remains) or the whole call times
+ * out. Either phase exits immediately on `anyKeyReleased` (the real `[0x107E]` going nonzero -- ANY
+ * key's own release latch, not ESC specifically, despite `[0x107E]` being called an "ESC release
+ * latch" in other files in this project, where ESC happens to be the only key ever tested against
+ * it -- the CALLER is responsible for clearing its own release tracker at the start of each window,
+ * matching the real `180F` clear; this state machine cannot enforce that on its own). Timing out
+ * (`exit: 'retoggle'`) is `256E`'s own cue to XOR the blink bit and call `17FF` again fresh -- the
+ * caller should redraw and call `raceResultWaitStep` again with a freshly re-initialised `state`
+ * (`raceResultWaitInitialState()`), NOT the same state object, matching the real `[0x2]`/`[0x107E]`/
+ * `[0x107F]` reset every real `17FF` call performs at its own entry. **`state.ticks` at the moment
+ * of `'dismiss'` equals the real `[0x2]` value at the exact instant the dismiss check runs** (`1825`/
+ * `1847`/`184E` all read `[0x2]`-derived state right after that tick's own wait) -- `1FDD`'s own
+ * read happens a few instructions later in the real code (after `256E` returns and the per-race
+ * loop restarts), so if a real tick boundary falls in that small gap the two can differ by one;
+ * `state.ticks` at dismiss is still the right value to seed `nextTrack`'s own `v` parameter from
+ * (docs/engine.md §9bl's own "source of `v`" resolution), just not asserted exact to the tick. */
+export const RACE_RESULT_WAIT_TICKS = 20 // the real CX=0x14 256E passes
+
+export function raceResultWaitInitialState() {
+  return { phase: 'AWAIT_RELEASE', ticks: 0 }
+}
+
+/** `input`: `{ fireHeld, anyKeyReleased }` -- `fireHeld` is the P1|P2 COMBINED fire bit
+ * (`[0x1080]=0` forces this OR-combine for the duration of the real wait, matching `frontMenu.js`'s
+ * own already-documented convention for the SAME combined-bits idiom). Returns
+ * `{ exit: null | 'dismiss' | 'retoggle' }`; `state` is mutated in place. */
+export function raceResultWaitStep(state, input = {}) {
+  state.ticks++ // [0x2]'s own real increment -- ticks BEFORE either check, matching 1819/183B running before 1825/1847
+  if (input.anyKeyReleased) return { exit: 'dismiss' } // 1825/1847: CMP [0x107E],0 / JNZ exit
+  if (state.phase === 'AWAIT_RELEASE') {
+    if (!input.fireHeld) { state.phase = 'AWAIT_PRESS'; return { exit: null } } // 182C: JZ -> inner loop, SAME tick count carries over
+    if (state.ticks > RACE_RESULT_WAIT_TICKS) { state.phase = 'AWAIT_RELEASE'; state.ticks = 0; return { exit: 'retoggle' } } // 1839: timeout
+    return { exit: null } // 1833: CMP [0x2],CX / JLE -- keep waiting for release
+  }
+  // AWAIT_PRESS
+  if (input.fireHeld) return { exit: 'dismiss' } // 184E: TEST AL,8 / JNZ exit
+  if (state.ticks > RACE_RESULT_WAIT_TICKS) { state.phase = 'AWAIT_RELEASE'; state.ticks = 0; return { exit: 'retoggle' } } // 1859: timeout
+  return { exit: null } // 1855: CMP [0x2],CX / JLE -- keep waiting for a fresh press
 }

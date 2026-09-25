@@ -18,8 +18,15 @@
 //    current entry without moving the cursor, matching 2329's own initial CALL 2193;
 //  - raceInfoSlideTicks (2216's own tick count, docs/engine.md §9bj) matches the hand-derived
 //    formula AND a direct simulation of 226E-22B3's own loop, for all 4 real smoothness values.
+//  - RACE_RESULT_SLIDE_TICKS (256E's own icon slide, docs/engine.md §9bl) is a fixed 22, DIFFERENT
+//    from raceInfoSlideTicks at every real smoothness value;
+//  - raceResultWaitStep (1000:17FF's own bounded dismiss-wait, docs/engine.md §9bl) debounces a
+//    fire button already held (matching the real automation pitfall this session hit live,
+//    PLAN.md §8), dismisses on a fresh press or any key-release latch, and shares ONE tick BUDGET
+//    across both its own phases (release-wait then press-wait) -- NOT a fresh budget per phase,
+//    matching [0x2] only ever being reset at 17FF's own entry, never at the 182C transition.
 //   node tools/check-twohuman.mjs
-import { twoHumanSessionState, twoHumanMatchState, nextTrack, reportRace, skillLabel, selectSingleRaceTrack, raceInfoSlideTicks, H2H_TRACK_TABLE, H2H_WINS_TO_CHAMPION, SINGLE_RACE_TRACK_TABLE } from '../src/frontend/twoHuman.js'
+import { twoHumanSessionState, twoHumanMatchState, nextTrack, reportRace, skillLabel, selectSingleRaceTrack, raceInfoSlideTicks, RACE_RESULT_SLIDE_TICKS, RACE_RESULT_WAIT_TICKS, raceResultWaitInitialState, raceResultWaitStep, H2H_TRACK_TABLE, H2H_WINS_TO_CHAMPION, SINGLE_RACE_TRACK_TABLE } from '../src/frontend/twoHuman.js'
 import { CHARACTER_NAMES, H2H_SKILL_INDEX_TABLE, H2H_SKILL_LABELS, trackName } from '../src/data/frontend-tables.js'
 
 let bad = 0
@@ -208,5 +215,106 @@ check('H2H_SKILL_LABELS has 8 entries (DS:08CD)', H2H_SKILL_LABELS.length === 8)
   check('raceInfoSlideTicks is monotonically DECREASING as smoothness rises (n=1 smoothest wants the slowest/longest reveal)', raceInfoSlideTicks(1) > raceInfoSlideTicks(2) && raceInfoSlideTicks(2) > raceInfoSlideTicks(3) && raceInfoSlideTicks(3) > raceInfoSlideTicks(4))
 }
 
-console.log(bad ? `${bad} of ${asserted} executed check(s) failed` : `check-twohuman: ${distinct.size} distinct assertions (${asserted} executed) pass -- two-human H2H's own tournament state (track pick with no repeats, win tally, session-level lifetime per-character stats that survive a new match, first-to-4 champion detection, the skill label formula, single race's own track select, and the race-info slide's own tick count) matches the disassembly (GOAL-DOS-PARITY.md P4, docs/engine.md §9bh/§9bi/§9bj)`)
+// 9. RACE_RESULT_SLIDE_TICKS (256E's own icon slide, docs/engine.md §9bl): a fixed 22, needing its
+// OWN constant -- proven DIFFERENT from raceInfoSlideTicks at every real smoothness value, so a
+// port that reused raceInfoSlideTicks here would be wrong at every setting except a coincidence.
+{
+  check('RACE_RESULT_SLIDE_TICKS === 22 (256E: fixed step 4, JZ exact match at 0x58)', RACE_RESULT_SLIDE_TICKS === 22)
+  for (const smoothness of [1, 2, 3, 4]) {
+    check(`RACE_RESULT_SLIDE_TICKS differs from raceInfoSlideTicks(${smoothness}) (2216's own smoothness-scaled slide)`, RACE_RESULT_SLIDE_TICKS !== raceInfoSlideTicks(smoothness))
+  }
+}
+
+// 10. raceResultWaitStep (1000:17FF's own bounded dismiss-wait, docs/engine.md §9bl).
+{
+  // A fire button held CONTINUOUSLY from before the wait begins must NOT dismiss in AWAIT_RELEASE
+  // -- this is the exact real automation pitfall this session hit live (PLAN.md §8): holding fire
+  // through a carousel commit and into 0B51's own poll swallowed the handicap screen. 17FF's own
+  // outer loop debounces this by waiting for a RELEASE first. Held for the WHOLE shared budget
+  // (RACE_RESULT_WAIT_TICKS+1 calls), it must time out to 'retoggle', never 'dismiss'.
+  {
+    const s = raceResultWaitInitialState()
+    check('raceResultWaitStep starts in AWAIT_RELEASE', s.phase === 'AWAIT_RELEASE')
+    let sawDismiss = false
+    let lastResult
+    for (let tick = 0; tick < RACE_RESULT_WAIT_TICKS + 1; tick++) {
+      lastResult = raceResultWaitStep(s, { fireHeld: true })
+      if (lastResult.exit === 'dismiss') sawDismiss = true
+    }
+    check('a fire button held the whole shared budget never dismisses', !sawDismiss)
+    check('a fire button held the whole shared budget times out to retoggle', lastResult.exit === 'retoggle')
+    check('a retoggle resets phase back to AWAIT_RELEASE', s.phase === 'AWAIT_RELEASE')
+    check('a retoggle resets ticks back to 0', s.ticks === 0)
+  }
+  // Releasing fire transitions AWAIT_RELEASE -> AWAIT_PRESS on the SAME call (182C: JZ), WITHOUT
+  // resetting the tick count -- both phases share ONE budget, matching [0x2] only ever being reset
+  // at 17FF's own entry (1809), never at 182C. Then a FRESH press dismisses immediately.
+  {
+    const s = raceResultWaitInitialState()
+    const r1 = raceResultWaitStep(s, { fireHeld: false })
+    check('releasing fire transitions to AWAIT_PRESS immediately (same call)', s.phase === 'AWAIT_PRESS' && r1.exit === null)
+    check('the transition itself does not dismiss', r1.exit !== 'dismiss')
+    check('the transition does NOT reset ticks (shared budget, not per-phase)', s.ticks === 1)
+    const r2 = raceResultWaitStep(s, { fireHeld: true })
+    check('a fresh press in AWAIT_PRESS dismisses immediately', r2.exit === 'dismiss')
+  }
+  // THE DISCRIMINATING TEST: fire held for the first 15 ticks (burning down the shared budget in
+  // AWAIT_RELEASE), released on tick 16 (transition, budget carries over at 16, not reset to 0),
+  // then nothing pressed. The shared-budget model retoggles on tick 21 (16 + 5 more, since
+  // RACE_RESULT_WAIT_TICKS=20 and the check is ticks>20); a WRONG per-phase-reset model would
+  // retoggle on tick 37 (16 + a FRESH 21-tick budget from the reset). This is the exact bug an
+  // earlier same-session port draft had -- caught only by transitioning LATE enough that the two
+  // models actually disagree (a transition on tick 1, as the test above does, cannot tell them
+  // apart, docs/engine.md §9bl).
+  {
+    const s = raceResultWaitInitialState()
+    for (let tick = 1; tick <= 15; tick++) {
+      const r = raceResultWaitStep(s, { fireHeld: true })
+      check(`tick ${tick}: still held, no exit yet`, r.exit === null)
+    }
+    const release = raceResultWaitStep(s, { fireHeld: false }) // tick 16: release, transition
+    check('tick 16: transitions to AWAIT_PRESS, no exit', s.phase === 'AWAIT_PRESS' && release.exit === null)
+    check('tick 16: ticks carries over to 16, not reset', s.ticks === 16)
+    let retoggleTick = null
+    for (let tick = 17; tick <= 25 && retoggleTick === null; tick++) {
+      const r = raceResultWaitStep(s, { fireHeld: false })
+      if (r.exit === 'retoggle') retoggleTick = tick
+    }
+    check('retoggle arrives on tick 21 (shared budget), not tick 37 (a wrong per-phase reset)', retoggleTick === 21)
+  }
+  // AWAIT_PRESS's own timeout (no press within the REMAINING shared budget) retoggles too, with a
+  // full reset back to AWAIT_RELEASE/ticks=0.
+  {
+    const s = raceResultWaitInitialState()
+    raceResultWaitStep(s, { fireHeld: false }) // tick 1: -> AWAIT_PRESS, ticks=1
+    let lastResult
+    for (let tick = 2; tick <= RACE_RESULT_WAIT_TICKS + 1; tick++) lastResult = raceResultWaitStep(s, { fireHeld: false })
+    check('AWAIT_PRESS times out to retoggle when nothing is pressed', lastResult.exit === 'retoggle')
+    check('AWAIT_PRESS timeout also resets phase to AWAIT_RELEASE', s.phase === 'AWAIT_RELEASE')
+    check('AWAIT_PRESS timeout also resets ticks to 0', s.ticks === 0)
+  }
+  // anyKeyReleased ([0x107E] going nonzero -- ANY key's own release latch, not ESC specifically,
+  // see this file's own header) dismisses immediately from EITHER phase, even with fire held.
+  {
+    const s1 = raceResultWaitInitialState()
+    check('anyKeyReleased dismisses immediately from AWAIT_RELEASE, even with fire held', raceResultWaitStep(s1, { fireHeld: true, anyKeyReleased: true }).exit === 'dismiss')
+    const s2 = raceResultWaitInitialState()
+    raceResultWaitStep(s2, { fireHeld: false }) // -> AWAIT_PRESS
+    check('anyKeyReleased dismisses immediately from AWAIT_PRESS too', raceResultWaitStep(s2, { anyKeyReleased: true }).exit === 'dismiss')
+  }
+  // state.ticks at the moment of 'dismiss' must equal the real [0x2] value at that instant (1819/
+  // 183B's own tick-wait runs BEFORE 1825/1847's own [0x107E] check) -- this is the value
+  // nextTrack's own v parameter should be seeded from. Three held calls (ticks 1-3), then a
+  // release-latch dismiss on the 4th: ticks must read 4, not 3.
+  {
+    const s = raceResultWaitInitialState()
+    raceResultWaitStep(s, { fireHeld: true })
+    raceResultWaitStep(s, { fireHeld: true })
+    raceResultWaitStep(s, { fireHeld: true })
+    const r = raceResultWaitStep(s, { fireHeld: true, anyKeyReleased: true })
+    check('state.ticks at dismiss equals the real [0x2] value (tick runs before the release check)', r.exit === 'dismiss' && s.ticks === 4)
+  }
+}
+
+console.log(bad ? `${bad} of ${asserted} executed check(s) failed` : `check-twohuman: ${distinct.size} distinct assertions (${asserted} executed) pass -- two-human H2H's own tournament state (track pick with no repeats, win tally, session-level lifetime per-character stats that survive a new match, first-to-4 champion detection, the skill label formula, single race's own track select, the race-info slide's own tick count, the race-result screen's own fixed slide, and its own bounded dismiss-wait) matches the disassembly (GOAL-DOS-PARITY.md P4, docs/engine.md §9bh/§9bi/§9bj/§9bl)`)
 process.exitCode = bad ? 1 : 0

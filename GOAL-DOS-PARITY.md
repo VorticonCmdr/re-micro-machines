@@ -483,17 +483,27 @@ docs, (6) commit.
   `car.isDrone` reflects real controller type; the alternate tuning path two-human H2H actually uses
   is ported and live-proven; `twoHuman.js` (track pick with no repeats, win tally, session-scoped
   per-character lifetime stats, first-to-4 champion detection, skill labels) is ported and tested.
-  **Remaining, now better bounded (docs/engine.md §9bj maps `1E20`/`1EF1`/`2193`'s remaining half and
-  ports `2216`'s own tick count as `raceInfoSlideTicks`):** the handicap question screen as
-  interactive UI/state (`0B51` -- its own disassembly is DONE, §9bf, only the port and the
-  roster-word link remain), the WINNER!/LOSER! draw (`256E`), `2481`/`240A`'s own draw (formulas
-  already ported, §9bh/§9bi), and `flow.js` wiring -- confirmed §9bj to need NO new character-select
-  or menu STATE-MACHINE logic (P1/P2 picks reuse the already-ported `charSelectStep` twice via its
-  existing `input` parameter; the CHOOSE GAME TOURNAMENT/SINGLE RACE picker reuses the already-ported
-  `twoItemMenuStep` a third time; the champion screen, `1AAD`, reuses `flow.js`'s own already-wired
-  `CHAMPION` phase/`drawChampion`/`championMusic` from the one-player path) -- just a real P2
-  `createKeyboardReader`, `enterSelectGame`'s TWO PLAYER branch, one shared `controllerTypes` array
-  feeding both `spawnCars` and `raceCtx.controllerTypes`, new `screens.js` draw functions, and
+  **`DS:0002` correction (docs/engine.md §9bl): it is NOT a from-boot free-running counter** (13
+  writers found -- 11 reset it to 0, 2 seed a nonzero value that just forces an immediate first
+  blink-toggle -- triggered by nearly every wait-for-input screen in the game) -- the
+  intended non-determinism (human reaction time) still holds, just sourced from ticks-since-the-
+  result-screen's-own-dismiss-wait-began, not a boot-relative clock.
+  **Remaining, now better bounded (docs/engine.md §9bj maps `1E20`/`1EF1`/`2193`'s remaining half,
+  ports `2216`'s own tick count as `raceInfoSlideTicks`; §9bl reads `256E` in full and ports its own
+  fixed-22-tick slide/dismiss-wait as `RACE_RESULT_SLIDE_TICKS`/`raceResultWaitStep`):** the
+  handicap question screen as interactive UI/state (`0B51` -- its own disassembly is DONE, §9bf,
+  only the port and the roster-word link remain, and the roster-word link itself is now RESOLVED,
+  §9bk), the WINNER!/LOSER! DRAW itself (`256E` -- its own full logic/timing is now ported, only the
+  pixel-level draw remains), `2481`/`240A`'s own draw (formulas already ported, §9bh/§9bi -- a
+  suspected persistence bug in `2481`'s own read was investigated and ruled out, §9bl: `240A`
+  unconditionally cleans the relevant bits before every real `2481` call), and `flow.js` wiring --
+  confirmed §9bj to need NO new character-select or menu STATE-MACHINE logic
+  (P1/P2 picks reuse the already-ported `charSelectStep` twice via its existing `input` parameter;
+  the CHOOSE GAME TOURNAMENT/SINGLE RACE picker reuses the already-ported `twoItemMenuStep` a third
+  time; the champion screen, `1AAD`, reuses `flow.js`'s own already-wired `CHAMPION` phase/
+  `drawChampion`/`championMusic` from the one-player path) -- just a real P2 `createKeyboardReader`,
+  `enterSelectGame`'s TWO PLAYER branch, one shared `controllerTypes` array feeding both `spawnCars`
+  and `raceCtx.controllerTypes`, new `screens.js` draw functions, and
   settling where DOS marks a character pick taken (open, §9bj) -- scoped for BOTH two-human modes at
   once, since P4's 2nd item below shares `twoHuman.js`'s own session state (§9bi). Each remaining
   screen still its own commit, per the established one-commit-per-screen pattern.

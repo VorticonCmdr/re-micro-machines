@@ -8962,7 +8962,14 @@ already run at least once. So whether P1's own display index comes out as `c` or
 depends on the blink's own exit PARITY (how many `XOR`s landed before a key was pressed) -- not
 chased further here (what `c+16` actually displays, and whether anything clears the bit between
 races, are both open), a concrete note for the screens commit's own `2481` port, not merely a
-theoretical divergence. `262F-26BF` itself (`256E`'s own tail, beyond the tally/message drawing):
+theoretical divergence. **CORRECTED, docs/engine.md §9bl: "whether anything clears the bit between
+races" is now answered -- yes, `240A` does, unconditionally, on EVERY `240A` call (both entering the
+NEXT race's own per-race setup and inside `256E` itself), via `AND [0xC16]/[0xC31],0x4F`, run
+BEFORE every real `2481` call including the one right here in `256E`'s own body (`25C8`, which runs
+AFTER `240A`'s own `25C5` in the SAME call). So `2481`'s own read, both here and on the next race,
+sees a value already cleared of the blink bit -- the "blink exit parity" concern this paragraph
+raised does not reach a real `2481` read after all; §9bl has the full derivation.** `262F-26BF`
+itself (`256E`'s own tail, beyond the tally/message drawing):
 a palette fade-up (`CALL 32CE`), a slide of the two message boxes (`[0xCDB]`/`[0xCF6]`) until
 `[0xCDD]==0x58`, then this SAME blink loop until `17FF` returns no-carry (a keypress). Champion
 detection matches
@@ -9070,12 +9077,16 @@ FIRE is pressed, THEN `CALL 256E` (`2402`) -- `get_xrefs_to 1000:256E`: exactly 
 `2077` (`RunHeadToHeadTournament`) and `2402` (here) -- and loop back to redraw (`2405: JMP 234B`)
 indefinitely, exiting only on `[0x107E]`'s own ESC-release latch (`23DC`).
 
-**Single race credits, but does not DISPLAY, the win tally -- and has no champion condition of its
-own.** `2371: CALL 240A` is `DrawH2HWinRecordDigits` (`FUN_1000_240a`, `get_function_by_address`:
-body `240A-2480`); its own `[0x8A5]` gate (`2447: CMP [0x8A5],0 / JZ 2480`) jumps STRAIGHT to its
-own `RET` (`2480` IS the function's own body end) when `[0x8A5]==0` -- so in single race, this call
-draws NOTHING for the win tally at all; `2481`'s own separate call (unconditional) still draws the
-skill label and lifetime WON/LOST. Because single race reaches `256E` too, it still CREDITS the
+**Single race credits, but does not DISPLAY, the win-tally DIGITS -- and has no champion condition
+of its own.** `2371: CALL 240A` is `DrawH2HWinRecordDigits` (`FUN_1000_240a`, `get_function_by_address`:
+body `240A-2480`); its own `[0x8A5]` gate (`2447: CMP [0x8A5],0 / JZ 2480`) skips STRAIGHT to its
+own `RET` (`2480` IS the function's own body end) when `[0x8A5]==0` -- **CORRECTED, docs/engine.md
+§9bl: this gate covers ONLY the win-tally digit sprites (`244E-247D`), not the whole function --
+`240A`'s own body BEFORE `2447` (masking and redrawing both players' own portrait panels via `AND
+[0xC16]/[0xC31],0x4F` then `0DB0`/`06CC`/`0F3C`) runs UNCONDITIONALLY, single race included** -- so
+in single race, this call draws NO win-tally DIGITS, but DOES still draw the portrait panel;
+`2481`'s own separate call (unconditional) still draws the skill label and lifetime WON/LOST.
+Because single race reaches `256E` too, it still CREDITS the
 SAME `[0x98A]`/`[0x98C]` match-win tally and the SAME per-character `[0x9A4+c]`/`[0x9AF+c]` lifetime
 stats as tournament mode even though it never shows the former -- `twoHuman.js`'s own `reportRace`/
 `twoHumanSessionState` apply unchanged, sharing ONE session object across whichever mode the player
@@ -9213,13 +9224,18 @@ it as actual interactive UI/state, and the roster-word bit-7 link (below). `hand
 own two skip conditions (`raceFormat===1`, `otherDeviceType===6`) are BOTH false in two-human H2H --
 `[0x2656]` is `2` (`1F88`, above), and `[0x265A]` holds the real P2 control device (`4`, KEYS1,
 `[PROVEN]` live in §9bg -- never `6`, the AI/drone sentinel that condition tests for) -- so a
-character 0-2 pick in this mode reaches `0B51` exactly like any other. **Not settled here, left for
-the wiring commit: where DOS marks a pick as taken.** `1E20` writes no roster byte between its two
-`09E0` calls, and `charSelect.js`'s own header already establishes that `charSelectStep` itself has
-no "if taken" check and treats `roster` as caller-owned -- so either `09E0`'s own body (`09E0-0B50`,
-beyond the `0B51` sub-call) marks a pick internally (its own stores into `DS:0164-016E` not swept
-this session), or nothing does and P2 could pick P1's own already-taken character. Both answers
-change the wiring commit's own design; settle before writing it.
+character 0-2 pick in this mode reaches `0B51` exactly like any other. **RESOLVED (docs/engine.md
+§9bl, from `09E0`'s own full disassembly already captured this session): `09E0` itself marks a
+pick taken internally, on confirm -- `0AB5-0AC2`: `OR byte ptr [0x164+[0x160]],0x40`, setting bit 6
+of that character's own roster byte, matching the SAME "taken" byte-encoding
+`charSelect.js`'s own already-documented entry-skip/fire-confirm mechanism already reads -- so P2
+genuinely CANNOT pick P1's own just-confirmed character. Re-entering a slot releases its own old
+pick first (`0A34-0A3B`, at `09E0`'s own entry: if the record's own previous frame value was a
+valid character index, `[0x164+that index]=that index`'s own LOW byte, clearing whatever "taken"
+bit had been set for it). No new charSelect.js logic needed -- this mechanism is already exercised
+by every OTHER caller of `09E0` (the Challenge opponent picker already reuses the SAME carousel
+multiple times per slot, docs/engine.md's own already-established citations), so two-human H2H's
+own P1/P2 sequence inherits it automatically.
 
 **`ResetTournamentState 1000:0EBA` (`0EBA-0F16`), disassembled in full.** Does NOT touch `[9A4+c]`/
 `[9AF+c]` (the lifetime win/loss counters, §9bh) anywhere -- confirms they survive a fresh TWO PLAYER
@@ -9289,8 +9305,17 @@ that `2216`'s own slide-in animation runs to completion, blocking, on EVERY call
 
 **`2216-22B5`'s own tick count, derived and ported (`raceInfoSlideTicks`), and what it actually
 slides.** `2481`'s own body (disassembled in full this session, below) confirms a `0x1B`-stride
-sprite-record array starting at `0xC03` (`0xC03`, `0xC1E`, `0xC6F`, `0xC8A`, and `2216`'s own two
-records, `0xCDB`/`0xCF6`, are all `0xC03 + k*0x1B`), each with `+2`=X, `+4`=Y, `+0x13`=frame -- so
+sprite-OBJECT-POOL array (`0xC03`, `0xC1E`, `0xC6F`, `0xC8A`, and `2216`'s own two records,
+`0xCDB`/`0xCF6`, are all `0xC03 + k*0x1B` relative to EACH OTHER -- **CORRECTED, docs/engine.md
+§9bl: this array's own TRUE base is `DS:0B7C`, not `0xC03` -- CLAUDE.md's own already-documented
+18-slot bind order (`InitLoadAssets`'s own targets: BADGE, LOGO, INTRO, NOS, FCNORMAL, 4 face slots,
+THUMB, SELGAM, WORDS, CUP, 4 MINATURE, FRAME) puts `0xC03`/`0xC1E` at slots 5/6 (the first two of
+the "4 face slots"), `0xC6F` at slot 9 (THUMB), `0xC8A` at slot 10 (SELGAM), and this file's own
+"record 8"/"record 9" shorthand below at slots 13/14 (the first two of the "4 MINATURE" slots,
+`0xB7C+13*0x1B`=`0xCDB`, `0xB7C+14*0x1B`=`0xCF6`) -- confirming `2216`'s own two icons really are
+MINATURE.CHR frames, matching this file's own "vehicle-class icon" reading exactly. The ADDRESSES
+and the arithmetic that follows are unaffected, only the "starting at 0xC03" framing was wrong**),
+each with `+2`=X, `+4`=Y, `+0x13`=frame -- so
 `[0xCDD]`/`[0xCF8]` (this file's own already-used shorthand) are record 8's and record 9's own X
 fields, and `[0xCEE]`/`[0xD09]` are the SAME two records' `+0x13` frame fields. Re-disassembling
 `2216` in full: a one-time setup -- `CALL 0862` (`FillRowsFrontView`, its own PRE-EXISTING Ghidra
@@ -9298,7 +9323,7 @@ name from an earlier session, independently used at `1000:0425` for a divider-ba
 NOT itself re-disassembled this session, its identity rests on that existing name and the earlier
 use, not a fresh read) at `[0xBEC]+0x40` and, separately, `[0xBB6]+0x40` (that second `BX` value is
 PUSHed at `224F` and POPped at `2259`, then reused directly as the Y argument to the vehicle-class-
-name draw at `226B` -- NOT `FillRowsFrontView`'s own row count, `CX=8`, as an early pass mis-cited);
+name draw at `226B`);
 the current round-1 into record 8's `[0xCEE]`; record 9's own frame, `[0xD09]`, set to `(round-1)+8`
 (`223B: ADD CX,8`) -- i.e. `2216` shows TWO round-indexed icons, not two character portraits; the
 vehicle-class name from `DS:002F` indexed by `[0x9D8]-1` (`225A`, matching §9bi's own already-cited
@@ -9339,8 +9364,9 @@ calls `2216` directly, once per race (`206E`); single race calls it once per
 `selectSingleRaceTrack()` invocation (above), via `2193`'s own internal `CALL 2216`, not `2329`'s own
 body directly. `2329`'s own `234B` writes `[0xCDD]=0x56`(86)/`[0xCF8]=0x96`(150) directly, close to
 but short of the slide's own 88 target -- but `234B` runs BEFORE `23BF`'s own unconditional `CALL
-2193`, and every call in between (`2374: CALL 240A`, gated off and returning
-immediately since `[0x8A5]==0` in this mode; `2390: CALL 04B8` on record 4, `0xC6F`; `2397: CALL
+2193`, and every call in between (`2374: CALL 240A` -- CORRECTED, docs/engine.md §9bl: only its own
+win-tally DIGIT draw is gated on `[0x8A5]`; its own portrait-panel masking/redraw runs
+unconditionally, on records 0/1, not records 8/9; `2390: CALL 04B8` on record 4, `0xC6F`; `2397: CALL
 2481`; `239D...: CALL 0910`) is confirmed -- `2481` by a full disassembly this session, `0910` by its
 own small, position-argument call signature -- to touch neither record 8's nor record 9's own fields
 (`2481` only ever touches records 0/1, `0xC03`/`0xC1E` -- P1's and P2's own skill-label/portrait-
@@ -9398,19 +9424,27 @@ whether `0B51`'s own handicap answer ever reaches a roster word's bit 7. This se
 instance (found idle mid-race, unchanged since §9bg/§9bi/§9bj, `frame` counter still advancing --
 genuinely running, not suspended) was used to check both, live, end to end.
 
-**The prior mid-race capture was abandoned, deliberately.** A basic responsiveness check (holding
-P1's own accelerate for 4 real seconds produced no visible change) turned out to mean the held key
-never reached the game at all -- `mcp__dosbox__input_key` with `pressed:true` dispatches a TAP
-(press+release together, confirmed by its own `events_scheduled` count: 2 for `pressed:true`, 1 for
-a standalone `pressed:false` release of an already-tapped key) -- matching this project's own
+**The prior capture was abandoned, deliberately -- but what it actually was is `[UNKNOWN]`, not
+confirmed to be a race in progress at all.** A basic responsiveness check (holding P1's own
+accelerate for 4 real seconds produced no visible change on that frozen screen) turned out to mean
+the held key never reached the game at all -- `mcp__dosbox__input_key` with `pressed:true` dispatches
+a TAP (press+release together, confirmed by its own `events_scheduled` count: 2 for `pressed:true`, 1
+for a standalone `pressed:false` release of an already-tapped key) -- matching this project's own
 existing memory note (`dosbox-input-key-is-a-tap.md`) that a fresh session re-derived the hard way
 before finding. `KBD_esc`, sent the same way, DID visibly work (dumping straight to the title
-screen) -- confirming input was reaching the game, just not as a sustained hold -- so the old
-mid-race capture (whatever race it was) was abandoned rather than chased further; ESC-during-a-race
-returning to the title is itself already documented (CLAUDE.md, `docs/engine.md` §9an) as the
-real game's own behaviour, so nothing was lost by this. A fresh TWO PLAYER walkthrough was driven
-instead, entirely via `mcp__dosbox__input_sequence` (explicit `delay_ms`-timed press/release pairs),
-which DOES hold correctly.
+screen) -- confirming input was reaching the game, just not as a sustained hold -- so the old capture
+was abandoned rather than chased further. **This is NOT evidence for what DOS does when ESC is
+pressed during an actual two-human H2H race.** CLAUDE.md documents the port's own `index.html`'s ESC-
+during-a-race-quits-to-title as "a port-only addition" (§9ai), and GOAL-DOS-PARITY.md's own P5 item 1
+lists the real DOS behaviour there as unknown -- this session never confirmed the frozen screen was
+genuinely mid-race (no animation for real hours despite the DOSBox `frame` counter advancing, and
+holding UP had no visible effect even before the tap-vs-hold bug was found, which is equally
+consistent with a completely different, unidentified screen). Recorded only as a WEAK lead for P5
+item 1 (a real DOSBox ESC press, from an unidentified frozen screen, did return to the title screen
+at least once) -- not a confirmation, and not itself evidence of anything about that specific frozen
+screen's own identity. A fresh TWO PLAYER walkthrough was driven instead, entirely via
+`mcp__dosbox__input_sequence` (explicit `delay_ms`-timed press/release pairs), which DOES hold
+correctly.
 
 **A second, more consequential instance of the SAME pitfall: `0B51`'s own poll loop shares P1's
 fire bit with the character carousel's own commit, with no release-wait.** A first attempt held P1's
@@ -9473,13 +9507,18 @@ single race), and the two round-indexed vehicle-class icons at rest side by side
 round 4 -- `[0x28BF]=4`/`[0x28C0]=2`, `[PROVEN]` live, confirming `[0x28BF]`/`[0x28C0]` really are
 the live round/race cells `nextTrack`'s own auto-pick landed on).
 
-**Session left mid-race again, deliberately**, matching the established pattern (§9bg/§9bi/§9bj all
-found and left this same instance mid-flight for the next session to continue) -- round 4/race 2
-("TURBO WHEELS", WALTER-handicapped-YES vs. MIKE-handicapped-NO) is now live and running past the
-`2216` screen; finishing it to capture `256E`'s own WINNER!/LOSER! screen and settle the `&0x1F`/
-`&0xF` mask-divergence note (§9bh) live is a good next step for whoever resumes this session, not
-chased further here -- this pass's own two target predictions (the slide formula, the roster-word
-link) are both now closed, and P4's remaining scope is unchanged by this pass (screens/flow wiring,
+**Corrected 2026-09-25, same day: the session was NOT left mid-race for a future session to
+continue, as this paragraph originally (and wrongly) claimed here.** The DOSBox instance's own
+process kept running (uptime confirmed continuous), but the game itself was found reset all the way
+back to a bare `Z:\>` DOS prompt the next time this instance was reconnected to -- round 4/race 2
+("TURBO WHEELS", WALTER-handicapped-YES vs. MIKE-handicapped-NO) was NOT still there, and the
+`raceInfoSlideTicks`/handicap findings above remain fully valid (both were already `[PROVEN]` via
+direct memory reads and breakpoints at the time, not dependent on the session persisting afterward).
+Whatever caused the reset -- a disconnect-triggered restart, a crash, or something else -- was not
+diagnosed. Capturing `256E`'s own WINNER!/LOSER! screen and the `&0x1F`/`&0xF` mask-divergence note
+(§9bh) live remains a good next step, but needs a FRESH walkthrough from the title screen, not a
+resume. This pass's own two target predictions (the slide formula, the roster-word link) are both
+still closed regardless, and P4's remaining scope is unchanged by this pass (screens/flow wiring,
 same list as §9bj's own "Verification status").
 
 **Tests.** None -- this is a pure live-verification pass with no new port; `raceInfoSlideTicks` and
@@ -9497,3 +9536,345 @@ live data point is a strong cross-check of the whole derivation, not just one br
 open, UNCHANGED: `UNKNOWN_4be7_twocar_rubberband`, `UNKNOWN_0160_0192_meaning`,
 `UNKNOWN_989_98b_meaning`, the `&0x1F`/`&0xF` mask-divergence note's own live confirmation (§9bh),
 and all of step 4's own remaining screen/flow-wiring work (unchanged from §9bj's own list).
+
+## 9bl. `256E` ported (state), `DS:0002`'s true nature resolved, the roster-taken question closed (2026-09-25)
+
+**Purpose.** Following §9bk's own live pass (which left the DOSBox instance reset, see the
+correction above), a fresh advisor review flagged that `256E`'s own body -- known only by
+qualitative citation, not a full instruction-by-instruction read, anywhere in this file -- was
+blocking a real port, and that `reportRace`'s own docstring cited `[26B8]` as the winner-decision
+site when `256E` itself, once actually read, shows `[0x3FC]`. This section reads `256E` in full,
+resolves who writes `[0x3FC]`/`[0x3FE]` on the real race path (closing a real risk that the SAME
+winner would compare forever across a match), rules out a suspected persistence bug in the
+winner/loser portrait-tag bits once `240A`'s own full body was read, and resolves `DS:0002`'s own
+true nature, closing §9bh's long-open
+"source of `v`" item. Ports the two pieces that came out fully pinned-down and state-only
+(`RACE_RESULT_SLIDE_TICKS`, `raceResultWaitStep`); the rest is `screens.js`-level detail, recorded
+for whoever ports it next.
+
+**`256E-26BF`, disassembled in full for the first time this session.** Its own true body was
+already correctly bounded by §9bi (`get_function_by_address`), but no prior pass had actually read
+every instruction. It:
+- normalizes the winner/loser polarity (`2574-258B`): reads the INCOMING `[0x3FC]`, and if it
+  equals `0xC03` (car 0) increments `[0x98A]` (P1's own match-win tally) else increments `[0x98C]`
+  (P2's), then re-stores a clean `BX=winner`/`AX=loser` pair back into `[0x3FC]`/`[0x3FE]` -- this
+  IS the direct, proximate winner-decision site for the H2H win tally, superseding an earlier
+  session's own citation of `[26B8]` for this specific purpose (see the `reportRace` docstring fix,
+  below; `[26B8]`'s own broader role, established by the ALREADY-CLOSED `UNKNOWN_26B8_polarity`
+  item, is unaffected -- `[3FC]` is simply downstream of it, not a contradiction);
+- plays tune 8; increments the winner's own `[BX+0x9A4]` (lifetime wins) and the loser's own
+  `[BX+0x9AF]` (lifetime losses), both already correctly cited by §9bh;
+- `CALL 240A` (`AX=0x64`) -- its own win-tally DIGIT draw is gated on `[0x8A5]` (already correctly
+  cited by §9bh/§9bi for that part), but it unconditionally masks and redraws both players' own
+  portrait panels first, see the dedicated paragraph below -- then `CALL 2481` (skill labels, already
+  correctly cited by §9bh/§9bi, unchanged here);
+- draws "WINNER!"/"LOSER!" (`DS:0x966`="WINNER!\0", `DS:0x96E`="LOSER!\0", both `[STATIC]` this
+  session -- a Ghidra `read_memory` of the static image, not a live read) at EACH player's own actual
+  screen slot, not a fixed per-player string: P1's own slot (X=0x1D/29, Y=0x5C/92) gets "WINNER!" if `[0x3FC]==0xC03` else "LOSER!";
+  P2's own slot (X=0xB1/177, Y=0x5C/92, the SAME Y both times) gets "WINNER!" if `[0x3FC]==0xC1E`
+  else "LOSER!" -- i.e. the text always follows whoever actually won, symmetric by construction (`DX`
+  is not explicitly re-set at this exact call site, but `2481`'s own tail (`CALL 2481` runs
+  immediately before this, `25C8`) last sets `DX=0xB40` at `251E` with nothing between there and
+  `2481`'s own `RET` touching it again -- so `0xB40` is a reasonable, though not fully nailed-down,
+  citation for this font: it assumes `0929`/`08F0` (2481's own two draw calls after `251E`) preserve
+  `DX`, which was not independently verified this session);
+- ORs a pose-select flag into the SAME portrait records' own `+0x13` field `2481` reads
+  (`[0xC16]`=`0xC03+0x13`/`[0xC31]`=`0xC1E+0x13`, `2609`/`260D`): `0x0200` into the WINNER's own
+  record, `0x0300` into the LOSER's -- this is NEW information, not previously documented anywhere
+  in this project (the `&0x1F`/`&0xF` masks in `2481`, §9bh, were flagged as a "concrete note" for
+  what they strip, but the actual SOURCE of the extra bits was never traced before now). **This OR
+  happens AFTER `240A`'s own unconditional cleanup (`25C5`, before this point in the SAME call) and
+  BEFORE the NEXT race's own `240A` call cleans it up again** (see the dedicated paragraph below) --
+  so the tag never actually reaches a stale `2481` read, despite looking, on its own, like exactly
+  the kind of state that would;
+- draws "RESULTS!!" (`DS:095C`, Y=0x3C/60) and, below it, "TOURNAMENT RACE"/"SINGLE RACE"
+  (`DS:0975`/`DS:093A`, picked by `[0x8A5]`, Y=0x4C/76) -- both via `DrawStringCentred`(`0910`),
+  font `0xB54` -- already correctly cited by §9bi, re-confirmed here from the full body;
+- fades the palette up (`CALL 32CE`) -- unpaced, the SAME `UNKNOWN_race_intro_prehold`-class "no
+  derivable tick duration" gap already established elsewhere in this file; no duration invented here
+  either;
+- slides the SAME two round-indexed icons `2216` uses (records 8/9, `DS:0x28BF`-indexed frame) into
+  view a SECOND time -- **with a FIXED step of 4, NOT `smoothness*4`, and an EXACT-equality exit
+  (`JZ`, not `JLE`)** -- so this slide always takes EXACTLY 22 iterations, at every smoothness
+  setting, landing on X=88/136 with NO overshoot (unlike `2216`'s own smoothness-dependent
+  overshoot), at Y=`0xB6`/182 (vs `2216`'s own Y=`0x46`/70). The final iteration's own exit (`JZ`,
+  taken BEFORE the loop's own background-restore calls, `2690`) leaves the icons drawn on screen --
+  uniquely among every iteration, they are never erased again before the blink phase begins;
+- blinks both portraits' own `+0x13` bit 4 (`XOR ...,0x10`, `26A3`/`26AD`), each followed by `CALL
+  0DB0` (a non-destructive "resolve bank+frame to an actual bound sprite descriptor, blit once via
+  `053A`, then restore the field" helper, `0DB0-0E01`, disassembled this session -- see below), then
+  calls `17FF` (see below) with `CX=0x14`(20); on timeout (`JC`), loops back to `26A0` (toggle
+  again); on a real dismiss, falls through to `26BF: RET`.
+
+**`0DB0-0E01`, disassembled this session: a non-destructive bank+frame resolver, and its own 4
+"descriptor tables" turn out to be nothing new -- they are 4 SLOTS of the ALREADY-PORTED, ALREADY
+byte-exact-checked `chrDescriptorTable` (`src/formats/chr.js`'s own `CHR_TABLE`, `npm run
+chrtable`).** `CX=[BX+0x13]` (CH=bank/pose-select byte, CL=frame); dispatches on CH to one of 4
+`chrDescriptorTable` slots, each `0xA14 + CH'*0x14` for the RESOLVED slot index CH' (`CH==0` ->
+`0xA50` = slot 3 = **FCNORMAL.CHR** (14 frames); `CH==1` -> `0xA3C` = slot 2 = **FCFROWN.CHR** (11
+frames); `CH==2` -> `0xA14` = slot 0 = **FCHAPPY.CHR** (22 frames); `CH>=3` -> `0xA28` = slot 1 =
+**FCSAD.CHR** (22 frames) -- resolving `UNKNOWN_0db0_descriptor_contents` before it was even
+recorded as open). Two sub-cases compute a DIFFERENT CL: for `CH==0` (FCNORMAL, the DEFAULT/
+untagged bank -- `256E` only ever sets bit 8/9, never clears them back to 0, but a character who has
+NEVER been through `256E`'s own OR reads CH=0 here), `CL&0x20` forces frame `0xC`(12) and `CL&0x40`
+forces frame `0xD`(13) -- the SAME frame NUMBER already documented elsewhere as FCNORMAL's own
+"taken" pose (§9ax), and NOW independently confirmed to be the SAME FILE, not just a coincidental
+number; for `CH>=2` (BOTH the WINNER's own bank, `CH==2`/FCHAPPY -- a happy face, matching "winner"
+perfectly -- from the `0x0200` OR, AND the LOSER's own bank, `CH>=3`/FCSAD -- a sad face, matching
+"loser" -- from `0x0300`; the SAME rotation code, `0DD5-0DDF`, runs before the branch that picks
+between the two, and neither path re-touches CL afterward, so BOTH banks get the identical rotated
+value, not just the winner's), CL is 5-bit ROTATED (`SHL 1`, carry folded back into bit 0, `AND
+0x1F`) before lookup -- working the arithmetic through by hand: for the real domain `c<=10`
+(`CHARACTER_NAMES.length-1`), `c`'s own bit 4 is always clear BEFORE any blink toggle (`10<16`), so
+the rotation resolves to the closed form **`frame = 2*c + bit4(c)`** (`0` or `1`, `c`'s own bit 4 as
+set by `256E`'s blink XOR) -- ranging `0..21`, EXACTLY the 22 frames both FCHAPPY.CHR and FCSAD.CHR
+actually have (`CHR_TABLE`, confirmed, not a coincidence either): the blink alternates between frame
+`2c` and `2c+1` for character `c`, two adjacent frames per character, presumably a subtle pose
+variant rather than a full animation. `CH==1`'s own bank (FCFROWN, 11 frames, CL passed through
+completely UNCHANGED, no rotation) is reached from a DIFFERENT `+0x13` value this session did not
+trace to a writer -- not `256E`'s own `0x0200`/`0x0300` tagging, and not the carousel's own `AH=2`
+tagging below, so its own real trigger is `UNKNOWN_0db0_ch1_frown_trigger`, low priority. Separately:
+`RunCharacterSelectMenuTune2`'s own commit-blink (`09E0`, `0AC8: MOV AH,0x2`, right before its OWN
+five `XOR [BX+0x13],0x10` / `CALL 0DB0` calls) ALSO sets CH=2/FCHAPPY -- confirming `256E`'s own
+winner-tagging REUSES the exact same "happy/selected" bank the character-select carousel's own
+commit animation already uses, not a screen-specific mechanism. After binding (`[BX]=descriptor`,
+`[BX+8]=segment`) and blitting once (`CALL 053A`), the function POPs and re-stores the ORIGINAL
+`[BX+0x13]` (saved at its own entry) -- so `256E`'s own persistent pose-select/blink bits are NEVER
+corrupted by this helper; it only affects the ONE blit call it makes.
+
+**`1000:17FF`, disassembled this session: the real bounded dismiss-wait, more precise than the
+"until a keypress" framing earlier sections of this file used.** Saves and overrides `[0x1080]=0`
+(forcing the SAME P1|P2 combined-bits read `frontMenu.js`'s own `0382` already documents), resets
+`[0x2]`/`[0x107E]`/`[0x107F]` ONCE, at its OWN entry, then runs an OUTER loop that waits for fire to
+be RELEASED (ignoring a fire button already held -- a fresh press in THIS phase does nothing) before
+falling into an INNER loop that waits for a FRESH press. **`[0x2]` is NOT reset again at the
+outer-to-inner transition (`182C`) -- both loops poll the SAME running counter against the SAME
+`CX`(20), so one real `17FF` call has ONE 20-tick BUDGET shared across both phases, not 20 ticks
+each** (see the `raceResultWaitStep` port note, below, and its own discriminating test). With
+neither a release nor a press ever arriving (or fire held throughout), the `JLE` continues while
+`[0x2]<=20` and the timeout fires the first tick `[0x2]>20` -- so `256E`'s own blink cadence, the
+period between one `XOR 0x10` toggle and the next, is 21 ticks, not 20; whoever ports the blink's
+own visual timing needs the 21. Either phase exits immediately (CLC, "dismissed") on `[0x107E]` going
+nonzero -- ANY key's own release latch, not ESC specifically, despite this and other files in this
+project using "ESC release" as shorthand for the SAME cell elsewhere (that shorthand is accurate in
+THOSE contexts, where ESC happens to be the only key whose release is ever tested; `17FF`'s own test
+is a raw nonzero check, not an ESC-specific compare). Timing out (STC, the SHARED budget exhausted)
+is what `256E`'s own `JC 26A0` reads as "loop back and toggle again," which DOES reset `[0x2]` fresh
+(a genuinely new `17FF` call). **This exact mechanism is what silently swallowed the handicap screen
+in §9bk's own first attempt**, generalized: `0B51`'s own poll (a raw, undebounced same-tick test)
+and `17FF`'s own poll (properly debounced, release-then-press) are TWO DIFFERENT real shapes for
+"wait for input" in this codebase, and an automation session holding a key continuously across a
+screen transition can be fooled by either, for different underlying reasons -- new `PLAN.md` §8
+pitfall (already added in §9bk's own commit) generalizes both.
+
+**Who writes `[0x3FC]`/`[0x3FE]` on the H2H race path: RESOLVED, closing a real risk an advisor
+review flagged as blocking this port.** `search_byte_patterns "FC 03"` (24 hits) initially looked
+like it found NOTHING inside `RunHeadToHeadTournament`'s own real body (`1FAF-2098`) -- every hit
+was either inside the ALREADY-confirmed-dead `2099+` region, inside ONE-PLAYER-only tournament code
+(`0x10xx-0x16xx`), inside `256E` itself (its own reads, already accounted for above), or a
+false-positive `JMP`-displacement match at `6B5A` (the SAME class of false positive already
+documented in this project's history for `[0x156]`, `PLAN.md` §8 -- here matching `E9 FC 03`, a
+`JMP rel16 0x03FC`, nothing to do with the address `[0x3FC]` at all). The REAL writer turned out to
+be findable through one of those "one-player-only" hits after all: `11D7` is the OPERAND bytes of
+`MOV DI,0x3FC` at `11D6`, itself inside `FUN_1000_11D5` (`11D5-11F7`) -- and `get_xrefs_to 1000:11D5`
+shows exactly 2 callers: `SetupTournamentRace` (one-player, `11C4`) and, critically,
+`StopMusicRunRaceReloadAssets` (`216C`, `218F`) -- the SAME `216C` `1FAF`'s own per-race loop calls
+to actually RUN the race (`2074`), right before calling `256E` (`2077`). So `[0x3FC]`/`[0x3FE]` ARE
+genuinely, freshly resolved by `216C` itself EVERY race (from the shared finish-order array,
+matching `11D5`'s own already-documented M3.58 citation: `[2678..267E]` divided by `[0x2662]`, times
+`0x1B`, plus `0xC03`) -- the risk that race 2 would compare against race 1's own stale winner does
+NOT materialize. `reportRace`'s own docstring (`twoHuman.js`) is corrected in place to cite `[0x3FC]`
+directly rather than `[26B8]`.
+
+**The winner/loser pose-select bits do NOT persist across races: `240A` unconditionally cleans
+`[0xC16]`/`[0xC31]` every single time it runs, which is right before EVERY `2481` call.** The bullet
+above flags this OR as looking, on its own, like exactly the kind of state that would corrupt a
+later `2481` read; it does not, for two reasons together. First, the sequencing: `1FAF`'s own tail
+(`2070-2098`) runs `216C` (which runs the race and resolves `[0x3FC]`/`[0x3FE]`) BEFORE
+`256E` (`2074` then `2077`), not after -- so `216C` has nothing to do with what happens BETWEEN one
+race's own `256E` and the NEXT race's own `2481`; that gap is only `207A-2092` (the tally check,
+looping back via `JMP 1FCC`) and `1FCC-203A` (already covered by the `1FBE-206E` read). Second, and
+decisively: `240A` (`DrawH2HWinRecordDigits`) -- called at the START of every per-race setup
+(`2037`/`2374`, BEFORE that race's own `2481`) AND AGAIN inside `256E` itself (`25C5`, BEFORE
+*that* `2481` call too) -- does `AND word ptr [0xC16],0x4F` and `AND word ptr [0xC31],0x4F`
+UNCONDITIONALLY, well before its own `[0x8A5]` gate (`2447`) -- that gate only skips the LATER
+win-tally digit draw, not this masking or anything before it. The mask itself is not `240A`'s own
+FIRST act: `240A` opens by storing its own `AX` parameter into `[0xC07]`/`[0xC22]` (the Y position
+for both portrait records, `0x24` from the per-race setup call, `0x64` from `256E`'s own call), THEN
+`CALL 0400` (`2410`) -- already documented elsewhere in this file (line ~7076) to clear the whole
+screen and draw BADGE.CHR plus "MicroMachines", and, since `[0x156]` is set to `1` uniquely at H2H
+entry (`1E4A`) and not rewritten during an H2H session (§9bf's own exhaustive sweep found exactly
+one OTHER writer anywhere in the binary, `0364` inside `RunOnePlayerGameMenu` -- a ONE-PLAYER-only
+screen H2H never reaches), ALSO the second `WORDS.CHR` frame and the divider bar `0400`'s own
+`[0x156]!=0` branch draws -- this is almost certainly the "MicroMachines Head to Head" header bar
+visible in §9bk's own live screenshots, confirming `UNKNOWN_0400_mode`'s own second box is REACHED
+here, though which exact `WORDS.CHR` frame it is still needs `npm run render` to confirm. ONLY AFTER
+`0400` returns does the mask (`2413`/`242D`) run. `0x4F` = `0000
+0000 0100 1111` as a 16-bit AND: it clears bit 4 (the blink toggle) AND bits 8-9 (the `0x0200`/
+`0x0300` pose-select tag) together, keeping only bits 0-3 (the character index) and bit 6. Neither
+of `240A`'s own two callees between the mask and the redraw touches `+0x13` either, closing the last
+gap: `0DB0` itself POPs/restores the original `+0x13` after its own one-shot blit (already
+established above); `06CC` (`DrawSpriteRectOutline`, disassembled this session) only READS `+0x15`/
+`+0x19`/`+0x1A` to draw a border, via `STOSB`s into VGA memory, never touching the sprite record
+itself; `0F3C` (disassembled this session) READS `+0x13` (masked `&0xF`, matching `2481`'s own P2
+mask exactly) to look up and draw the character's own NAME string via `0929`, also never writing it
+back. `get_xrefs_to` on BOTH `1000:2481` and `1000:240A` confirms exactly 3 callers each, in the
+SAME 3 functions, each `240A` site sitting directly before its own matching `2481` site: `2037`
+before `203A` (`RunHeadToHeadTournament`); `2374` before `2397` (`RunHeadToHeadVehicleSelectTune2`,
+single race); `25C5` before `25C8` (`ShowHeadToHeadRaceWinnerTune8`, i.e. `256E`). So EVERY `2481`
+call has a matching `240A` call that already ran moments earlier IN THE SAME FUNCTION -- in single
+race specifically, one more call (`2390: CALL 04B8`, on pool slot 9/THUMB, `0xC6F` -- a DIFFERENT
+record from `[0xC16]`/`[0xC31]`) sits between them, not disassembled past its own thin `CALL 0630`
+wrapper, so "immediately preceded" is precise for tournament and `256E` but "preceded, with one
+unrelated-record draw in between" for single race. There is no window where `2481` can see a
+stale pose-select tag or a stale blink parity from an earlier race: `240A` cleans up after itself
+every time, both entering a race and displaying its result. `240A`'s own full shape, for whoever
+ports it (it is effectively the H2H PORTRAIT PANEL, not just the tally digits its own Ghidra name
+suggests): mask, reposition (`[0xC05]=0x20`/`[0xC20]=0xB0` for X; `[0xC07]`/`[0xC22]` = its own `AX`
+parameter for Y, `0x24` from the per-race setup call, `0x64` from `256E`'s own call), redraw via
+`0DB0`, outline via `06CC`, name via `0F3C` -- for BOTH players, unconditionally -- THEN, gated on
+`[0x8A5]`, the win-tally digit sprites. `2481`'s own `&0x1F`/`&0xF` masks are real but, given this,
+not protecting against inter-race staleness. Bit 6 -- the one bit BOTH masks strip that `240A`'s own
+`0x4F` deliberately KEEPS -- is exactly what `0DB0`'s own `CH==0`/FCNORMAL path turns into frame 13
+(the "taken" pose, `0DC5-0DCC`, above), and is CLOSED, not a new `UNKNOWN`: its ONLY real writer is
+the Challenge-only elimination screen's own victim marker (`1000:170A: OR [BX+0x13],0x40`, §9ba) --
+but since the SAME 18-slot sprite pool is shared across every screen (`1A4A`'s own opponent picker
+already walks these exact slots, §9az), a leftover bit 6 from an EARLIER Challenge session in the
+SAME boot could in principle still be sitting on a face slot when H2H starts. The REAL guard against
+that is `0EBA` (`ResetTournamentState`, called from `1E20` at H2H entry, §9bj): it sets BOTH
+`[0xC16]`/`[0xC31]=0xB` (`0EF4`/`0EFA`) unconditionally, wiping any such leftover clean before H2H's
+own carousel even begins; `09E0` then keeps them clean throughout -- `0A3B` resets a slot to `0xB`
+on its own entry, `0B37` stores only the final, masked (`&0xF`) committed character value on commit
+-- neither ever writes bit 6. So `2481`'s own masks stripping it is simply defensive, protecting
+against a bit that CANNOT survive into a real H2H session, not one that merely never gets set there.
+This replaces the retracted "mask-divergence" framing from §9bh.
+
+**`DS:0002`'s own true nature, resolved -- closing §9bh's long-open "source of `v`" item.**
+`search_byte_patterns "C7 06 02 00"` (the `MOV word ptr [0x2],imm16` IMMEDIATE-STORE form only; the
+reverse `A3 02 00` encoding has zero hits) finds exactly 13 immediate-store sites (this sweep does
+not cover the ISR's own per-tick increment, `FF 06 02 00`, already established elsewhere in this
+file as running at a real 70Hz -- §9v's own "shared-incrementer finding" -- nor any
+register-mediated store form, `89 ?6 02 00`/`89 ?E 02 00`, neither searched this session; the
+conclusion below rests on the 13 confirmed writers, not a claim of having found every possible one).
+**11 of the 13 reset to `0`**: `RunTitleScreenAttractLoop` (`01AC`), `RunTwoItemMenu` (`03BC`),
+`09E0`/character select (`0A75`, `0AE2`), `ShowRaceResultsScreenTune8or6` (`1558`),
+`ShowCharacterEliminatedTune6` (`1779`), `179B` itself (`179F`), `17FF` itself (`1809`, above),
+`ShowChampionScreenTune3` (`1B34`), `ShowRaceOutcomeMessageTune8or6` (`1D42`), and `2329`/single
+race (`23C2`) -- confirmed with a second, narrower pattern requiring the immediate literally be
+`0x0000` (`C7 06 02 00 00 00`), which returns exactly these 11.
+**The other 2 seed a nonzero value, not a reset**: `ShowChampionScreenTune3`'s own OTHER site
+(`1B25: MOV [0x2],0x32`, i.e. 50) and `ShowRaceOutcomeMessageTune8or6`'s own OTHER site
+(`1D25: MOV [0x2],0x226`, i.e. 550) each run immediately before that same function's own blink loop
+(head at `1B2B`/`1D2B`), whose own toggle-and-reset-to-0 branch fires once `[0x2]` crosses a LOCAL
+threshold (`>=0xF` at `1B2D`, `>0xF` at `1D3B`) -- seeding well above that threshold simply forces
+the loop's FIRST pass to toggle immediately (an "always blink on entry" idiom), after which the
+branch's own `MOV [0x2],0x0` (`1B34`/`1D42`, already counted above) takes over and the counter
+behaves exactly like every other site's. **These are NOT calls into `17FF`** -- each is its own
+short inline loop sharing only the toggle-on-threshold idiom, with its own different dismiss
+semantics (`ShowChampionScreenTune3`'s own loop at `1C0B` exits on ANY `[0x108B]` bit;
+`ShowRaceOutcomeMessageTune8or6`'s own inline loop, reached only for outcome codes 2/3, exits at
+`1DDB` on fire specifically with NO release debounce, and ESC at `1DCD` jumps to `1E12`, which zeros
+`[0x406]` -- the lives counter; neither loop is `raceResultWaitStep`-shaped, so it must not be reused
+for either screen). `17FF` itself, checked this session with `get_xrefs_to`, has 8 real call sites
+across 5 functions, not the single `256E`/`1E0C` pair assumed earlier in this section: `256E`'s own
+tail (`26BA`, `CX=0x14`, the one call this file already ports as `raceResultWaitStep`),
+`ShowRaceOutcomeMessageTune8or6` (`1E0C`, `CX=0xF`, for outcome codes 0/1/4/5 -- the OTHER branch
+from the inline loop above), `ShowRaceResultsScreenTune8or6` (`164B`), `ShowHeadToHeadResultUnreferenced`
+(`2166`), and an undocumented function `FUN_1000_18D8` which calls it FOUR times (`1908`/`1919`/
+`196C`/`1988`). None of these other 6 call sites, nor `FUN_1000_18D8` itself, nor
+`ShowRaceOutcomeMessageTune8or6`'s own undebounced dismiss/ESC-zeroes-lives path, has been read or
+ported this session (`UNKNOWN_17ff_other_callers`) -- a lead for later, not part of M3.66's own
+scope. `DS:0002` is therefore NOT a from-boot free-running counter, contrary
+to GOAL-DOS-PARITY.md's own P4 item 1
+("Reproduce `DS:0002` as a 70 Hz tick counter that runs from boot") -- it is a GENERIC, shared
+"ticks since the last wait-for-input screen began waiting" primitive, reset by nearly every screen
+in the game that ever waits for a keypress, one-player and two-player alike. For `nextTrack`'s own
+`v` (read at `1FDD`, immediately after `256E` returns from its own final `17FF` call, with nothing
+in between that touches `[0x2]`), this means the real, practical source of `v`'s own non-determinism
+IS human reaction time -- specifically, "how many ticks into the WINNER!/LOSER! screen's own MOST
+RECENT blink-wait window the dismissing press landed" -- which is exactly the kind of
+input-dependent, non-deterministic quantity the GOAL file's own stated INTENT ("so the choice is as
+non-deterministic as the original's") already wanted, even though the literal "runs from boot"
+mechanism this item's own wording assumed turns out not to be how DOS actually does it. **The
+practical consequence for the eventual `flow.js` wiring: `raceResultWaitStep`'s own `state.ticks` at
+the exact instant its own return value is `'dismiss'` equals the real `[0x2]` value at that instant
+(`1825`/`1847`/`184E`'s own check runs right after that tick's own wait) -- `1FDD`'s own read
+happens a few instructions later in the real code, after `256E` returns and the per-race loop
+restarts, so the two CAN differ by one if a tick boundary falls in that gap; `state.ticks` at
+dismiss is still the right value to seed `nextTrack`'s own `v` parameter from, not a
+page-load-relative clock, just not asserted exact to the tick.**
+
+**Ported: `RACE_RESULT_SLIDE_TICKS` and `raceResultWaitStep`/`raceResultWaitInitialState`
+(`twoHuman.js`).** `RACE_RESULT_SLIDE_TICKS = 22`, a plain constant (smoothness-independent, unlike
+`raceInfoSlideTicks`) -- deliberately its OWN export, not a call to `raceInfoSlideTicks(1)` (which
+happens to be 23, close but NOT equal, and wrong at every other smoothness). `raceResultWaitStep`
+models `17FF`'s own two-phase (`AWAIT_RELEASE`/`AWAIT_PRESS`) bounded wait exactly, including the
+debounce that avoids the held-fire pitfall above AND the single-shared-tick-budget behaviour above
+(ticks carry over at the phase transition, not reset -- see the discriminating test below, which
+transitions late enough to tell a shared budget apart from a per-phase one), returning
+`'dismiss'`/`'retoggle'`/`null` -- the caller is responsible for re-initialising state
+(`raceResultWaitInitialState()`, not
+reusing the old object) on every `'retoggle'`, matching `17FF`'s own real per-call reset of `[0x2]`/
+`[0x107E]`/`[0x107F]`; `input`'s own `escReleased` field is named `anyKeyReleased` instead, since
+`[0x107E]` genuinely is a raw nonzero test, not ESC-specific, and the caller is responsible for
+clearing its OWN release tracker at the start of each window (the real `180F` clear) -- this state
+machine cannot enforce that on its own. NOT ported here (screens.js concerns, deferred with the same
+reasoning as `2216`'s own sprite-panel animation, §9bj): the slide's own visual drawing, the blink's
+own `0DB0`-driven pose animation, and the winner/loser pose-select bits themselves (state that
+`2481`'s own eventual port will need to read, bug and all, per the note above).
+
+**Tests.** `tools/check-twohuman.mjs` gained two new sections (133 total): `RACE_RESULT_SLIDE_TICKS`
+checked equal to 22 AND explicitly checked DIFFERENT from `raceInfoSlideTicks` at every real
+smoothness value (proving the two constants cannot be conflated); `raceResultWaitStep` checked
+across every real transition (a held fire never dismissing in `AWAIT_RELEASE` and timing out to
+`retoggle` instead; a release transitioning to `AWAIT_PRESS` on the same call, ticks carrying over
+NOT resetting; a fresh press in `AWAIT_PRESS` dismissing immediately; `AWAIT_PRESS`'s own timeout
+retoggling with a full phase/tick reset; `anyKeyReleased` dismissing immediately from either phase,
+even with fire held) PLUS a DISCRIMINATING test specifically shaped to distinguish a shared budget
+from a per-phase one (fire held ticks 1-15, released on tick 16 -- carrying the count to 16, not
+resetting to 0 -- then nothing pressed: the correct shared-budget model retoggles on tick 21, a
+per-phase-reset model would retoggle on tick 37 instead; a transition on tick 1, as the OTHER
+transition test does, cannot tell the two models apart) PLUS a tick-ordering test (three held calls
+then an `anyKeyReleased` dismiss must give `ticks===4`, matching the real tick-then-check order at
+`1819`/`1822`/`1825`). Reintroduction-proven, all four mutations run against the final code:
+allowing `AWAIT_RELEASE` to dismiss on a held fire (the EXACT §9bk pitfall) fails 18 of 133 checks;
+resetting `ticks` at the phase TRANSITION instead of only on retoggle fails 6 of 133, caught
+specifically by the discriminating test; a retoggle that forgets to reset `ticks` fails 1 of 133;
+checking `anyKeyReleased` before incrementing `ticks` fails 1 of 133, caught by the tick-ordering
+test. All four restored and reconfirmed at 133/133. Full 30-script regression suite plus `build`
+re-run clean.
+
+**Verification status.** `[STATIC]`: every disassembly claim above (`256E`, `0DB0`, `17FF`, `11D5`,
+the `1FBE-206E`/`234B-2397` sweeps, the `DS:0002` writer sweep), all read fresh this session via
+`disassemble_function`/`disassemble_bytes`/`get_xrefs_to`/`search_byte_patterns`, none live-confirmed
+this session -- not because no instance was reachable (the same one reconnected cleanly at `Z:\>`
+mid-session, §9bk's own correction above), but because this pass's own scope was the disassembly
+itself, not a live walkthrough; not attempted this pass. `RACE_RESULT_SLIDE_TICKS=22` is a strong,
+mechanically-derived `[STATIC]` conclusion (the arithmetic is closed-form) but not yet observed
+live. The winner/loser pose-select bits: NOT a bug, `[STATIC]` -- `240A`'s own unconditional `AND
+...,0x4F` runs before every real `2481` call, both entering a race and displaying its result, so
+the pose-select tag and blink bit are cleaned every time; not yet observed live either, but the
+control-flow argument (`get_xrefs_to`-confirmed 3/3 matching call pairs, nothing in between able to
+re-dirty the field, checked all the way down to `0DB0`/`06CC`/`0F3C`) does not depend on timing.
+Bit 6 (the one bit `240A`'s own `0x4F` mask keeps and `2481`'s own masks strip) is CLOSED, not open:
+its only real writer is the Challenge-only elimination screen's own victim marker (`1000:170A: OR
+[BX+0x13],0x40`, §9ba); since the sprite pool's own 18 slots are SHARED across screens, a leftover
+bit from an earlier Challenge session could in principle survive into a later H2H one, but `0EBA`
+(H2H's own entry reset, `0EF4`/`0EFA: [0xC16]/[0xC31]=0xB`) and `09E0`'s own clean commit (`0A3B`/
+`0B37`) together guarantee it cannot -- so it cannot appear on a face slot `240A`
+touches within a real H2H session. Still open, low priority: `UNKNOWN_0db0_ch1_frown_trigger` (what
+sets `[BX+0x13]`'s own CH to 1/FCFROWN -- a DIFFERENT bit position from bit 6, so §9ba's own finding
+does not resolve it too), not traced this session since neither `256E` nor `09E0`'s own commit-blink
+writes it. Closed this session: the 4
+descriptor tables' own contents (they are `chrDescriptorTable` slots 0-3 -- FCHAPPY/FCSAD/FCFROWN/
+FCNORMAL -- already ported, no new `UNKNOWN` needed); the risk that `[0x3FC]` goes stale across
+races (resolved: it does not); the winner/loser pose-select bits' own persistence (resolved: they
+do not persist -- `240A` cleans them every time); `UNKNOWN`-status "source of `v`" (§9bh, resolved:
+`DS:0002` is a
+shared wait-screen reset primitive, not a boot counter). Still open, unchanged: `UNKNOWN_4be7_twocar_rubberband`,
+`UNKNOWN_0160_0192_meaning`, `UNKNOWN_989_98b_meaning`, `UNKNOWN_handicap_rosterword_link`'s own
+already-`[PROVEN]`-resolved status is unaffected by any of this. P4's remaining scope, updated: the
+handicap screen `0B51` and champion screen `1AAD` (unchanged, §9bj/§9bk), `256E`'s own DRAW (now
+fully speced above, ready to port), `2481`'s own draw (its own formula already ported, §9bh/§9bi,
+and no longer blocked by a stale-state design question), and `flow.js` wiring itself -- each still
+its own commit.
