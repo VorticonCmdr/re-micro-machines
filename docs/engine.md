@@ -11091,3 +11091,78 @@ searches can see.
   driver model (`si2Player.js`, `CmdPlayTune`) already ignores a tune that is current, so tune 4
   keeps playing through a skip in both.
 
+
+## 9bv. P4 two-human Head to Head, commit A: TWO PLAYER, both picks with the handicap question, CHOOSE GAME (2026-09-25)
+
+**Purpose.** GOAL-DOS-PARITY.md P4's first item, the first of three planned commits: A (this one,
+the front end up to CHOOSE GAME), B (the per-race info screen and a two-human race), C (`256E`'s
+result screen, the match loop and the champion screen). Single race is P4's second item.
+
+**The disassembly, all `[STATIC]`.**
+- `0220` (SELECT GAME): TWO PLAYER is `02D9: CALL 1E20`, then `CLC; RET`, so `real_entry`'s own loop
+  redraws SELECT GAME whenever `1E20` returns. No tune is started: tune 1 keeps playing through
+  both picks.
+- `RunTwoPlayerHeadToHeadSetup 1000:1E20` (57 instructions): `[0x265A]=[0xF61]` (P2's control
+  device), `[0x2656]=2`, `[0x3F8]=1`, `[0x3F3]=1`, `[0x156]=1`, `[0x9D6]=0`; `CALL 2D00`; `CALL 0EBA`
+  (`ResetTournamentState`: the roster `DS:0164..016E` back to identity, `[0x2668]`/`[0x266A]`=11,
+  §9bj); the panel; "PLAYER"/"ONE" at X=4 (`DS:094D`/`0954`); `[0x19E]=0xC03`, `[0x1080]=0x137B`
+  (P1's own reader), `AX=[0x9A0]`, `CALL 09E0` -- CF (ESC) goes to `1EEB`, i.e. RET. Then "PLAYER"/
+  "TWO" at X=0xBE (`DS:094D`/`0958`); `[0x19E]=0xC1E`, `[0x1080]=0x14DF` (P2's), `AX=[0x9A2]`,
+  `CALL 09E0` -- CF returns too; else `CALL 1EF1`. `[0x3F3]=0` at `1EEB`.
+- The flags: `[0x3F3]`, `[0x9D6]` have no readers at all (the `04FF`-`05A9` hits for `F3 03` are
+  `ADD SI,BX` inside the blitters); `[0x156]` makes the shared header (`0400`) draw one more
+  WORDS.CHR word at X+0x5A, a render detail. So the carousel's logic is the same as one-player's.
+- `[0x9A0]` = 5 (DWAYNE) and `[0x9A2]` = 6 (JETHRO) in the image, with no writer: P1's carousel
+  always starts on DWAYNE and P2's on JETHRO (the §9bg live capture's roster words `[5, 6]` agree).
+- `09E0`'s commit (`0AB5-0B25`): mark the pick taken (`0AC2`), the 5-blink, then for the P1 record
+  (`BX==0xC03`) store `[0x2668]` and OR in `CALL 0B51`'s result; for the P2 record (`0xC1E`) the same
+  into `[0x266A]`. `0B51` asks only when `handicapQuestionApplies` (character 0-2, `[0x2656]!=1`,
+  `[0x265A]!=6` -- for BOTH picks `[0x265A]` is P2's device, never 6 here), reads only the picking
+  player's reader, defaults to and stores into the session cell `DS:[0x1D6+c]`, and has no
+  release-wait (§9bk/§9bm/§9bn, all already `[PROVEN]`). Text: "HANDICAP WALTER ?" etc.
+  (`DS:0x1A0`...), "NO"/"YES" (`DS:0x1DA`/`0x1DD`).
+- `RunHeadToHeadChooseGameMenu 1000:1EF1`: tune 2 (`AH=9` guard); the win tally and the dead
+  `[989]`/`[98B]` zeroed (`1F09-1F18`); `[0x8A2]=0`; "TOURNAMENT" at X=0x18 and "SINGLE RACE" at
+  X=0x9C, Y=0xBE, "CHOOSE GAME!" centred at Y=0x68; then `0382` (the same two-item menu, both
+  players combined) with `AX=[0x8A0]` (0 in the image). Cancel (`CX=0`): `[0x8A2]=0`, RET (to
+  SELECT GAME). Confirm: `[0x8A0]=CX` (`1F84`, so a confirmed pick is remembered, a cancel is not),
+  `[0x2656]=2`, `[0x8A2]=CL` (the alternate-tuning fork, §9bg); 1 is `CALL 1FAF; RET`, 2 is
+  `CALL 2329` then `JMP 1EF1`.
+
+**What changed.**
+- `twoHuman.js`: `twoHumanSessionState` gains the handicap cells (`[0x1D6+c]`) and `[0x8A0]`;
+  new `twoHumanSetupState` (the `0EBA` reset), `twoHumanRosterBytes`, `commitTwoHumanPick` (taken
+  flag, slot word, the handicap OR and its session store), `H2H_P1_START`/`H2H_P2_START`.
+- `screens.js`: `drawTwoPlayerPickLabels` (PLAYER ONE/TWO and the handicap line) and
+  `drawChooseGame` (the vehicle icons are not drawn).
+- `flow.js`: SELECT GAME's TWO PLAYER now runs `enterTwoPlayerSetup` -> two `CHAR_SELECT` picks
+  (`charWho` `h2h-p1`/`h2h-p2`, on a separate two-human roster, reading the picking player's own
+  session-lifetime reader, so a fire held from the commit reaches the question) -> a `HANDICAP`
+  phase when it applies -> `CHOOSE_GAME` (a third `twoItemMenuStep` user; `h2hMatch` created per
+  visit; `[0x8A2]` and race 1's `nextTrack` seed -- `[0x2]` = `twoItemState.idleTicks` at the
+  confirm, §9bn rule 3 -- recorded). ESC on either pick or on CHOOSE GAME returns to SELECT GAME.
+  **Until commits B/C:** TOURNAMENT follows its real exit (back to SELECT GAME) and SINGLE RACE its
+  own (back to CHOOSE GAME), with no race in between; the status line says so. New debug hooks:
+  `getTwoHuman()`, `forceHandicapSteps(n, bits)`.
+
+**Tests.** `check-twohuman.mjs` +11 assertions (144): the start characters, the session defaults,
+the `0EBA` reset, `handicapQuestionApplies` for two-human play, the commit (slot word `0x80` for
+WALTER+YES, taken, the session store), a NO answer (word 1), the reset-but-remembered re-entry, and
+a character the question skips. Four mutations caught (the OR, the taken flag, the session store,
+P2's start). Full regression suite plus `build` clean.
+
+**Live verification, `[PROVEN]` in the port** (`game.html`, the Web Worker RAF shim and worker
+sleeps, real key events through the session readers: P1 KEYS 2, P2 KEYS 1 `J L I M K`):
+- TWO PLAYER: a fresh roster; P1 scrolled LEFT x5 from DWAYNE to WALTER and confirmed with S: the
+  question opened on NO; RIGHT made it YES; P2's `K` held 300ms did not dismiss it; S confirmed:
+  slot words `[0x80, 11]`, WALTER taken, cell `[0x1D6]` = `0x80`.
+- P2 (`J` x5 from JETHRO) to MIKE, `K`: question on NO; P1's `S` held did not dismiss it; `K`
+  confirmed: words `[0x80, 1]` -- byte-identical to the §9bn DOS walkthrough's `[0x2668]=0x0080`,
+  `[0x266A]=0x0001` -- then CHOOSE GAME with a fresh 0-0 tally.
+- CHOOSE GAME: LEFT then S picked TOURNAMENT: `[0x8A0]`=1 remembered, `[0x8A2]`=1, race 1's seed 72
+  ticks; then SELECT GAME (the stub exit). ESC on CHOOSE GAME: SELECT GAME, `[0x8A2]`=0; the next
+  visit started on TOURNAMENT.
+- Re-entry: WALTER's question defaulted to YES. With S held through the commit (and still held
+  200ms after the question opened), the question resolved on its first tick with the stored YES:
+  words `[0x80, 11]`, straight on to P2's pick. ESC on P2's pick: SELECT GAME.
+- No console errors.

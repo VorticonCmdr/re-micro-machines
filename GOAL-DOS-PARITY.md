@@ -699,6 +699,13 @@ docs, (6) commit.
   across both its own internal stages -- a real timeout this session found was previously
   misdiagnosed as a dead constant, see the P3 regression bullet below. Each
   remaining screen still its own commit, per the established one-commit-per-screen pattern.
+  **Commit A done 2026-09-25 (M3.76, docs/engine.md §9bv):** SELECT GAME's TWO PLAYER now runs
+  `1E20` -- P1 and P2 picks through the same carousel on a fresh two-human roster, starting on
+  DWAYNE/JETHRO (`[0x9A0]`/`[0x9A2]`), each followed by `0B51`'s handicap question when it applies
+  (the picking player's own reader, the session answer cells, the slot word `character|answer`) --
+  then `1EF1`'s CHOOSE GAME (tune 2, the tally reset, `[0x8A0]`/`[0x8A2]`, race 1's seed). `[PROVEN]`
+  live in the port, slot words byte-identical to the §9bn DOS walkthrough. Remaining: commit B (the
+  race-info screen, `2216`+`179B`, and a two-human race), commit C (`256E`, the loop, the champion).
 - [ ] **The single-race select** (`SelectSingleRaceTrack 1000:2193`, the 10-entry list at
   `DS:09D9`; LEFT and RIGHT both step +1). Find where it is reachable from, and port it if it is
   reachable.

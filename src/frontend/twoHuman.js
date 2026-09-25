@@ -344,7 +344,54 @@ export function twoHumanSessionState() {
   return {
     lifetimeWins: new Array(CHARACTER_NAMES.length).fill(0), // [9A4+c]
     lifetimeLosses: new Array(CHARACTER_NAMES.length).fill(0), // [9AF+c]
+    // DS:[0x1D6+c]: each character's own stored handicap answer (0 or 0x80), 0B51's default the next
+    // time it is asked -- session-lifetime, `[PROVEN]` to survive a full TWO PLAYER re-entry (§9bn)
+    handicapAnswers: new Array(CHARACTER_NAMES.length).fill(0),
+    chooseGameSelection: 0, // [0x8A0]: 0 in the image (nothing pre-selected), written only on a confirm (1F84)
   }
+}
+
+/**
+ * `RunTwoPlayerHeadToHeadSetup 1000:1E20`'s own per-entry state (docs/engine.md §9bv). Every entry
+ * runs `ResetTournamentState 0EBA`, which resets the roster table `DS:0164..016E` to identity
+ * (nobody taken) and the car-slot character words `[0x2668]`/`[0x266A]` to 11 (none picked). P1
+ * then picks through `09E0` starting on `[0x9A0]` (5, DWAYNE) and P2 starting on `[0x9A2]` (6,
+ * JETHRO) -- both constants in the image, with no writer anywhere (`search_byte_patterns`).
+ */
+export const H2H_P1_START = 5 // [0x9A0]
+export const H2H_P2_START = 6 // [0x9A2]
+export function twoHumanSetupState() {
+  return {
+    roster: CHARACTER_NAMES.map((_, i) => ({ index: i, taken: false })), // DS:0164.. reset to identity (0EBA)
+    characters: [null, null], // P1, P2
+    rosterWords: [11, 11], // [0x2668]/[0x266A], 11 = none picked (0EBA)
+  }
+}
+
+/** The roster bytes `charSelectStep` reads (`index | 0x40` once taken, the SAME encoding the
+ * one-player roster uses). */
+export function twoHumanRosterBytes(setup) {
+  return setup.roster.map((s) => s.index | (s.taken ? 0x40 : 0))
+}
+
+/**
+ * One player's own pick, committed the way `09E0`'s commit block does it (`0AB5-0B25`): mark the
+ * character taken (`0AC2`), store the car slot's character word (`0B07`/`0B19`), then -- if
+ * `0B51`'s own gate lets the question through -- OR in the answer (`0B0E`/`0B20`; `0B51` returns 0
+ * when it doesn't ask). `handicapAnswer` is the question's own final answer (0 or 0x80), or `null`
+ * when it wasn't asked; an asked answer is also stored back into the session cell `[0x1D6+c]`
+ * (`0C09-0C11`). `slot`: 0 for P1, 1 for P2. Returns the roster word.
+ */
+export function commitTwoHumanPick(setup, session, slot, character, handicapAnswer) {
+  setup.roster[character].taken = true
+  setup.characters[slot] = character
+  let word = character
+  if (handicapAnswer != null) {
+    session.handicapAnswers[character] = handicapAnswer
+    word |= handicapAnswer
+  }
+  setup.rosterWords[slot] = word
+  return word
 }
 
 /** One MATCH's own state (`session`: the `twoHumanSessionState()` this match credits -- required,

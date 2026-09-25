@@ -109,6 +109,28 @@ export function drawCharacterSelect(buf, arena, { scroll = 0, cursor = 0, roster
 }
 
 /** 0C15's "PRESS ANY KEY TO START" (DS:0241), between the select screens and the first race. */
+/** Two-human Head to Head's own labels around the carousel (`1E20`, docs/engine.md §9bv): "PLAYER"
+ * over "ONE" on the left (X=4, Y=0x32/0x3B) for P1's pick, "PLAYER" over "TWO" on the right
+ * (X=0xBE) for P2's; and `0B51`'s handicap line ("HANDICAP WALTER ? NO", `DS:0x1A0` per character,
+ * NO/YES at `DS:0x1DA`/`0x1DD`), drawn under the carousel while the question is open. */
+export function drawTwoPlayerPickLabels(buf, arena, { slot, handicap = null }) {
+  const x = slot === 0 ? 4 : 0xbe
+  drawString(buf, arena, rec('FONT1.CHR'), 'PLAYER', x, 0x32)
+  drawString(buf, arena, rec('FONT1.CHR'), slot === 0 ? 'ONE' : 'TWO', x, 0x3b)
+  if (handicap) drawStringCentred(buf, arena, rec('FONT1.CHR'), `HANDICAP ${CHARACTER_NAMES[handicap.character]} ? ${handicap.answer ? 'YES' : 'NO'}`, 0xa8)
+}
+
+/** `RunHeadToHeadChooseGameMenu 1000:1EF1`'s own screen: "TOURNAMENT" (X=0x18) and "SINGLE RACE"
+ * (X=0x9C) at Y=0xBE, "CHOOSE GAME!" centred at Y=0x68 (`1F25-1F4C`); the two vehicle icons
+ * (`1F4F-1F71`) are not drawn by the port. */
+export function drawChooseGame(buf, arena, { selection = 0 } = {}) {
+  drawStringCentred(buf, arena, rec('FONT2.CHR'), 'CHOOSE GAME!', 0x68)
+  const xs = [0x18, 0x9c]
+  ;['TOURNAMENT', 'SINGLE RACE'].forEach((label, i) => {
+    drawString(buf, arena, rec('FONT1.CHR'), (selection === i + 1 ? 'X ' : '  ') + label, xs[i], 0xbe)
+  })
+}
+
 export function drawPressAnyKey(buf, arena) {
   drawStringCentred(buf, arena, rec('FONT2.CHR'), 'PRESS ANY KEY TO START', 96)
 }

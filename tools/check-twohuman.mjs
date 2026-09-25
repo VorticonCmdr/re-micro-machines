@@ -26,7 +26,8 @@
 //    across both its own phases (release-wait then press-wait) -- NOT a fresh budget per phase,
 //    matching [0x2] only ever being reset at 17FF's own entry, never at the 182C transition.
 //   node tools/check-twohuman.mjs
-import { twoHumanSessionState, twoHumanMatchState, nextTrack, reportRace, skillLabel, selectSingleRaceTrack, raceInfoSlideTicks, RACE_RESULT_SLIDE_TICKS, RACE_RESULT_WAIT_TICKS, raceResultWaitInitialState, raceResultWaitStep, H2H_TRACK_TABLE, H2H_WINS_TO_CHAMPION, SINGLE_RACE_TRACK_TABLE } from '../src/frontend/twoHuman.js'
+import { twoHumanSessionState, twoHumanMatchState, twoHumanSetupState, twoHumanRosterBytes, commitTwoHumanPick, H2H_P1_START, H2H_P2_START, nextTrack, reportRace, skillLabel, selectSingleRaceTrack, raceInfoSlideTicks, RACE_RESULT_SLIDE_TICKS, RACE_RESULT_WAIT_TICKS, raceResultWaitInitialState, raceResultWaitStep, H2H_TRACK_TABLE, H2H_WINS_TO_CHAMPION, SINGLE_RACE_TRACK_TABLE } from '../src/frontend/twoHuman.js'
+import { handicapQuestionApplies } from '../src/frontend/charSelect.js'
 import { CHARACTER_NAMES, H2H_SKILL_INDEX_TABLE, H2H_SKILL_LABELS, trackName } from '../src/data/frontend-tables.js'
 
 let bad = 0
@@ -314,6 +315,28 @@ check('H2H_SKILL_LABELS has 8 entries (DS:08CD)', H2H_SKILL_LABELS.length === 8)
     const r = raceResultWaitStep(s, { fireHeld: true, anyKeyReleased: true })
     check('state.ticks at dismiss equals the real [0x2] value (tick runs before the release check)', r.exit === 'dismiss' && s.ticks === 4)
   }
+}
+
+// Two-human setup (1E20, docs/engine.md §9bv): the per-entry roster reset, the two start
+// characters, the commit (taken flag, car-slot word, handicap OR) and the session handicap cells.
+{
+  check('P1 starts on [0x9A0] = 5 (DWAYNE), P2 on [0x9A2] = 6 (JETHRO)', H2H_P1_START === 5 && H2H_P2_START === 6)
+  const session = twoHumanSessionState()
+  check('session: every handicap answer starts NO (0), CHOOSE GAME starts on nothing ([0x8A0]=0)', session.handicapAnswers.every((a) => a === 0) && session.chooseGameSelection === 0)
+  const setup = twoHumanSetupState()
+  check('fresh setup (0EBA): nobody taken, both slot words 11', twoHumanRosterBytes(setup).every((b, i) => b === i) && setup.rosterWords[0] === 11 && setup.rosterWords[1] === 11)
+  check('WALTER (0) gets the handicap question in two-human play (raceFormat 2, P2 device 4)', handicapQuestionApplies(0, 2, 4))
+  check('DWAYNE (5) does not', !handicapQuestionApplies(5, 2, 4))
+  const w1 = commitTwoHumanPick(setup, session, 0, 0, 0x80)
+  check('P1 WALTER with YES: slot word 0x80 (0B07 + 0B0E, [PROVEN] live in §9bn)', w1 === 0x80 && setup.rosterWords[0] === 0x80)
+  check('... WALTER is now taken for P2 (0AC2)', twoHumanRosterBytes(setup)[0] === 0x40)
+  check('... and the YES is stored in the session cell [0x1D6]', session.handicapAnswers[0] === 0x80)
+  const w2 = commitTwoHumanPick(setup, session, 1, 1, 0)
+  check('P2 MIKE with NO: slot word 1 ([PROVEN] live: [0x266A]=0x0001)', w2 === 1 && session.handicapAnswers[1] === 0)
+  const again = twoHumanSetupState()
+  check('a new TWO PLAYER entry resets the roster but the session keeps WALTER\'s YES', twoHumanRosterBytes(again)[0] === 0 && session.handicapAnswers[0] === 0x80)
+  const w3 = commitTwoHumanPick(again, session, 0, 5, null)
+  check('a character the question skips: plain index, no session write', w3 === 5 && session.handicapAnswers[5] === 0)
 }
 
 console.log(bad ? `${bad} of ${asserted} executed check(s) failed` : `check-twohuman: ${distinct.size} distinct assertions (${asserted} executed) pass -- two-human H2H's own tournament state (track pick with no repeats, win tally, session-level lifetime per-character stats that survive a new match, first-to-4 champion detection, the skill label formula, single race's own track select, the race-info slide's own tick count, the race-result screen's own fixed slide, and its own bounded dismiss-wait) matches the disassembly (GOAL-DOS-PARITY.md P4, docs/engine.md §9bh/§9bi/§9bj/§9bl)`)
