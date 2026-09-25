@@ -12121,3 +12121,27 @@ the port's documented smoothness divergence: the original runs this from the dra
 - the −12 draw position, measured on real PH0 frame pixels.
 
 The old animation test now expires the cooldown before each call.
+
+## 9ci. The car layer's paint order (`DrawRaceCarLayer 7CE0`), ported (2026-09-25)
+
+GOAL-DOS-PARITY.md P5, from §9cf 6 (e). `[STATIC]` from a full re-read of `7CE0-7D72`.
+
+`7CE0` runs four separate loops over the four car slots (`BX` 0 → 0x42C):
+
+| Pass | Address | Condition | What it calls |
+|---|---|---|---|
+| 1 | `7CE3` | active `[124C]` ≠ 0 and height `[12D6]` ≠ 0 | the shadow `7E5C` |
+| 2 | `7D01` | none (every slot) | the splash `8386`, then the puffs `8083` |
+| 3 | `7D14` | reload cooldown `[13A4]` ≠ 0 | the projectile `8712` |
+| 4 | `7D2B` | state 0xE or active | the state handler (`DS:278F`: body, overlays, rotor), then the position label `9076` under its own gate |
+
+In pass 4, round 9 returns right after car 0's handler (`7D49` `JZ 7D72`).
+
+The port drew each car's whole stack in one go, so a later car's shadow, puffs or projectile could
+cover an earlier car's body. `composeRaceView` now runs the four passes, and `drawCarLayer` became
+`drawCarBodyLayer` (pass 4 only). The puff and projectile passes have no active/present gate, as in
+the bytes. Pass 4 keeps the port's existing gate (active and present); an inactive state-0xE car
+drawing through pass 4 isn't modelled.
+
+**Test.** In `check-play`, car 1 is placed so its shadow lands exactly on car 0's body, clear of its
+own body. Car 0's body pixel survives; it fails on the old code.

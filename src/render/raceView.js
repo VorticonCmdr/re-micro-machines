@@ -197,7 +197,7 @@ function carFrame(frames, heading) {
   return frames[h8 >> 3]
 }
 
-/** Shadow only (`DrawCarShadowSilhouette 1000:7e5c`) -- split out of `drawCar` so `drawCarLayer`
+/** Shadow only (`DrawCarShadowSilhouette 1000:7e5c`) -- split out of `drawCar` so `composeRaceView`'s shadow pass
  * can interleave the splash/puff/projectile passes between shadow and body, matching the real
  * paint order (docs/engine.md §9q): shadow -> splash -> puff -> projectile -> body. `round`:
  * CHOPPERS (round 8) never draws a shadow at all (`7e77`, see `drawCar`'s header). */
@@ -220,7 +220,7 @@ function drawCarShadow(dst, w, h, camX, camY, frames, size, car, round) {
  * `drawCar`'s header) -- every other round uses the raw signed height, unclamped.
  * @returns {boolean} whether `7d73`'s own clip test (`8bab`, the REAL 256x224 window, not this
  * destination canvas's own possibly-narrower one) passed this exact call -- the fresh, per-render
- * signal `drawCarLayer` gates the round-8 rotor on (docs/engine.md §9d): 7D73's real rotor call sits
+ * signal `drawCarBodyLayer` gates the round-8 rotor on (docs/engine.md §9d): 7D73's real rotor call sits
  * behind this SAME clip test in the SAME function call, using this tick's own camera/position, not
  * behind the separate, state-gated `car.drawnThisFrame` sticky flag `engine/drawn.js` maintains for
  * physics-side readers (sfx/rubber-band/fire-gate) on a different cadence. */
@@ -419,12 +419,9 @@ function drawRotor(dst, w, h, camX, camY, rotorFrames, car) {
  * the round's own VH0 second bank (`vehicleFrames`'s return), needed for the states-1/4/5 overlay
  * -- omit to skip it, drawing (or not, per `carAnimationFrame`'s own body-visibility call) only the
  * body/shadow for those states, same as before this system existed. */
-function drawCarLayer(dst, w, h, camX, camY, frames, size, ph0, car, round, rotorFrames, bank2, hideBody = false) {
-  drawCarShadow(dst, w, h, camX, camY, frames, size, car, round)
-  if (ph0) {
-    drawPuffsAndSplashes(dst, w, h, camX, camY, ph0, car)
-    drawProjectile(dst, w, h, camX, camY, ph0, car)
-  }
+/** Pass 4 of `DrawRaceCarLayer 7CE0` (`7D2B`): one car's state handler -- body, overlays, rotor. The
+ * shadow, puff/splash and projectile passes run over every car before it (composeRaceView). */
+function drawCarBodyLayer(dst, w, h, camX, camY, frames, size, ph0, car, round, rotorFrames, bank2, hideBody = false) {
   const anim = carAnimationFrame(car, round)
   // 7D74: the two-car car [2621] names gets no body (only 7D73's body draw is gated; shadow, puffs,
   // projectiles and overlays still draw). `bodyDrawnNow`: false whenever this state doesn't call
@@ -552,11 +549,21 @@ export function composeRaceView({ words, bank, camera, frames = [], vehicleSize 
   else if (round === 8 && race != null) applyRound8HazardAnim(words, tileAnimCounter, race)
   drawTileBase(indexed, w, h, words, bank, camera.x, camera.y)
   const twoCar = hud?.twoCar ?? null
+  // `DrawRaceCarLayer 7CE0` paints in four passes over all four cars (docs/engine.md §9ci): every
+  // shadow (7CE3, active cars), then every car's splash and puffs (7D01, no gate), then every
+  // projectile (7D14, reload cooldown [13A4] != 0), then every car's state handler (7D2B) -- so one
+  // car's shadow or puffs never cover another car's body.
+  // car.active/present come from src/engine/car.js's fromBytes() as u16 (0 or 1), not booleans --
+  // compare numerically. Absent means "draw it" (the eyeball tool passes bare test cars).
+  const shown = (car) => (car.active ?? 1) !== 0 && (car.present ?? 1) !== 0
+  for (const car of cars) if (shown(car)) drawCarShadow(indexed, w, h, camera.x, camera.y, frames, vehicleSize, car, round)
+  if (ph0) {
+    for (const car of cars) drawPuffsAndSplashes(indexed, w, h, camera.x, camera.y, ph0, car)
+    for (const car of cars) drawProjectile(indexed, w, h, camera.x, camera.y, ph0, car)
+  }
   cars.forEach((car, i) => {
-    // car.active/present come from src/engine/car.js's fromBytes() as u16 (0 or 1), not booleans --
-    // compare numerically. Absent means "draw it" (the eyeball tool passes bare test cars).
-    if ((car.active ?? 1) === 0 || (car.present ?? 1) === 0) return
-    drawCarLayer(indexed, w, h, camera.x, camera.y, frames, vehicleSize, ph0, car, round, rotorFrames, bank2, twoCar?.hiddenCarLayer === i)
+    if (!shown(car)) return
+    drawCarBodyLayer(indexed, w, h, camera.x, camera.y, frames, vehicleSize, ph0, car, round, rotorFrames, bank2, twoCar?.hiddenCarLayer === i)
     if (hud?.ph0 && hud.round !== 9 && hud.raceFormat !== 2 && ((hud.raceOverCount ?? 0) >= 2 || car.lapsRemaining === 0)) {
       drawPositionLabel(indexed, w, h, camera.x, camera.y, hud.ph0, car)
     }

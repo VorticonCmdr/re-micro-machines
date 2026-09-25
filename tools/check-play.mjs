@@ -1541,6 +1541,15 @@ async function checkCarDrawAnchor() {
     check(`round 8: body still drawn at the unshifted anchor, (30,30) is body (got ${px(buf, 30, 30)})`, px(buf, 30, 30) === BODY)
   }
 
+  // (a2) DrawRaceCarLayer 7CE0's four passes (docs/engine.md §9ci): every shadow is painted before
+  // any body, so car 1's shadow landing on car 0 does not cover car 0's body.
+  {
+    const ground = { posX: 1000, posY: 1000, heading: 0, height: 0, colourOffset: 0 }
+    const flyer = { posX: 986, posY: 986, heading: 0, height: 14, colourOffset: 0 } // shadow at +z = (1000,1000), body at -z, clear of car 0
+    const buf = composeRaceView({ words, bank, camera, frames, vehicleSize: size, cars: [ground, flyer], view, round: 1 }).indexed
+    check(`paint order: car 1's shadow does not cover car 0's body (7CE3 before 7D2B), (32,32) is body (got ${px(buf, 32, 32)})`, px(buf, 32, 32) === BODY)
+  }
+
   // (b) a normal round (not 8) with the SAME airborne car: z applies to both layers as before.
   {
     const car = { posX: 1000, posY: 1000, heading: 0, height: 8, colourOffset: 0 }

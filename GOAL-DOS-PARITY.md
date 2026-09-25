@@ -781,7 +781,7 @@ docs, (6) commit.
 - [x] **Puffs and splashes, `8083`/`8386`** **Done (§9ch, M3.88).** (§9cf 6 a–d): frames advance before the spawn, `[12B2]=3`
   on every expiry, a zero-velocity low-grip trigger spawns nothing; the splash always spawns into
   slot 0, advances on `[12B2]`, and draws at pos−cam−12. Fix `puffs.js`/`raceView.js` with tests.
-- [ ] **The car layer's paint order** (§9cf 6e, `DrawRaceCarLayer 7CE0`): shadows, then
+- [x] **The car layer's paint order** **Done (§9ci, M3.89).** (§9cf 6e, `DrawRaceCarLayer 7CE0`): shadows, then
   splash+puffs, then projectiles, then bodies, each over all cars. Split `drawCarLayer` into the
   four passes.
 - [ ] **The projectile tail icon** (§9cf 6f, `871F-872D`): `projFrame >> 2`, read before a
