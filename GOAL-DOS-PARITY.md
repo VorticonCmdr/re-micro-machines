@@ -490,21 +490,24 @@ docs, (6) commit.
   result-screen's-own-dismiss-wait-began, not a boot-relative clock.
   **Remaining, now better bounded (docs/engine.md §9bj maps `1E20`/`1EF1`/`2193`'s remaining half,
   ports `2216`'s own tick count as `raceInfoSlideTicks`; §9bl reads `256E` in full and ports its own
-  fixed-22-tick slide/dismiss-wait as `RACE_RESULT_SLIDE_TICKS`/`raceResultWaitStep`):** the
-  handicap question screen as interactive UI/state (`0B51` -- its own disassembly is DONE, §9bf,
-  only the port and the roster-word link remain, and the roster-word link itself is now RESOLVED,
-  §9bk), the WINNER!/LOSER! DRAW itself (`256E` -- its own full logic/timing is now ported, only the
+  fixed-22-tick slide/dismiss-wait as `RACE_RESULT_SLIDE_TICKS`/`raceResultWaitStep`; §9bm reads
+  `0B51` in full and ports its own interactive Y/N toggle as `handicapStep`, finding it exits on
+  BRAKE as well as FIRE and that LEFT beats RIGHT when both are held):** the WINNER!/LOSER! DRAW
+  itself (`256E` -- its own full logic/timing is now ported, only the
   pixel-level draw remains), `2481`/`240A`'s own draw (formulas already ported, §9bh/§9bi -- a
   suspected persistence bug in `2481`'s own read was investigated and ruled out, §9bl: `240A`
-  unconditionally cleans the relevant bits before every real `2481` call), and `flow.js` wiring --
+  unconditionally cleans the relevant bits before every real `2481` call), the roster-word-bit-7
+  merge for two-human H2H specifically (`handicapStep`'s own boolean result -> a roster word's bit
+  7, no two-human H2H roster-word storage exists yet in this port), and `flow.js` wiring --
   confirmed §9bj to need NO new character-select or menu STATE-MACHINE logic
   (P1/P2 picks reuse the already-ported `charSelectStep` twice via its existing `input` parameter;
   the CHOOSE GAME TOURNAMENT/SINGLE RACE picker reuses the already-ported `twoItemMenuStep` a third
   time; the champion screen, `1AAD`, reuses `flow.js`'s own already-wired `CHAMPION` phase/
   `drawChampion`/`championMusic` from the one-player path) -- just a real P2 `createKeyboardReader`,
   `enterSelectGame`'s TWO PLAYER branch, one shared `controllerTypes` array feeding both `spawnCars`
-  and `raceCtx.controllerTypes`, new `screens.js` draw functions, and
-  settling where DOS marks a character pick taken (open, §9bj) -- scoped for BOTH two-human modes at
+  and `raceCtx.controllerTypes`, and
+  new `screens.js` draw functions (where DOS marks a character pick taken is RESOLVED, §9bl: `09E0`
+  itself, no new `charSelect.js` logic needed) -- scoped for BOTH two-human modes at
   once, since P4's 2nd item below shares `twoHuman.js`'s own session state (§9bi). Each remaining
   screen still its own commit, per the established one-commit-per-screen pattern.
 - [ ] **The single-race select** (`SelectSingleRaceTrack 1000:2193`, the 10-entry list at

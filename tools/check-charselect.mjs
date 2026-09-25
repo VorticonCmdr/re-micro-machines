@@ -11,7 +11,7 @@
 //    real user press, unlike the entry-time skip);
 //  - a real pick's own 5-blink, 80-tick commit sequence, and ESC's immediate cancel.
 //   node tools/check-charselect.mjs
-import { charSelectInitialState, charSelectStep, handicapQuestionApplies, CAROUSEL_STEP_TABLE, CAROUSEL_SLOT_PX, BLINK_COUNT, BLINK_TICKS } from '../src/frontend/charSelect.js'
+import { charSelectInitialState, charSelectStep, handicapQuestionApplies, handicapInitialState, handicapStep, CAROUSEL_STEP_TABLE, CAROUSEL_SLOT_PX, BLINK_COUNT, BLINK_TICKS } from '../src/frontend/charSelect.js'
 
 let bad = 0
 function check(name, cond) {
@@ -112,5 +112,65 @@ check('character 3+ never asks, even in a real two-human H2H', !handicapQuestion
 check('a four-car race (format 1) never asks', !handicapQuestionApplies(0, 1, 5))
 check('the other slot being CPU (one-player H2H vs CPU) never asks', !handicapQuestionApplies(0, 2, 6))
 
-console.log(bad ? `${bad} check(s) failed` : 'check-charselect: the carousel\'s real 13-step ease, roster-encoded taken/skip logic, 5-blink commit sequence, and the handicap question\'s own gating all match the disassembly')
+// 9. FUN_1000_0b51's own interactive Y/N toggle: default NO, fire commits with no change.
+{
+  const s = handicapInitialState()
+  check('fresh state defaults to NO (0)', s.answer === 0)
+  const r = handicapStep(s, { bits: 0x08 })
+  check('fire with no toggle commits NO', r.exit === 'confirm' && r.handicap === false)
+}
+
+// 10. RIGHT toggles to YES; a later exit commits YES.
+{
+  const s = handicapInitialState()
+  let r = handicapStep(s, { bits: 0x40 }) // RIGHT
+  check('RIGHT does not exit, sets the scratch answer to YES', r.exit === null && s.answer === 0x80)
+  r = handicapStep(s, { bits: 0 }) // nothing held -- no change
+  check('releasing does not revert the scratch answer', s.answer === 0x80)
+  r = handicapStep(s, { bits: 0x08 }) // fire
+  check('fire commits the toggled YES', r.exit === 'confirm' && r.handicap === true)
+}
+
+// 11. LEFT reverts YES back to NO.
+{
+  const s = handicapInitialState(0x80) // previously answered YES (persisted from an earlier visit)
+  check('a previously-YES character starts YES', s.answer === 0x80)
+  handicapStep(s, { bits: 0x80 }) // LEFT
+  check('LEFT reverts the scratch answer to NO', s.answer === 0)
+  const r = handicapStep(s, { bits: 0x08 })
+  check('fire commits the reverted NO', r.exit === 'confirm' && r.handicap === false)
+}
+
+// 12. BRAKE (0x10) exits exactly like FIRE (0x08) -- 0BEF's own test, not just 0BF3's.
+{
+  const s = handicapInitialState()
+  handicapStep(s, { bits: 0x40 }) // RIGHT -> YES
+  const r = handicapStep(s, { bits: 0x10 }) // BRAKE, not FIRE
+  check('BRAKE exits and commits just like FIRE', r.exit === 'confirm' && r.handicap === true)
+}
+
+// 13. LEFT and RIGHT both held: LEFT wins (0BF9's own JNZ short-circuits before 0BFD's RIGHT test).
+{
+  const s = handicapInitialState(0x80) // start YES so a no-op would be indistinguishable from a real win
+  handicapStep(s, { bits: 0x80 | 0x40 }) // LEFT | RIGHT together
+  check('LEFT beats RIGHT when both are held', s.answer === 0)
+}
+
+// 14. Exit and a toggle bit held together: exit wins, using the answer as it stood BEFORE this
+// tick's own toggle (0BEC-0BF5 runs before 0BF7-0C01, so the toggle bit is never even read).
+{
+  const s = handicapInitialState() // NO
+  const r = handicapStep(s, { bits: 0x08 | 0x40 }) // FIRE | RIGHT together
+  check('fire held together with RIGHT commits the OLD answer, ignoring the toggle', r.exit === 'confirm' && r.handicap === false)
+}
+
+// 15. No release-wait at entry (docs/engine.md §9bk, live-proven): a fire already held from the
+// character carousel's own commit press resolves the question on its very first tick.
+{
+  const s = handicapInitialState(0x80) // a character who answered YES on an earlier visit
+  const r = handicapStep(s, { bits: 0x08 }) // fire held straight through from the carousel
+  check('a held fire from the previous screen commits instantly, on the FIRST call, with no debounce', r.exit === 'confirm' && r.handicap === true)
+}
+
+console.log(bad ? `${bad} check(s) failed` : 'check-charselect: the carousel\'s real 13-step ease, roster-encoded taken/skip logic, 5-blink commit sequence, and the handicap question\'s own gating and interactive Y/N toggle all match the disassembly')
 process.exitCode = bad ? 1 : 0

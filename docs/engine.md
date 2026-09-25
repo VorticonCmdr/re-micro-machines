@@ -9773,16 +9773,20 @@ behaves exactly like every other site's. **These are NOT calls into `17FF`** -- 
 short inline loop sharing only the toggle-on-threshold idiom, with its own different dismiss
 semantics (`ShowChampionScreenTune3`'s own loop at `1C0B` exits on ANY `[0x108B]` bit;
 `ShowRaceOutcomeMessageTune8or6`'s own inline loop, reached only for outcome codes 2/3, exits at
-`1DDB` on fire specifically with NO release debounce, and ESC at `1DCD` jumps to `1E12`, which zeros
-`[0x406]` -- the lives counter; neither loop is `raceResultWaitStep`-shaped, so it must not be reused
+`1DDB` on fire specifically with NO release debounce, and `1DCD` is the ALREADY-DOCUMENTED `]`
+lives-zeroing cheat (`CMP [0x107E],0x1B` -- scancode `0x1B` for `]`, NOT ESC, already established in
+full at this file's own item 5 above -- jumping to `1E12: MOV [0x406],0; RET` when it matches;
+neither loop is `raceResultWaitStep`-shaped, so it must not be reused
 for either screen). `17FF` itself, checked this session with `get_xrefs_to`, has 8 real call sites
-across 5 functions, not the single `256E`/`1E0C` pair assumed earlier in this section: `256E`'s own
+across 5 functions: `256E`'s own
 tail (`26BA`, `CX=0x14`, the one call this file already ports as `raceResultWaitStep`),
 `ShowRaceOutcomeMessageTune8or6` (`1E0C`, `CX=0xF`, for outcome codes 0/1/4/5 -- the OTHER branch
 from the inline loop above), `ShowRaceResultsScreenTune8or6` (`164B`), `ShowHeadToHeadResultUnreferenced`
-(`2166`), and an undocumented function `FUN_1000_18D8` which calls it FOUR times (`1908`/`1919`/
+(`2166` -- already CONFIRMED DEAD CODE by M3.62/§9bh, `2099-216B` unreachable, so this
+xref exists in the binary but never actually executes), and an undocumented function
+`FUN_1000_18D8` which calls it FOUR times (`1908`/`1919`/
 `196C`/`1988`). None of these other 6 call sites, nor `FUN_1000_18D8` itself, nor
-`ShowRaceOutcomeMessageTune8or6`'s own undebounced dismiss/ESC-zeroes-lives path, has been read or
+`ShowRaceOutcomeMessageTune8or6`'s own undebounced dismiss/`]`-zeroes-lives path, has been read or
 ported this session (`UNKNOWN_17ff_other_callers`) -- a lead for later, not part of M3.66's own
 scope. `DS:0002` is therefore NOT a from-boot free-running counter, contrary
 to GOAL-DOS-PARITY.md's own P4 item 1
@@ -9878,3 +9882,109 @@ handicap screen `0B51` and champion screen `1AAD` (unchanged, §9bj/§9bk), `256
 fully speced above, ready to port), `2481`'s own draw (its own formula already ported, §9bh/§9bi,
 and no longer blocked by a stale-state design question), and `flow.js` wiring itself -- each still
 its own commit.
+
+## 9bm. `0B51` ported (state): the handicap question's own interactive Y/N toggle (2026-09-25)
+
+**Purpose.** GOAL-DOS-PARITY.md P4's own "Remaining" list carried "the handicap question screen as
+interactive UI/state (`0B51` -- its own disassembly is DONE, §9bf, only the port and the
+roster-word link remain)" as the next-smallest, best-bounded item: the roster-word link was
+already `[PROVEN]` live (§9bk, `UNKNOWN_handicap_rosterword_link`), and `handicapQuestionApplies`
+(`charSelect.js`, `0B51-0B86`'s own gate) was already ported, leaving only `0B51`'s own BODY
+(`0B89-0C14`, the actual Y/N screen) unported.
+
+**`0B51-0C14`, disassembled in full this session** (`disassemble_function`, ground truth; §9bf/§9bk
+had only ever cited individual addresses, never the complete instruction stream). Entry: `AX` =
+character index (0/1/2, already range-checked by the gate above). `0B89-0B9C`: `PUSHA`, draws a
+background box (`CALL 0823`), `POPA` -- restores `BX` (the answer-cell pointer, `DS:0x1D6/1D7/1D8`
+per character, set by the gate) and `SI` (the "HANDICAP `<NAME>` ?" string pointer) across the
+box-draw call's own register clobber. `0B9D-0B9F`: `MOV AL,[BX]` / `MOV [0x1E0],AL` -- seeds the
+scratch toggle cell `[0x1E0]` from the character's own PERSISTED answer (the caller's own
+responsibility to have set `DS:[0x1D6+c]` correctly beforehand -- `0` the first time a character is
+asked this session, else whatever it last answered. **`search_byte_patterns` for each address as a
+16-bit immediate operand (`"D6 01"`/`"D7 01"`/`"D8 01"`) returns exactly ONE hit apiece, all three
+`0B51`'s own `MOV BX,0x1D6`/`0x1D7`/`0x1D8` setup -- `0B51` is the ONLY place in the whole binary
+that references any of these three addresses at all**, so nothing (including `0EBA`'s own H2H-entry
+reset, already fully disassembled by M3.64/§9bj, which does not touch them either) ever resets them:
+an answer persists for the rest of the real DOS session, the same "no reset site anywhere" shape
+already established for the lifetime win/loss counters, §9bh. Ported as `handicapInitialState`'s
+own `defaultAnswer` parameter, since this module has no session-scoped storage of its own --
+`0` is the correct default only for a character's FIRST visit; the caller (the eventual
+`twoHuman.js`/`flow.js` wiring) owns tracking each character's own last answer across visits,
+session-scoped like the lifetime stats, not match-scoped.
+`0BA2`: `PUSH BX` -- saves the answer-cell pointer across the redraw+poll loop, popped again only
+at the final commit (`0C09`). `0BAF-0C07` (the loop body, re-entered on every LEFT/RIGHT toggle):
+draws the name label (`CALL 0929`, using the `SI` `POPA` restored), a "NO"/"YES" box+text (`CALL
+0823` then `0BC1-0BCC`'s own `CL = (toggle==0x80) ? 1 : 0` index into a 2-entry string table via
+`CALL 08F0`), flips the frame (`CALL 08BC`), waits for the next real tick (`0BE0-0BE7`'s own
+`MOV AX,[0x2]` / spin `CMP [0x2],AX`/`JZ` -- the same "wait for `DS:0002` to change" idiom used
+throughout this file), then polls input (`CALL 2D5B`) and reads `[0x108B]` (`0BEC`). Two exit
+tests run FIRST, unconditionally: `TEST AL,0x10`(BRAKE)/`JNZ 0C09`, then `TEST AL,0x8`(FIRE)/
+`JNZ 0C09` -- **BRAKE exits this screen exactly like FIRE does, a detail not previously
+documented** (`src/engine/input.js`'s own `BIT_BRAKE=0x10` confirms the bit identity). **`[0x108B]`
+here is the PICKING PLAYER's own reader alone, NOT P1|P2's OR'd byte** -- unlike
+`enterTwoItemMenu`'s own combined read (`0382` sets `[0x1080]=0`, ORing both players' own reader
+blocks together, §9av), `09E0` is entered with `[0x1080]` already set to ONE specific player's own
+reader block by its caller `1E20` (`0x137B` for P1, `0x14DF` for P2, §9bj/M3.64) and -- confirmed by
+reading `09E0-0B50` in full this session -- never writes `[0x1080]` itself anywhere in its own body,
+including at either `CALL 0B51` site (`0B0B`/`0B1D`); `charSelect.js`'s own existing docstring
+already documents this for the carousel itself ("P1's OWN reader only... unlike the two-item menu's
+own combined-both-players byte"), and it holds for `0B51` too, for the same reason. **The wiring
+commit must feed `handicapStep` only the picking player's own bits** -- the other player's FIRE, or
+now BRAKE too, would otherwise wrongly dismiss the question.
+Only if NEITHER fired does it test LEFT/RIGHT (`0BF7-0C01`): `TEST AL,0x80`(LEFT)/`JNZ 0C03` sets
+the scratch cell to `0`(NO); else `TEST AL,0x40`(RIGHT)/`JZ 0BE0` (neither held -- loop back to the
+tick-wait with NO redraw) sets it to `0x80`(YES) and falls into `0C03`'s own store, then `JMP
+0BAF` redraws and loops. **LEFT beats RIGHT when both are held**: `0BF9`'s own `JNZ 0C03` fires
+before `0BFD`'s own RIGHT test is ever reached, so the RIGHT branch is dead code on a tick where
+LEFT is also held. Commit (`0C09-0C11`): `POP BX` (the saved answer-cell pointer), `MOV AL,
+[0x1E0]` (the final scratch toggle), `MOV [BX],AL` (persists it back to `DS:[0x1D6+c]` for any
+LATER visit this session), `XOR AH,AH` / `RET` (returns `AX = 0x0000` or `0x0080` -- the exact bit
+`altTuningFieldsFor`'s own `3F3B` roster-word-bit-7 test reads, §9bk).
+
+**No release-wait at this screen's own entry -- a real quirk, `[PROVEN]` live already (§9bk), not
+re-derived here, just ported faithfully.** Unlike `179B`'s own documented `[0x107E]`/`[0x107F]`
+clear or `charSelectStep`'s own `AWAIT_RELEASE` phase, `0B51`'s poll loop has no equivalent: a fire
+(or brake) already held continuously from the character carousel's own commit press satisfies the
+FIRST poll's exit test instantly, resolving the question with whatever answer happened to be
+already stored and no visible interaction at all (§9bk's own live capture: two characters picked
+with fire held through the carousel's commit, neither showed the handicap screen). This port does
+NOT add a debounce `0B51` itself doesn't have.
+
+**Ported: `handicapInitialState`/`handicapStep` (`charSelect.js`, alongside the already-ported
+`handicapQuestionApplies`).** `handicapInitialState(defaultAnswer = 0)` returns `{ answer:
+defaultAnswer }`, the caller's own responsibility to seed from whatever `DS:[0x1D6+c]`-equivalent
+per-character store it keeps (this module has none -- session-scoped storage is `twoHuman.js`'s own
+future concern, when P2 picking is wired). `handicapStep(state, input)` models exactly one
+`~1/70s` tick of the loop body above (`{ bits }` input, `src/engine/input.js`'s own 5-bit
+convention): checks `HANDICAP_EXIT_BITS = 0x10 | 0x08` first and returns `{ exit: 'confirm',
+handicap: state.answer === 0x80 }` if either is set (the caller is responsible for merging that
+boolean into a roster word's bit 7 itself, matching `0B0E`/`0B20`'s own `OR`, not yet ported --
+P4's remaining scope); otherwise tests LEFT then RIGHT (`else if`, preserving LEFT's own real
+precedence) and returns `{ exit: null }`. Not modeled: the redraw-vs-no-redraw distinction between
+the LEFT/RIGHT branch (`JMP 0BAF`) and the no-op branch (`JZ 0BE0`) -- a pixel/frame-timing detail
+with no effect on the state transitions themselves, a `screens.js` concern like every other
+screen's own draw in this codebase.
+
+**Tests.** `tools/check-charselect.mjs` gained 7 new blocks (43 distinct assertions, up from 31,
+all 43 executed): the default-NO/fire-commits case; RIGHT-then-fire committing YES; a
+previously-YES character's LEFT-then-fire reverting to NO; BRAKE exiting identically to FIRE;
+LEFT-beats-RIGHT when both are held; exit-with-a-toggle-held-together committing the OLD answer
+(proving exit is checked before the toggle, not after); and the no-debounce case (a held fire from
+a prior screen committing on the very first call). Reintroduction-proven: swapping the LEFT/RIGHT
+test order fails 1/43; testing FIRE only (dropping BRAKE) fails 1/43; checking the toggle before
+the exit bits fails 1/43; swapping the LEFT/RIGHT VALUES (0 and 0x80) fails 7/43. All four
+restored, 43/43 confirmed clean. Full 30-script regression suite plus `build` re-run clean.
+
+**Verification status.** `[STATIC]`: the full `0B51-0C14` disassembly (`disassemble_function`, this
+session), including the newly-found BRAKE-also-exits detail, the LEFT-beats-RIGHT precedence, and
+the picking-player-only-bits finding -- none observed live (the live capture in §9bk only ever
+exercised RIGHT-then-commit-via-FIRE for two characters, never BRAKE, never both toggle keys
+together, and never a second player's own stray input during the question). `handicapInitialState`/
+`handicapStep` are therefore `[STATIC]`, not yet `[PROVEN]`. Not ported this session: the roster-
+word-bit-7 merge itself (no two-human H2H roster-word storage exists yet in this port), and the
+screen's own pixel draw (name label, NO/YES box, background) -- both `flow.js`/`screens.js`
+concerns for the eventual wiring commit, unchanged in scope from §9bl's own P4 note. **Good next
+live check, cheap alongside §9bl's own pending predictions (blink cadence at `26A0`, `[0xC16]`
+clean at race 2's `2481`, the face banks, `v` at `1FDD`): hold BRAKE (not FIRE) through a fresh
+`0B51` visit and confirm it dismisses the same way FIRE does, and confirm the OTHER player's own
+FIRE/BRAKE does NOT dismiss it.**

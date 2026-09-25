@@ -12,6 +12,11 @@
 // and the fire-confirm gate (1000:0ab8) silently ignores a fire press landing on one. This port's
 // `roster` argument is `tournament.js`'s own roster array (of raw byte values, not booleans),
 // read the exact same way.
+//
+// Also covers `FUN_1000_0b51`, the two-human Head to Head "HANDICAP <name> ?" question `09E0`
+// calls unconditionally after every commit (GOAL-DOS-PARITY.md P4, docs/engine.md §9bm): its own
+// gate (`handicapQuestionApplies`) and, added this session, its own interactive Y/N toggle
+// (`handicapInitialState`/`handicapStep`), fully disassembled (`0B51-0C14`).
 export const CAROUSEL_STEP_TABLE = [2, 2, 2, 2, 4, 4, 4, 4, 8, 8, 8, 8, 8] // DS:0185, sums to exactly 64 (one slot)
 export const CAROUSEL_SLOT_PX = 64
 export const CAROUSEL_SLOT_COUNT = 11
@@ -149,4 +154,51 @@ export function charSelectStep(state, input, roster) {
       return { exit: null }
     }
   }
+}
+
+/**
+ * `FUN_1000_0b51`'s own interactive Y/N toggle (1000:0b89-0c14, the part AFTER its own gate --
+ * `handicapQuestionApplies`, above -- already covers 0b51-0b86). Full disassembly this session
+ * (docs/engine.md §9bm). `defaultAnswer`: `DS:[0x1D6+character]`'s own persisted per-character
+ * value (`0` the first time a character is asked this session, else whatever it last answered --
+ * `0B9D: MOV AL,[BX]`, `BX` selected per-character at `0B68`/`0B73`/`0B7E`). SESSION-scoped, not
+ * match-scoped: `search_byte_patterns` confirms `0B51` is the ONLY function in the whole binary
+ * that references `DS:0x1D6`/`0x1D7`/`0x1D8` at all, so nothing ever resets them (not even `0EBA`'s
+ * own H2H-entry reset) -- the caller owns tracking each character's own last answer across visits,
+ * this module has no session storage of its own. `0` = NO, `0x80` = YES
+ * (the real byte values, not booleans, so `state.answer` matches `[0x1E0]`'s own scratch cell
+ * byte-exact).
+ */
+export function handicapInitialState(defaultAnswer = 0) {
+  return { answer: defaultAnswer }
+}
+
+const HANDICAP_LEFT = 0x80 // 1000:0bf9: TEST AL,0x80 -> AH=0 (NO)
+const HANDICAP_RIGHT = 0x40 // 1000:0bfd/0bff: TEST AL,0x40 -> AH=0x80 (YES)
+const HANDICAP_EXIT_BITS = 0x10 | 0x08 // 1000:0bef/0bf3: BRAKE(0x10) or FIRE(0x08), tested BEFORE LEFT/RIGHT
+
+/**
+ * One ~1/70s tick of `0B51`'s own poll loop (`0BAF`/`0BE0`-`0C07`). `input`: `{ bits }`, the
+ * PICKING PLAYER's own 5-bit reader ONLY (LEFT/RIGHT/ACCEL/BRAKE/FIRE = 0x80/0x40/0x20/0x10/0x08,
+ * `src/engine/input.js`'s own convention) -- NOT P1|P2's OR'd byte: `09E0` never writes `[0x1080]`
+ * (confirmed by reading it in full), so `[0x108B]` here is still whichever single reader block its
+ * own caller, `1E20`, set up for this character's picking player (docs/engine.md §9bm). Feeding it
+ * both players' bits ORed together would let the OTHER player's fire/brake wrongly dismiss the
+ * question. Returns
+ * `{ exit: null | 'confirm', handicap? }`; `state` is mutated in place. **No release-wait at
+ * entry, unlike `charSelectStep`'s own AWAIT_RELEASE -- a real quirk of `0B51`, not a bug: a fire
+ * (or brake) already held from the character carousel's own commit press satisfies this loop's
+ * exit test on its very first tick, silently resolving the question with whatever answer was
+ * already stored (docs/engine.md §9bk, `[PROVEN]` live). This port faithfully does NOT debounce
+ * it.** Exit is checked before LEFT/RIGHT every tick, matching `0BEC-0BF5` running before
+ * `0BF7-0C01`; if BOTH a toggle bit and an exit bit are held in the same tick, exit wins (`0BEF`/
+ * `0BF3` return before ever reaching `0BF9`). LEFT beats RIGHT when both are held (`0BF9`'s own
+ * `JNZ 0C03` short-circuits before `0BFD`'s own RIGHT test, matching `0B51` byte-for-byte).
+ */
+export function handicapStep(state, input) {
+  const bits = input.bits ?? 0
+  if (bits & HANDICAP_EXIT_BITS) return { exit: 'confirm', handicap: state.answer === 0x80 } // 0C09-0C11
+  if (bits & HANDICAP_LEFT) state.answer = 0 // 0BF9/0C03
+  else if (bits & HANDICAP_RIGHT) state.answer = 0x80 // 0BFD/0BFF/0C03
+  return { exit: null }
 }
