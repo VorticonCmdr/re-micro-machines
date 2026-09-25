@@ -11,8 +11,11 @@
 // (`1BD8-1BE4`) it restores the background and loops with NO input poll and NO tick wait. Once both
 // are in place it sets `[0x1080]=0` (`1BF8`, both players' readers ORed), waits one tick
 // (`1BFE-1C05`), polls (`2D5B`) and leaves when `[0x108B]!=0` (`1C0B`): ANY bit the readers set
-// (`2D5B` writes `[0x108B]` straight from the reader routines' byte), from either player -- the
-// five control bits, INFERRED: the reader routines behind `[0x1083]`/`[0x1085]` were not read. There is no release-latch test and no timeout.
+// (`2D5B` writes `[0x108B]` straight from the reader routines' byte), from either player: the five
+// control bits AND the three extra keys the keyboard readers' byte also carries (`2DFA`/`2DFE`
+// return whole bytes of the ISR's key word -- F1/F2/F3 for KEYS 1, D/SPACE/V for KEYS 2, at
+// 0x04/0x02/0x01; docs/engine.md §9bt, correcting M3.73's own "five bits" inference). flow.js
+// reads them with `createExtraKeysReader`. There is no release-latch test and no timeout.
 //
 // Line 1 needs (0x28 - -0xB0) / 2 = 108 steps, line 2 (0x100 - 0x68) / 2 = 76, so the 108th
 // iteration is the first to find both in place, and its own tick wait and poll are the first ones.

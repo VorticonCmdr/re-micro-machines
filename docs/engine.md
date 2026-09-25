@@ -10810,7 +10810,10 @@ toward `0x35`, restore the background, loop -- no input poll, no tick wait. Othe
 byte (`2DAD-2DE8`), so this is ANY bit those readers set, from either player. That the keyboard
 reader sets only the five control bits is INFERRED (the port's own `createKeyboardReader` does, and
 the other keys land in `[0x107C]`), not read: the reader routines behind `[0x1083]`/`[0x1085]`
-were not disassembled. No release-latch test,
+were not disassembled. **WRONG, corrected 2026-09-25 (§9bt, M3.74):** the keyboard reader routines
+are `MOV AL,[0x107D]` (`2DFA`) and `MOV AL,[0x107C]` (`2DFE`), whole bytes of the ISR's key word,
+so each player's byte also carries three more keys (F1/F2/F3 for KEYS 1, D/SPACE/V for KEYS 2) at
+`0x04`/`0x02`/`0x01`, and `1C0B` leaves on those too. The port now reads them. No release-latch test,
 no timeout.
 
 **The slide's length and duration.** Line 1 needs (0x28 + 0xB0) / 2 = 108 steps and line 2
@@ -10941,3 +10944,37 @@ sleeps (§9bq), fresh page load, console tracking on from the start, H2H vs CPU.
   its keyup then left, as a key release (pressed after the entry reset, so tracked).
 - No input: left 10.013s after entry (700 ticks = 10.0s), last seen at 699.
 - No console errors.
+
+**Added after M3.74's own commit (2026-09-25): the sweep, widened, and a correction to §9bs.**
+An advisor review pointed out that "every input poll calls `2D5B` or reads `[0x107E]`" was an
+overstatement, so the other input channels were swept by byte pattern too (`[STATIC]`):
+- `7C 10` (reads of the ISR's key word `[0x107C]`): `2DFF` (the KEYS 2 reader routine, below),
+  `2F89`/`2F8F` (`KeyboardIsr`), `3076` (the race loop's SPACE pause test), `37D9`/`37E4` (the
+  pause). Nothing new.
+- `CD 16` (BIOS keyboard): only `00C4`, `real_entry`'s own exit. `E4 60` (the keyboard port): only
+  `2F05`, the ISR. `BA 60 00`: none.
+- `CD 33` (mouse): `ReadMouseDirections 2E02` and `DetectMouseInt33Dead 3A44` (P6).
+- `BA 01 02` (the game port): `2B93` (joystick calibration) and the joystick readers
+  `2F9F`/`2FCD`/`2FFF` (P6).
+
+So with the race-skip bullet, no other one-player gap turned up, within what byte patterns can see.
+
+**The reader routines, read at last.** `2DFA: MOV AL,[0x107D]` and `2DFE: MOV AL,[0x107C]` are the
+two keyboard readers. `KeyboardIsr` maps its 16-entry scancode table at `DS:106C` (SETTINGS.DAT's
+own order: KEYS1 x5, F1-F3, KEYS2 x5, D/SPACE/V) onto bit `0x8000 >> slot` of the word `[0x107C]`
+(`2F70-2F8D`), which puts KEYS 1's controls at `[0x107D]` `0x80..0x08` with F1/F2/F3 below at
+`0x04`/`0x02`/`0x01`, and KEYS 2's at `[0x107C]` with D/SPACE/V below. The race's own SPACE pause
+test (`3074: TEST [0x107C],2`) agrees. Every screen that tests `[0x108B]` tests single bits (`&8`,
+the directions) except `1C0B` (the champion screen) and the unreachable `2C59`, so only the
+champion screen was affected: it also leaves on SPACE, D or V (KEYS 2 player) and on F1, F2 or F3
+(KEYS 1 player). §9bs's "five control bits" inference was wrong; corrected in place. `input.js`
+gains `createExtraKeysReader`, and `flow.js`'s session-lifetime `waitReaders` now include each
+player's three extra keys (F1-F3 are mapped locally, so they don't become bindable on the
+redefine-keys screen). `check-champion.mjs` gains the slot-to-bit rule, the extra-keys reader
+(including D alone at `0x04`, which catches a reversed bit order), and SPACE alone exiting. Live
+(port, worker shim, fresh load): SPACE, D and F1 held each left the champion screen after its
+slide; Enter held 300ms and released did not; S did. No console errors. Open question, not chased
+here: the race's own control byte comes from the same readers, so in DOS a held D/SPACE/V (or
+F1-F3) also sets its low three bits during a race; whether anything in the race reads them beyond
+the SPACE pause is `UNKNOWN_race_reader_low_bits` (P5).
+

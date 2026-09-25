@@ -6,11 +6,16 @@
 //  - no input is read during the slide, then every iteration polls;
 //  - ANY control bit exits (each of the five alone), 0 never does -- the P1|P2 OR itself happens in
 //    flow.js's readChampionInput and is checked live, not here;
-//  - there is no timeout (nothing happens over 20000 polling iterations).
+//  - there is no timeout (nothing happens over 20000 polling iterations);
+//  - the reader byte's own low three bits (docs/engine.md §9bt): the ISR's slot -> bit rule
+//    (0x8000 >> slot over [0x107C]) puts F1/F2/F3 (slots 5-7) at [0x107D]'s 0x04/0x02/0x01 and
+//    D/SPACE/V (slots 13-15) at [0x107C]'s, consistent with the race's own SPACE pause test
+//    (3074: [0x107C] & 2); createExtraKeysReader reports them there, and SPACE alone exits.
 // The slide's DURATION is UNKNOWN_champion_slide_duration; the port's one-iteration-per-tick pacing
 // is a port choice, not asserted here as a DOS fact.
 //   node tools/check-champion.mjs
 import { championInitialState, championStep, CHAMPION_SLIDE_ITERATIONS, CHAMPION_LINE1_START, CHAMPION_LINE1_END, CHAMPION_LINE2_START, CHAMPION_LINE2_END } from '../src/frontend/champion.js'
+import { createExtraKeysReader } from '../src/engine/input.js'
 
 let bad = 0
 function check(name, cond) {
@@ -64,6 +69,37 @@ check('line 2 starts at 0x100 and stops at 0x68', CHAMPION_LINE2_START === 0x100
   let exited = false
   for (let i = 0; i < 20000; i++) if (championStep(s, () => ({ controlBits: 0 })).exit) exited = true
   check('no timeout: nothing held for 20000 iterations never exits', !exited)
+}
+
+// 5. The ISR's slot -> bit rule, and the extra keys it puts in each reader byte.
+{
+  const bitOf = (slot) => 0x8000 >> slot // 2F73/2F7B: CX=0x8000, SHR per table entry
+  const lo = (slot) => bitOf(slot) & 0xff // [0x107C]
+  const hi = (slot) => bitOf(slot) >> 8 // [0x107D]
+  check('KEYS1 fire (slot 4) is [0x107D] 0x08, the fire bit', hi(4) === 0x08)
+  check('KEYS2 fire (slot 12) is [0x107C] 0x08', lo(12) === 0x08)
+  check('F1/F2/F3 (slots 5-7) are [0x107D] 0x04/0x02/0x01', hi(5) === 0x04 && hi(6) === 0x02 && hi(7) === 0x01)
+  check('D/SPACE/V (slots 13-15) are [0x107C] 0x04/0x02/0x01', lo(13) === 0x04 && lo(14) === 0x02 && lo(15) === 0x01)
+  check('SPACE is [0x107C] & 2, the race\'s own pause test at 3074', lo(14) === 0x02)
+
+  const target = new EventTarget()
+  const key = (type, code) => { const e = new Event(type); e.code = code; target.dispatchEvent(e) }
+  const r = createExtraKeysReader(['KeyD', 'Space', 'KeyV'], target)
+  check('extra keys reader: nothing held reads 0', r.read() === 0)
+  key('keydown', 'Space')
+  check('extra keys reader: SPACE held reads 0x02', r.read() === 0x02)
+  key('keyup', 'Space'); key('keydown', 'KeyD')
+  check('extra keys reader: D (slot 13) held reads 0x04', r.read() === 0x04)
+  key('keydown', 'Space'); key('keydown', 'KeyV')
+  check('extra keys reader: D+SPACE+V read 0x07', r.read() === 0x07)
+  key('keyup', 'Space'); key('keyup', 'KeyD'); key('keyup', 'KeyV')
+  check('extra keys reader: all released reads 0', r.read() === 0)
+  r.dispose()
+
+  const s = championInitialState()
+  let at = null
+  for (let i = 1; i <= 300 && at == null; i++) if (championStep(s, () => ({ controlBits: 0x02 })).exit === 'dismiss') at = i
+  check('SPACE alone (0x02 in a KEYS2 reader byte) exits at the first poll', at === 108)
 }
 
 console.log(bad ? `${bad} check(s) failed` : 'check-champion: 1AAD\'s own wait -- a 108-iteration silent slide-in (re-simulated independently), then any control bit of either player exits, with no timeout -- matches the disassembly')

@@ -606,7 +606,10 @@ docs, (6) commit.
   duration is CPU-bound and not derivable (`UNKNOWN_champion_slide_duration`, a Part L item); the
   port runs one iteration per tick (~1.54s), a port choice. Then any control bit of either player
   leaves, with no timeout. `npm run champion`; `[PROVEN]` live in the port (a held ArrowLeft
-  leaves at 1.548s, Enter does nothing, no timeout after 16s, P2's KeyJ leaves).
+  leaves at 1.548s, Enter does nothing, no timeout after 16s, P2's KeyJ leaves). **CORRECTED
+  2026-09-25 (docs/engine.md §9bt's closing note):** "any control bit" was too narrow -- each
+  keyboard player's reader byte also carries F1/F2/F3 (KEYS 1) or D/SPACE/V (KEYS 2), and those
+  leave the screen too. Fixed and live-checked in the M3.74 follow-up commit.
 - [x] **PRESS ANY KEY's own wait** (`FUN_1000_0C15`, docs/engine.md §9bs's closing note). DOS: the
   release latch cleared at entry, then per tick a `[0x261F] >= 0x2BC` timeout check, a tick, and
   leave on any key RELEASE or on fire HELD (no debounce). The port leaves on any keydown, with a
@@ -622,7 +625,9 @@ docs, (6) commit.
   key release (`1398-13E0`): keypad `+` (scancode `0x4E`) moves to the next race unless it is the
   last (`[0x28C1]==0x19`), keypad `-` (`0x4A`) to the previous, wrapping 0 to `[0x439]`; round and
   race are re-derived from `ORDER_TABLE` and the race setup (`11F8`) runs again. The port has none
-  of it. After this, the §9bt sweep leaves nothing else in one-player play outside P5.
+  of it. After this, the §9bt sweep (widened to the key word `[0x107C]`, BIOS keyboard, the
+  keyboard port, the mouse and the game port) leaves nothing else in one-player play outside P5,
+  within what byte patterns can see.
 
 ### P4: two-human Head to Head
 - [ ] Port `FUN_1000_1e20` → `1ef1` / `RunHeadToHeadTournament 1000:1faf` / `2329` / `256e`: the WON/LOST
@@ -796,6 +801,9 @@ commits.
 - [ ] `UNKNOWN_map_attr_bits` (partial): bit 1's physical meaning and round 8's pattern.
 - [ ] `UNKNOWN_cheats_type` (narrowed): the downstream consequences of the three flag-set effects
   (§6).
+- [ ] `UNKNOWN_race_reader_low_bits` (docs/engine.md §9bt): in a race, a held D/SPACE/V (KEYS 2) or
+  F1-F3 (KEYS 1) sets the low three bits of that car's control byte; check whether anything besides
+  the SPACE pause test (`3074`) reads them. If something does, it becomes a P5 item.
 - [ ] `UNKNOWN_pr0_header_use` (`docs/track-graphics.md`).
 - [ ] The remaining unnamed race-draw helpers (`8634`, `8386`, `8712`, …; `docs/track-graphics.md`).
   Name them in Ghidra, document them, and check that each is ported.

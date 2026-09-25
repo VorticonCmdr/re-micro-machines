@@ -135,6 +135,37 @@ export function createMenuReleaseTracker(target = window) {
   }
 }
 
+/**
+ * The low three bits of a player's reader byte (docs/engine.md §9bt): `KeyboardIsr 1000:2EFD`
+ * maps its 16-entry scancode table (`DS:106C`, SETTINGS.DAT's own order: KEYS1 x5, F1-F3, KEYS2 x5,
+ * D/SPACE/V) onto bit `0x8000 >> slot` of the word `[0x107C]` (`2F70-2F8D`), and the two keyboard
+ * reader routines return a whole byte of it (`2DFA`: `[0x107D]`, KEYS1 + F1/F2/F3; `2DFE`:
+ * `[0x107C]`, KEYS2 + D/SPACE/V). So a player's reader byte carries, below its five control bits,
+ * three more keys at `0x04`/`0x02`/`0x01`. Only the champion screen's whole-byte test (`1C0B`)
+ * sees them. `codes`: three `KeyboardEvent.code`s, in slot order. `read()` returns those bits.
+ */
+export function createExtraKeysReader(codes, target = window) {
+  const held = new Set()
+  const onDown = (e) => { if (codes.includes(e.code)) held.add(e.code) }
+  const onUp = (e) => { held.delete(e.code) }
+  const onBlur = () => held.clear()
+  target.addEventListener('keydown', onDown)
+  target.addEventListener('keyup', onUp)
+  target.addEventListener('blur', onBlur)
+  return {
+    read() {
+      let bits = 0
+      codes.forEach((c, i) => { if (c && held.has(c)) bits |= 0x04 >> i })
+      return bits
+    },
+    dispose() {
+      target.removeEventListener('keydown', onDown)
+      target.removeEventListener('keyup', onUp)
+      target.removeEventListener('blur', onBlur)
+    },
+  }
+}
+
 /** A reader over a pre-recorded control-byte-per-step array (determinism check / tape replay). */
 export function createTapeReader(bytes) {
   let i = 0

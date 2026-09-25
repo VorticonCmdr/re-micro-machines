@@ -29,7 +29,7 @@ import { runStep } from '../engine/step.js'
 import { advanceRotorFrame } from '../engine/states.js'
 import { droneControlByte } from '../engine/ai.js'
 import { initCameraState } from '../engine/camera.js'
-import { createKeyboardReader, createPauseKeyReader, createMenuReleaseTracker, recordingReader, SCANCODE_TO_KEY_CODE } from '../engine/input.js'
+import { createKeyboardReader, createExtraKeysReader, createPauseKeyReader, createMenuReleaseTracker, recordingReader, SCANCODE_TO_KEY_CODE } from '../engine/input.js'
 import { createPauseState, updatePause } from '../engine/pause.js'
 import { createRaceEndState, updateRaceEnd } from '../engine/raceEnd.js'
 import { createFadeState, updateFade, applyFade } from '../engine/fade.js'
@@ -138,11 +138,19 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
    * bindings change (`optionsConfirm`). */
   let waitReaders = null
   let waitReadersBinding = null
+  // A player's reader byte also carries three more keys below its five controls (input.js's
+  // createExtraKeysReader header): F1/F2/F3 for KEYS1, D/SPACE/V for KEYS2. F1-F3 are mapped here,
+  // not in SCANCODE_TO_KEY_CODE, so they don't become bindable on the redefine-keys screen.
+  const EXTRA_KEY_CODES = { 0x3b: 'F1', 0x3c: 'F2', 0x3d: 'F3' }
+  const extraKeysFor = (control) => (control === 4 ? settings.f1f3 : control === 5 ? settings.dSpaceV : []).map((sc) => SCANCODE_TO_KEY_CODE[sc] ?? EXTRA_KEY_CODES[sc]) // only the two keyboard devices; JOY/MOUSE readers return their own bytes (P6)
   function refreshWaitReaders() {
-    const binding = JSON.stringify([p1Keys(), p2Keys()])
+    const binding = JSON.stringify([p1Keys(), p2Keys(), settings.p1Control, settings.p2Control, settings.f1f3, settings.dSpaceV])
     if (binding === waitReadersBinding) return
-    waitReaders?.p1.dispose(); waitReaders?.p2.dispose()
-    waitReaders = { p1: createKeyboardReader(p1Keys(), window), p2: createKeyboardReader(p2Keys(), window) }
+    if (waitReaders) for (const r of Object.values(waitReaders)) r.dispose()
+    waitReaders = {
+      p1: createKeyboardReader(p1Keys(), window), p2: createKeyboardReader(p2Keys(), window),
+      p1Extra: createExtraKeysReader(extraKeysFor(settings.p1Control), window), p2Extra: createExtraKeysReader(extraKeysFor(settings.p2Control), window),
+    }
     waitReadersBinding = binding
   }
   refreshWaitReaders()
@@ -1165,7 +1173,9 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     championRafId = requestAnimationFrame(championTick)
   }
   function readChampionInput() {
-    return { controlBits: waitReaders.p1.read() | waitReaders.p2.read() } // 1BF8: [0x1080]=0, both players ORed
+    // 1BF8: [0x1080]=0, both players' WHOLE reader bytes ORed -- the five controls plus each group's
+    // three extra keys (F1-F3 / D, SPACE, V), all of which 1C0B's !=0 test sees (docs/engine.md §9bt)
+    return { controlBits: waitReaders.p1.read() | waitReaders.p2.read() | waitReaders.p1Extra.read() | waitReaders.p2Extra.read() }
   }
   function championWaitTick(readInput) {
     if (championStep(championState, readInput).exit) { leaveChampion(); return true }
@@ -1336,7 +1346,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       if (resultsRafId != null) cancelAnimationFrame(resultsRafId)
       if (championRafId != null) cancelAnimationFrame(championRafId)
       if (pressAnyKeyRafId != null) cancelAnimationFrame(pressAnyKeyRafId)
-      waitReaders?.p1.dispose(); waitReaders?.p2.dispose()
+      if (waitReaders) for (const r of Object.values(waitReaders)) r.dispose()
       titleReader?.dispose()
       twoItemReaders?.p1.dispose(); twoItemReaders?.p2.dispose()
       charSelectReader?.dispose()
