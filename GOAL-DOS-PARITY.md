@@ -711,8 +711,9 @@ docs, (6) commit.
   GAME. **Commit C done (M3.78, §9bx), closing this item:** `256E`'s own screen (tune 8, the 22-tick
   silent slide, `17FF` blink windows with no timeout, the dismissing window's `[0x2]` as the next
   track's seed); `[PROVEN]` live in the port. The pixel-level art (portraits, poses, icons) is Part
-  F; SINGLE RACE (`2329`) is the next item.
-- [ ] **The single-race select** (`SelectSingleRaceTrack 1000:2193`, the 10-entry list at
+  F; SINGLE RACE (`2329`) is the next item. **CORRECTED: this item's own title names `2329`, so it
+  was not closed by M3.78; it closes with single race, M3.79 (docs/engine.md §9by).**
+- [x] **The single-race select** (`SelectSingleRaceTrack 1000:2193`, the 10-entry list at
   `DS:09D9`; LEFT and RIGHT both step +1). Find where it is reachable from, and port it if it is
   reachable.
   **Logic ported, §9bi; flow wiring in step 4 (same as item 1 above -- nothing in `game.html`
@@ -730,6 +731,11 @@ docs, (6) commit.
   total), reintroduction-proven. `2193`'s own remaining, undisassembled half (its own `CALL 2216`)
   is now also read (§9bj): every `selectSingleRaceTrack()` call -- not just the screen's first visit
   -- runs the SAME slide-in animation tournament mode uses once per race.
+  **DONE 2026-09-25 (M3.79, docs/engine.md §9by), closing this item and the first:** `2329` wired
+  -- the select screen (fire release-wait, `2216`'s slide on every step, ESC release / fire / LEFT
+  or RIGHT +1 with no release-wait, the session cursor, "PRO" blinking), the race, `256E` with
+  "SINGLE RACE" and no tally, back to the select; ESC back to CHOOSE GAME. `[PROVEN]` live in the
+  port. Open: `UNKNOWN_single_race_28c1` (the stale `[28C1]` a single race runs with).
 
 ### P5: in-race behaviour that differs from DOS
 - [ ] **ESC during a race.** The port quits to the title, which is port-only (`flow.js:424`,

@@ -348,6 +348,7 @@ export function twoHumanSessionState() {
     // time it is asked -- session-lifetime, `[PROVEN]` to survive a full TWO PLAYER re-entry (§9bn)
     handicapAnswers: new Array(CHARACTER_NAMES.length).fill(0),
     chooseGameSelection: 0, // [0x8A0]: 0 in the image (nothing pre-selected), written only on a confirm (1F84)
+    singleRaceCursor: 0, // [0x8A3]: 0 in the image, [PROVEN] live; only 2193 writes it, so it persists all session
   }
 }
 
@@ -435,8 +436,8 @@ export function nextTrack(state, v) {
  * `1000:2081/208B`'s own real "first to reach 4 wins" ordering (P1 checked first, but only one
  * side's own tally can possibly be 4 after any single race, since exactly one increments per
  * call). */
-export function reportRace(state, p1Character, p2Character, p1Won) {
-  state.raceNumber++ // 207A
+export function reportRace(state, p1Character, p2Character, p1Won, { tournament = true } = {}) {
+  if (tournament) state.raceNumber++ // 207A -- RunHeadToHeadTournament's own; single race (2329) never touches [28C1]
   if (p1Won) {
     state.p1Wins++ // 2583
     state.session.lifetimeWins[p1Character]++ // 25B0
@@ -554,4 +555,48 @@ export function raceResultScreenStep(state, input = {}) {
     return { exit: null, resetLatch: true }
   }
   return { exit: null, resetLatch: false }
+}
+
+/**
+ * `RunHeadToHeadVehicleSelectTune2 1000:2329`'s own select screen, per visit of `234B` (docs/engine.md
+ * §9by). `[0x1080]=0` (`2361`, both players combined) and the latch cleared (`2367`/`236C`); then:
+ * - `AWAIT_RELEASE` (`23A9-23BA`): each tick, while fire is held, keep waiting -- no ESC test here;
+ * - `2193` with BX=0 (`23BC`): the cursor re-read, then `2216`'s slide (`raceInfoSlideTicks` ticks,
+ *   no input polled);
+ * - `POLL` (`23C2-23F7`), each tick: an ESC release (`[0x107E]==1`, `23DC`) leaves (`RET`, back to
+ *   CHOOSE GAME); fire held races (`23F9`: `216C` then `256E`, then `234B` again); LEFT or RIGHT held
+ *   steps the cursor +1 (`BX=1` for both, `23E9`) and slides again -- with no release-wait, so a
+ *   held key keeps stepping once per slide; anything else, keep polling. No timeout.
+ * `readInput` is called only on the ticks the real code polls, so a key released during the slide
+ * stays latched (`[0x107E]` is cleared only at `234B`). It returns `{ bits, escReleased }` (both
+ * players' bits ORed); during `AWAIT_RELEASE` only `bits` is used, but it is read the same way.
+ * Returns `{ exit: null | 'cancel' | 'race', track? }`.
+ */
+export function singleRaceSelectInitialState(session, smoothness) {
+  return { phase: 'AWAIT_RELEASE', slideTicks: raceInfoSlideTicks(smoothness), slideLeft: 0, track: selectSingleRaceTrack(session.singleRaceCursor, 0) }
+}
+
+export function singleRaceSelectStep(state, session, readInput, readFire) {
+  if (state.phase === 'AWAIT_RELEASE') {
+    if (readFire()) return { exit: null } // 23B5: TEST [0x108B],8 / JNZ 23A9
+    state.track = selectSingleRaceTrack(session.singleRaceCursor, 0) // 23BC: BX=0
+    session.singleRaceCursor = state.track.cursor
+    state.phase = 'SLIDE'
+    state.slideLeft = state.slideTicks
+    return { exit: null }
+  }
+  if (state.phase === 'SLIDE') {
+    if (--state.slideLeft <= 0) state.phase = 'POLL'
+    return { exit: null }
+  }
+  const { bits, escReleased } = readInput()
+  if (escReleased) return { exit: 'cancel' } // 23DC: CMP [0x107E],1 / JZ 2409
+  if (bits & 0x08) return { exit: 'race', track: state.track } // 23E5: fire
+  if (bits & 0xc0) { // 23EC/23F0: LEFT or RIGHT, both BX=1
+    state.track = selectSingleRaceTrack(session.singleRaceCursor, 1)
+    session.singleRaceCursor = state.track.cursor
+    state.phase = 'SLIDE'
+    state.slideLeft = state.slideTicks
+  }
+  return { exit: null }
 }

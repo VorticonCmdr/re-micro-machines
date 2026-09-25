@@ -26,7 +26,7 @@
 //    across both its own phases (release-wait then press-wait) -- NOT a fresh budget per phase,
 //    matching [0x2] only ever being reset at 17FF's own entry, never at the 182C transition.
 //   node tools/check-twohuman.mjs
-import { twoHumanSessionState, twoHumanMatchState, twoHumanSetupState, raceResultScreenInitialState, raceResultScreenStep, twoHumanRosterBytes, commitTwoHumanPick, H2H_P1_START, H2H_P2_START, nextTrack, reportRace, skillLabel, selectSingleRaceTrack, raceInfoSlideTicks, RACE_RESULT_SLIDE_TICKS, RACE_RESULT_WAIT_TICKS, raceResultWaitInitialState, raceResultWaitStep, H2H_TRACK_TABLE, H2H_WINS_TO_CHAMPION, SINGLE_RACE_TRACK_TABLE } from '../src/frontend/twoHuman.js'
+import { twoHumanSessionState, twoHumanMatchState, twoHumanSetupState, raceResultScreenInitialState, raceResultScreenStep, singleRaceSelectInitialState, singleRaceSelectStep, twoHumanRosterBytes, commitTwoHumanPick, H2H_P1_START, H2H_P2_START, nextTrack, reportRace, skillLabel, selectSingleRaceTrack, raceInfoSlideTicks, RACE_RESULT_SLIDE_TICKS, RACE_RESULT_WAIT_TICKS, raceResultWaitInitialState, raceResultWaitStep, H2H_TRACK_TABLE, H2H_WINS_TO_CHAMPION, SINGLE_RACE_TRACK_TABLE } from '../src/frontend/twoHuman.js'
 import { handicapQuestionApplies } from '../src/frontend/charSelect.js'
 import { CHARACTER_NAMES, H2H_SKILL_INDEX_TABLE, H2H_SKILL_LABELS, trackName } from '../src/data/frontend-tables.js'
 
@@ -368,6 +368,45 @@ check('H2H_SKILL_LABELS has 8 entries (DS:08CD)', H2H_SKILL_LABELS.length === 8)
   let fx = null
   for (let t = 1; t <= 100 && !fx; t++) { const q = raceResultScreenStep(f, { fireHeld: true }); if (q.exit) fx = q }
   check('256E: a fire held from the race never dismisses (17FF waits for its release)', fx === null)
+}
+
+// 2329's select screen (docs/engine.md §9by): the fire release-wait, the slide with no poll, then
+// ESC release / fire / LEFT-or-RIGHT +1 with a fresh slide, the session cursor, no timeout.
+{
+  const session = twoHumanSessionState()
+  const st = singleRaceSelectInitialState(session, 1) // HIGH smoothness: slide 23 ticks
+  let raced = false
+  for (let t = 1; t <= 10; t++) if (singleRaceSelectStep(st, session, () => ({ bits: 0x08, escReleased: false }), () => true).exit) raced = true
+  check('2329: a fire held from before never races (23A9-23BA waits for its release)', !raced && st.phase === 'AWAIT_RELEASE')
+  singleRaceSelectStep(st, session, () => ({ bits: 0, escReleased: false }), () => false)
+  check('2329: the release tick starts 2193\'s slide', st.phase === 'SLIDE' && st.slideLeft === 23)
+  const s2 = singleRaceSelectInitialState(session, 1)
+  let first = null
+  for (let t = 1; t <= 60 && first == null; t++) { const q = singleRaceSelectStep(s2, session, () => { first = t; return { bits: 0, escReleased: false } }, () => false) }
+  check('2329: after the release tick, a 23-tick slide with no poll; the first poll is tick 25', first === 25)
+  const s3 = singleRaceSelectInitialState(session, 1)
+  for (let t = 1; t <= 24; t++) singleRaceSelectStep(s3, session, () => ({ bits: 0, escReleased: false }), () => false)
+  const c0 = session.singleRaceCursor
+  singleRaceSelectStep(s3, session, () => ({ bits: 0x80, escReleased: false }), () => false)
+  check('2329: LEFT steps the cursor +1', session.singleRaceCursor === c0 + 1 && s3.phase === 'SLIDE')
+  for (let t = 1; t <= 23; t++) singleRaceSelectStep(s3, session, () => ({ bits: 0, escReleased: false }), () => false)
+  singleRaceSelectStep(s3, session, () => ({ bits: 0x40, escReleased: false }), () => false)
+  check('2329: RIGHT also steps +1, not -1', session.singleRaceCursor === c0 + 2)
+  const s4 = singleRaceSelectInitialState(session, 1)
+  check('2329: the cursor persists into the next visit (session [0x8A3])', s4.track.cursor === c0 + 2)
+  for (let t = 1; t <= 24; t++) singleRaceSelectStep(s4, session, () => ({ bits: 0, escReleased: false }), () => false)
+  const race = singleRaceSelectStep(s4, session, () => ({ bits: 0x08, escReleased: false }), () => true)
+  check('2329: fire races the selected track', race.exit === 'race' && race.track.cursor === c0 + 2)
+  const s5 = singleRaceSelectInitialState(session, 1)
+  for (let t = 1; t <= 24; t++) singleRaceSelectStep(s5, session, () => ({ bits: 0, escReleased: false }), () => false)
+  check('2329: an ESC release leaves', singleRaceSelectStep(s5, session, () => ({ bits: 0, escReleased: true }), () => false).exit === 'cancel')
+  const s6 = singleRaceSelectInitialState(session, 1)
+  let ex = false
+  for (let t = 1; t <= 5000; t++) if (singleRaceSelectStep(s6, session, () => ({ bits: 0, escReleased: false }), () => false).exit) ex = true
+  check('2329: no timeout (5000 idle ticks)', !ex)
+  const m = twoHumanMatchState(session)
+  reportRace(m, 0, 1, true, { tournament: false })
+  check('single race does not touch [28C1] (no 207A), but the tally and lifetime stats still count', m.raceNumber === 1 && m.p1Wins === 1 && session.lifetimeWins[0] === 1)
 }
 
 console.log(bad ? `${bad} of ${asserted} executed check(s) failed` : `check-twohuman: ${distinct.size} distinct assertions (${asserted} executed) pass -- two-human H2H's own tournament state (track pick with no repeats, win tally, session-level lifetime per-character stats that survive a new match, first-to-4 champion detection, the skill label formula, single race's own track select, the race-info slide's own tick count, the race-result screen's own fixed slide, and its own bounded dismiss-wait) matches the disassembly (GOAL-DOS-PARITY.md P4, docs/engine.md §9bh/§9bi/§9bj/§9bl)`)

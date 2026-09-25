@@ -11264,8 +11264,66 @@ added timeout).
   released at tick 5 dismissed it straight into the champion screen, and S returned to SELECT GAME.
 - No console errors.
 
-**P4's first item is closed.** The two-human TOURNAMENT is playable end to end: both picks with the
+**P4's first item is closed.** **(CORRECTED, §9by: not yet -- the item also covers `2329`, single
+race; it closes in §9by.)** The two-human TOURNAMENT is playable end to end: both picks with the
 handicap question, CHOOSE GAME, the no-repeat track per race, the race-info screen, a two-human race
 on the alternate tuning, the WINNER!/LOSER! screen, first to 4 wins, the champion screen. What stays
 open belongs elsewhere: the pixel-level screens (portraits and poses, the class icons and slides,
 the header's extra WORDS.CHR word -- Part F), and SINGLE RACE (P4's second item).
+
+## 9by. P4 two-human Head to Head, single race (`2329`); P4's first and second items closed (2026-09-25)
+
+**Correction first.** §9bx said "P4's first item is closed". It was not: that item's own title
+names `2329` (single race), and its body scopes the wiring "for BOTH two-human modes at once". It
+closes here, together with the second item (single race's own track select).
+
+**The disassembly (`RunHeadToHeadVehicleSelectTune2 1000:2329-2409`, 70 instructions, and
+`SelectSingleRaceTrack 1000:2193`, both `[STATIC]`).**
+- Entry: `[0x8A5]=0`, tune 2 (`2333`/`2340`, `AH=9`-guarded), `[0x988]=0`.
+- `234B` (each visit): records reset, `[0x1080]=0` (`2361`, both players combined), the latch
+  cleared (`2367`/`236C`), `240A` (the portraits; no tally digits, its `[0x8A5]` gate), a record
+  `0xC6F` icon, `2481`, "SELECT VEHICLE" (`DS:0913`, centred Y=0x6E).
+- `23A9-23BA`: each tick, while fire is held, wait -- no ESC test, no timeout.
+- `23BC`: `2193` with BX=0: tune 2 (guarded), the cursor `[0x8A3]` (+0, wrapping), the track from
+  `DS:09D9`, the PRO remaps, the class icon, `2216`'s slide, a partial present.
+- `23C2` (loop): `[0x2]=0`, `0C5D` (the class name at Y=0xBF from `DS:002F` by the pre-remap
+  `[0x9D8]-1`, swapped for the `DS:00AB` copy with "PRO " blanked when the ISR's 32-tick flag
+  `[0x26CF]` is set -- "PRO" blinks; no wait), one tick, `2D5B`; an ESC release
+  (`[0x107E]==1`) returns (`2409`) to `1FA6: JMP 1EF1`; fire held (`23E5`) runs the race (`23F9`:
+  `216C`) then `256E`, then `JMP 234B`; LEFT or RIGHT held (`23EC`/`23F0`, `BX=1` for both) calls
+  `2193` again (a new slide) and loops, with no release-wait, so a held key keeps stepping; else
+  loop. No timeout. `[0x107E]` is cleared only at `234B`, so a key released during a slide is still
+  latched at the next poll.
+- `[0x28C1]` is not written anywhere in `2329`, so a single race runs with whatever value the session
+  last left there; the alternate tuning path never reads it (§9bg), and its other readers' effect
+  here was not traced (`UNKNOWN_single_race_28c1`). The port passes the match's race number (1).
+
+**What changed.**
+- `twoHuman.js`: `singleRaceSelectInitialState`/`singleRaceSelectStep` (the fire release-wait, the
+  slide with no poll, then ESC release / fire / LEFT-or-RIGHT +1 with a fresh slide; input read
+  lazily so a latched release survives the slide); the session cursor `singleRaceCursor`
+  (`[0x8A3]`); `reportRace` takes `{ tournament: false }` to skip `207A`'s race-number increment.
+- `screens.js`: `drawSingleRaceSelect` (SELECT VEHICLE, the players' records, the class name with
+  "PRO" blinking).
+- `flow.js`: CHOOSE GAME's SINGLE RACE runs `enterSingleRace` → the `H2H_SINGLE_SELECT` phase → the
+  race → `256E` with "SINGLE RACE" and no tally → back to the select; an ESC release returns to
+  CHOOSE GAME. Debug hook `getSingleRaceSelect()`.
+
+**Tests.** `check-twohuman.mjs` +10 (161): the fire release-wait, the release tick starting the
+23-tick slide, the first poll at tick 25, LEFT and RIGHT both +1, the cursor persisting into the
+next visit, fire racing the selected track, an ESC release leaving, no timeout, and single race not
+touching `[28C1]` while still crediting the tally and lifetime stats. Four mutations caught (LEFT
+stepping -1, no fire release-wait, no slide, single race incrementing `[28C1]`).
+
+**Live verification, `[PROVEN]` in the port** (`game.html`, Web Worker RAF shim, real key events):
+- SINGLE RACE from CHOOSE GAME: the select on cursor 0 (FORMULA ONE, round 3 race 2); ArrowLeft →
+  cursor 1 (class 10, PRO FORMULA ONE); ArrowRight → cursor 2 (class 7); P2's `J` held 1.2s → cursor
+  6 (four steps, one per ~0.34s slide); an ESC release → CHOOSE GAME, tally 0-0.
+- SINGLE RACE again: cursor 6 kept (round 5 race 1); S raced it; P2 won: the SINGLE RACE result
+  screen, tally 0-1, race number still 1, JETHRO's lifetime win counted; dismissing it went back
+  to the select (a new slide, cursor 6), not to a champion screen.
+- No console errors.
+
+**P4's first and second items are closed.** Both two-human modes play end to end. What remains is
+pixel art (Part F: the portraits and poses, the class and vehicle icons and their slides, the
+header's extra word) and `UNKNOWN_single_race_28c1`.

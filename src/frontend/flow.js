@@ -39,7 +39,7 @@ import { Si2Player } from '../audio/si2Player.js'
 import { RUFF_TRUCK_TIMES } from '../data/engine-tables.js'
 import { initTournament, isInQualifier, applyRaceSkip, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, raceIntroHoldTicks, raceIntroParticipants, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, resultsPassed, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, OUTCOME } from './tournament.js'
 import { CHARACTER_NAMES, OUTCOME_MESSAGES, resolveSmoothnessForPlay, TITLE_CLASS_NAMES } from '../data/frontend-tables.js'
-import { drawTwoPlayerPickLabels, drawChooseGame, drawTwoPlayerRaceInfo, drawTwoPlayerResult, drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawOpponentPanel, drawEliminatedScreen, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
+import { drawTwoPlayerPickLabels, drawChooseGame, drawTwoPlayerRaceInfo, drawTwoPlayerResult, drawSingleRaceSelect, drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawOpponentPanel, drawEliminatedScreen, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
 import { createSmoothnessGate } from '../engine/smoothness.js'
 import { introInitialState, introStep, smPalette, SCREEN_W as LOGO_W, SCREEN_H as LOGO_H } from '../formats/gfx1.js'
 import { attractInitialState, attractStep } from './attract.js'
@@ -51,7 +51,7 @@ import { waitScreenInitialState, waitScreenStep, holdTicksPreStep } from './keyW
 import { outcomeWaitInitialState, outcomeWaitStep } from './outcomeWait.js'
 import { championInitialState, championStep } from './champion.js'
 import { pressAnyKeyInitialState, pressAnyKeyStep } from './pressAnyKey.js'
-import { twoHumanSessionState, twoHumanSetupState, twoHumanRosterBytes, commitTwoHumanPick, twoHumanMatchState, H2H_P1_START, H2H_P2_START, nextTrack, reportRace, skillLabel, raceInfoSlideTicks, raceResultScreenInitialState, raceResultScreenStep } from './twoHuman.js'
+import { twoHumanSessionState, twoHumanSetupState, twoHumanRosterBytes, commitTwoHumanPick, twoHumanMatchState, H2H_P1_START, H2H_P2_START, nextTrack, reportRace, skillLabel, raceInfoSlideTicks, raceResultScreenInitialState, raceResultScreenStep, singleRaceSelectInitialState, singleRaceSelectStep } from './twoHuman.js'
 import { windowedWaitInitialState, windowedWaitStep, RESULTS_17FF_CX } from './windowedWait.js'
 import { composeCodeCardScreen, fontbinPalette, targetFromTickByte, moveCursor, CURSOR_X0, CURSOR_Y0, CODECARD_W, CODECARD_H } from '../formats/fontbin.js'
 import { cycleControl, cycleSound, cycleSmoothness, advanceCheatCursor, redefineKeyAccepted, redefineGroupOf, redefineSlotInGroup, REDEFINE_TOTAL_SLOTS, REDEFINE_SLOTS_PER_GROUP } from './options.js'
@@ -1204,9 +1204,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       h2hSession.chooseGameSelection = selection // 1F84
       h2hMode = selection // 1F8E: [0x8A2]=CL, the altTuning fork
       if (selection === 1) { h2hNextRace(h2hFirstSeed); return } // 1F97: CALL 1FAF (docs/engine.md §9bw)
-      // SINGLE RACE (2329) is P4's second item; until then its real exit, 1FA6: JMP 1EF1.
-      statusEl.textContent = 'Two-human single race is not implemented yet (P4 item 2).'
-      enterChooseGame()
+      enterSingleRace() // 1F9B: CALL 2329, then 1FA6: JMP 1EF1 (docs/engine.md §9by)
     })
   }
 
@@ -1270,6 +1268,71 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     const outcome = reportRace(h2hMatch, h2hSetup.characters[0], h2hSetup.characters[1], p1Won)
     enterTwoPlayerResult(p1Won, raceNumber, outcome)
   }
+  /** `RunHeadToHeadVehicleSelectTune2 1000:2329` -- two-human single race (docs/engine.md §9by):
+   * tune 2 (AH=9-guarded), `[0x8A5]=0`, then the select screen at `234B`, a race on the chosen track,
+   * `256E` ("SINGLE RACE", no tally digits, no champion test), and back to `234B`; an ESC release on
+   * the select screen returns to CHOOSE GAME (`1FA6: JMP 1EF1`, which resets the tally). */
+  let h2hSingle = null
+  let h2hSingleRafId = null
+  let h2hSingleLast = 0
+  let h2hSingleAcc = 0
+  let h2hSingleTicks = 0
+  function enterSingleRace() {
+    subMenuMusic(sound) // 2333/2340: tune 2 unless already playing
+    enterSingleRaceSelect()
+  }
+  function enterSingleRaceSelect() { // 234B
+    phase = 'H2H_SINGLE_SELECT'
+    menuReleaseTracker.reset() // 2367/236C
+    h2hSingle = singleRaceSelectInitialState(h2hSession, smoothnessN)
+    h2hSingleTicks = 0
+    paintSingleRaceSelect()
+    h2hSingleLast = performance.now()
+    h2hSingleAcc = 0
+    h2hSingleRafId = requestAnimationFrame(h2hSingleTick)
+  }
+  function paintSingleRaceSelect() {
+    canvas.width = MENU_VIEW.w
+    canvas.height = MENU_VIEW.h
+    menuBuf.fill(0)
+    const players = h2hSetup.characters.map((c) => ({ name: CHARACTER_NAMES[c], label: skillLabel(h2hSession.lifetimeWins[c], h2hSession.lifetimeLosses[c]), wins: h2hSession.lifetimeWins[c], losses: h2hSession.lifetimeLosses[c] }))
+    drawSingleRaceSelect(menuBuf, arena, { players, vehicleClass: h2hSingle.track.vehicleClass, blink: Math.floor(h2hSingleTicks / 32) % 2 === 1 }) // [0x26CF], the ISR's 32-tick toggle
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
+    statusEl.textContent = 'SELECT VEHICLE'
+  }
+  function h2hSingleWaitTick(readInput, readFire) {
+    h2hSingleTicks++
+    const r = singleRaceSelectStep(h2hSingle, h2hSession, readInput, readFire)
+    if (!r.exit) return false
+    if (h2hSingleRafId != null) { cancelAnimationFrame(h2hSingleRafId); h2hSingleRafId = null }
+    if (r.exit === 'cancel') { enterChooseGame(); return true } // 2409: RET -> 1FA6: JMP 1EF1
+    h2hRunSingleRace(r.track) // 23F9: CALL 216C
+    return true
+  }
+  function h2hSingleTick(now) {
+    if (phase !== 'H2H_SINGLE_SELECT') return
+    h2hSingleAcc += Math.min(now - h2hSingleLast, 250)
+    h2hSingleLast = now
+    const readInput = () => { const { escReleased } = menuReleaseTracker.read(); return { bits: waitReaders.p1.read() | waitReaders.p2.read(), escReleased } } // [0x1080]=0 (2361)
+    const readFire = () => ((waitReaders.p1.read() | waitReaders.p2.read()) & 0x08) !== 0
+    while (h2hSingleAcc >= INTRO_TICK_MS) {
+      h2hSingleAcc -= INTRO_TICK_MS
+      if (h2hSingleWaitTick(readInput, readFire)) return
+    }
+    paintSingleRaceSelect()
+    h2hSingleRafId = requestAnimationFrame(h2hSingleTick)
+  }
+  async function h2hRunSingleRace(track) {
+    phase = 'LOADING'
+    // [28C1] is not set by 2329 (it keeps whatever the session last left there); the alternate
+    // tuning path never reads it (§9bg), so the race number passed here only feeds the few other
+    // [28C1] readers (UNKNOWN_single_race_28c1, docs/engine.md §9by).
+    const result = await runOneRace(track, { raceNumber: h2hMatch.raceNumber, rosterWords: h2hSetup.rosterWords })
+    if (result.aborted) { enterTitle(); return }
+    const p1Won = result.finishPosition === 1
+    reportRace(h2hMatch, h2hSetup.characters[0], h2hSetup.characters[1], p1Won, { tournament: false }) // 256E's increments; no 207A
+    enterTwoPlayerResult(p1Won, null, { matchOver: false, champion: null }) // 2402: CALL 256E -- no first-to-4 test in single race
+  }
   let h2hResult = null
   let h2hResultRafId = null
   let h2hResultLast = 0
@@ -1288,7 +1351,8 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     canvas.height = MENU_VIEW.h
     menuBuf.fill(0)
     const players = h2hSetup.characters.map((c) => ({ name: CHARACTER_NAMES[c], label: skillLabel(h2hSession.lifetimeWins[c], h2hSession.lifetimeLosses[c]), wins: h2hSession.lifetimeWins[c], losses: h2hSession.lifetimeLosses[c] }))
-    drawTwoPlayerResult(menuBuf, arena, { modeLabel: `TOURNAMENT RACE ${h2hResult.raceNumber}`, p1Won: h2hResult.p1Won, players, tally: [h2hMatch.p1Wins, h2hMatch.p2Wins] })
+    const single = h2hResult.raceNumber == null // [0x8A5]==0: "SINGLE RACE" and no tally digits (261D, 240A's gate)
+    drawTwoPlayerResult(menuBuf, arena, { modeLabel: single ? 'SINGLE RACE' : `TOURNAMENT RACE ${h2hResult.raceNumber}`, p1Won: h2hResult.p1Won, players, tally: single ? null : [h2hMatch.p1Wins, h2hMatch.p2Wins] })
     paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
     statusEl.textContent = 'RESULTS'
   }
@@ -1297,6 +1361,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     if (r.resetLatch) menuReleaseTracker.reset() // each 17FF call's own 180F/1814
     if (!r.exit) return false
     if (h2hResultRafId != null) { cancelAnimationFrame(h2hResultRafId); h2hResultRafId = null }
+    if (h2hResult.raceNumber == null) { enterSingleRaceSelect(); return true } // single race: 2405 JMP 234B
     const { matchOver, champion } = h2hResult.outcome
     if (matchOver) { championCharacter = h2hSetup.characters[champion - 1]; enterChampion(); return true } // 2095: CALL 1AAD, then RET up to SELECT GAME
     h2hNextRace(r.seed) // 2092: JMP 1FCC -- 1FDD reads [0x2], still the dismissing 17FF window's count
@@ -1524,7 +1589,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     if (phase === 'OPTIONS') { optionsKey(e); return }
     if (phase === 'QUIT') return // real DOS is gone at this point; nothing left to read
     if (phase === 'LOADING') return
-    if (phase === 'SELECT_GAME' || phase === 'ONE_PLAYER_GAME' || phase === 'CHAR_SELECT' || phase === 'BOARD' || phase === 'RACE_INTRO' || phase === 'ELIMINATED' || phase === 'OUTCOME' || phase === 'RESULTS' || phase === 'CHAMPION' || phase === 'PRESS_ANY_KEY' || phase === 'CHOOSE_GAME' || phase === 'HANDICAP' || phase === 'H2H_RACE_INFO' || phase === 'H2H_RESULT') return // each phase's own dedicated reader(s) + menuReleaseTracker own its input entirely (RACE_INTRO/ELIMINATED: 179B, raceIntroTick/eliminationTick; OUTCOME: 1C1B, outcomeTick; RESULTS: 13E4, resultsTick; CHAMPION: 1AAD, championTick; PRESS_ANY_KEY: 0C15, pressAnyKeyTick)
+    if (phase === 'SELECT_GAME' || phase === 'ONE_PLAYER_GAME' || phase === 'CHAR_SELECT' || phase === 'BOARD' || phase === 'RACE_INTRO' || phase === 'ELIMINATED' || phase === 'OUTCOME' || phase === 'RESULTS' || phase === 'CHAMPION' || phase === 'PRESS_ANY_KEY' || phase === 'CHOOSE_GAME' || phase === 'HANDICAP' || phase === 'H2H_RACE_INFO' || phase === 'H2H_RESULT' || phase === 'H2H_SINGLE_SELECT') return // each phase's own dedicated reader(s) + menuReleaseTracker own its input entirely (RACE_INTRO/ELIMINATED: 179B, raceIntroTick/eliminationTick; OUTCOME: 1C1B, outcomeTick; RESULTS: 13E4, resultsTick; CHAMPION: 1AAD, championTick; PRESS_ANY_KEY: 0C15, pressAnyKeyTick)
     if (e.code === 'Space' || e.code === 'Enter') confirm()
   }
   window.addEventListener('keydown', onKeydown)
@@ -1567,6 +1632,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       if (handicapRafId != null) cancelAnimationFrame(handicapRafId)
       if (h2hInfoRafId != null) cancelAnimationFrame(h2hInfoRafId)
       if (h2hResultRafId != null) cancelAnimationFrame(h2hResultRafId)
+      if (h2hSingleRafId != null) cancelAnimationFrame(h2hSingleRafId)
       if (pressAnyKeyRafId != null) cancelAnimationFrame(pressAnyKeyRafId)
       if (waitReaders) for (const r of Object.values(waitReaders)) r.dispose()
       titleReader?.dispose()
@@ -1649,6 +1715,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     },
     getCheatActive: () => cheatActive,
     getTwoHuman: () => ({ session: h2hSession, setup: h2hSetup, match: h2hMatch, mode: h2hMode, firstSeed: h2hFirstSeed, handicap: phase === 'HANDICAP' ? { ...handicapState, character: handicapCharacter, slot: handicapSlot } : null }),
+    getSingleRaceSelect: () => (phase === 'H2H_SINGLE_SELECT' ? { phase: h2hSingle.phase, slideLeft: h2hSingle.slideLeft, track: h2hSingle.track, cursor: h2hSession.singleRaceCursor } : null),
     forceTwoPlayerResultSteps: (n, input = {}) => {
       if (phase !== 'H2H_RESULT') return
       for (let i = 0; i < n; i++) if (h2hResultWaitTick(input)) return

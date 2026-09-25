@@ -29,8 +29,8 @@ Open the URL Vite prints. Three pages:
 - **`game.html`** — the full flow: title → menu → character select → a one-player Challenge or
   Head-to-Head-vs-CPU tournament → champion screen. Two-human head-to-head is partly there: both
   players pick characters (with the original's handicap question), and TOURNAMENT plays a real
-  two-human match to 4 wins, with the WINNER!/LOSER! screen after each race; SINGLE RACE is not
-  there yet (`docs/engine.md` §9bv-§9bx).
+  two-human match to 4 wins, with the WINNER!/LOSER! screen after each race, and SINGLE RACE lets
+  them pick any of 10 tracks and race it as often as they like (`docs/engine.md` §9bv-§9by).
 - **`viewer.html`** — a developer asset viewer: every decoded format (tracks, sprites, sound,
   palettes…) browsable directly, useful for seeing what a file *is* independent of the game.
 
@@ -127,7 +127,7 @@ and stays local to your machine.
 
 ## What's not implemented
 
-- Two-human head-to-head SINGLE RACE (the TOURNAMENT is implemented, `docs/engine.md` §9bv-§9bx) (the tournament board screen, the interactive opponent picker, and the
+- Two-human head-to-head's pixel art: the portraits, poses and vehicle icons (both modes play, `docs/engine.md` §9bv-§9by) (the tournament board screen, the interactive opponent picker, and the
   elimination/replacement screen are now all implemented — see above). Palette fades exist (the
   README previously said otherwise); see `docs/engine.md` §9an for the one real difference (the
   port fades in at race start, the original doesn't).
