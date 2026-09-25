@@ -11399,7 +11399,16 @@ really the title screen, because CHOOSE GAME idled out during a slow capture. Th
 (29668 pixels off) before anything was built on it, and the screen was recaptured.
 
 **`[STATIC]`, not captured:** the intermediate slide positions, which follow `2216`'s and `256E`'s
-own arithmetic (`slideIconX`, and 4 × the elapsed slide ticks for `256E`).
+own arithmetic (`slideIconX`, and 4 × the elapsed slide ticks for `256E`). Also `[STATIC]`: CHOOSE GAME's THUMB frames 0 and 1. Only
+frame 2 was captured, so the "frame = selection" rule rests on `0392-0399` alone for the fresh
+session's frame 0, which is the state most sessions see. The 4-letter-name padding is `[STATIC]` too.
+The race-info screen's class name uses the post-remap round. That is safe because the H2H tournament
+table (`DS:` `H2H_TRACK_TABLE`, bytes `04 0A 11 0D 1C 21 14 19`) decodes only to rounds 1-8, so it
+has no PRO class 10 or 11. Only SELECT VEHICLE can show a PRO class, and it passes the pre-remap
+class.
+
+The refs are full 64000-byte A000 dumps, like `race_R21_a000.bin` (`tools/refs/README.md`). The
+check reads only columns 32-287; the rest shows the border colour 15, which is asserted.
 
 **What changed.**
 - New `src/frontend/h2hScreens.js`, described above.
