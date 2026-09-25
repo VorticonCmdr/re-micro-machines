@@ -120,7 +120,7 @@ Don't read `docs/engine.md` from start to finish. It is 6,000 lines. Jump to sec
 ## Regression suite (run before every commit; all must pass)
 
 ```bash
-for s in catalog lz chrtable tables car intro codecard options title mainmenu charselect board elimination keywait outcomewait windowedwait champion step trace ai play sound rounds finish twocar twohuman tournament \
+for s in catalog lz chrtable tables car intro codecard options title mainmenu charselect board elimination keywait outcomewait windowedwait champion pressanykey step trace ai play sound rounds finish twocar twohuman tournament \
          menu screens opl-toggle smoothness si2 live smoke; do npm run -s $s || echo "FAIL $s"; done
 npm run build
 ```
@@ -333,8 +333,8 @@ docs, (6) commit.
   and times out at 10.29s; RESULTS times out at 10.05s; a fresh fire press dismisses RESULTS into
   ONE LIFE LOST, which then leaves at its first poll. Every `17FF` call reachable in one-player play
   now runs the real `17FF`; `26BA` (two-human) is P4's, and `2166` has no callers.
-  **P3 is not closed by this: see the champion-screen and PRESS ANY KEY bullets below, added after
-  this one.**
+  **P3 is not closed by this: see the champion-screen, PRESS ANY KEY and race-skip bullets below,
+  added after this one.**
 - [x] **Tournament board** (`1000:18d8`): the `CASE.CHR` map with `MINATURE` icons at the
   positions in `DS:0312` (26 words, §9t). It is gated on `[43A]=1`. Find exactly when it is shown
   in `RunTournamentLoop 1000:10a0`.
@@ -607,12 +607,22 @@ docs, (6) commit.
   port runs one iteration per tick (~1.54s), a port choice. Then any control bit of either player
   leaves, with no timeout. `npm run champion`; `[PROVEN]` live in the port (a held ArrowLeft
   leaves at 1.548s, Enter does nothing, no timeout after 16s, P2's KeyJ leaves).
-- [ ] **PRESS ANY KEY's own wait** (`FUN_1000_0C15`, docs/engine.md §9bs's closing note). DOS: the
+- [x] **PRESS ANY KEY's own wait** (`FUN_1000_0C15`, docs/engine.md §9bs's closing note). DOS: the
   release latch cleared at entry, then per tick a `[0x261F] >= 0x2BC` timeout check, a tick, and
   leave on any key RELEASE or on fire HELD (no debounce). The port leaves on any keydown, with a
   `setTimeout(0x2BC ticks)`. Trace which reader `[0x1080]` selects there (the callers are
   `RunOnePlayerHeadToHeadVsCpu`/`RunOnePlayerChallenge`; check whether `0FD4`/`104C` run before
   the call), then port it as a per-tick loop on the session-lifetime readers, test it, live-check it.
+  **DONE 2026-09-25 (M3.74, docs/engine.md §9bt):** `[0x1080]=0x137B` (P1) at all three callers;
+  release or P1 fire held leaves, timeout on tick 700; `npm run pressanykey`; `[PROVEN]` live in the
+  port. §9bt also classifies every input poll in the game (all 18 `2D5B` calls, all `[0x107E]`
+  reads); it found one more one-player gap, the next bullet.
+- [ ] **The `25011968` cheat's race skip at the race intro** (`UNKNOWN_f6a_reader`, docs/engine.md
+  §9bt). With the cheat typed (`[0xF6A]=1`, `2916`), right after the race intro's `179B` ends on a
+  key release (`1398-13E0`): keypad `+` (scancode `0x4E`) moves to the next race unless it is the
+  last (`[0x28C1]==0x19`), keypad `-` (`0x4A`) to the previous, wrapping 0 to `[0x439]`; round and
+  race are re-derived from `ORDER_TABLE` and the race setup (`11F8`) runs again. The port has none
+  of it. After this, the §9bt sweep leaves nothing else in one-player play outside P5.
 
 ### P4: two-human Head to Head
 - [ ] Port `FUN_1000_1e20` → `1ef1` / `RunHeadToHeadTournament 1000:1faf` / `2329` / `256e`: the WON/LOST

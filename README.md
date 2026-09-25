@@ -50,8 +50,8 @@ themselves. A fire key held into one of these screens has to be let go first. Th
 EXTRA LIFE messages are the exception: they don't respond until the ~2 s lives slide ends, then a
 key released during it still counts, and fire held at that point leaves at once. The champion
 screen ignores input while its text slides in (~1.5 s in the port), then leaves on any control key
-of either player (not Space/Enter), and it never times out. PRESS ANY KEY still leaves on any key
-press, where the original waits for the key's release (an open item in `GOAL-DOS-PARITY.md` P3).
+of either player (not Space/Enter), and it never times out. PRESS ANY KEY leaves on a key's release,
+on player 1's fire held, or after ~10 s.
 
 ## Setting up the game files for development
 

@@ -50,6 +50,7 @@ import { eliminationInitialState, eliminationStep } from './elimination.js'
 import { waitScreenInitialState, waitScreenStep, holdTicksPreStep } from './keyWait.js'
 import { outcomeWaitInitialState, outcomeWaitStep } from './outcomeWait.js'
 import { championInitialState, championStep } from './champion.js'
+import { pressAnyKeyInitialState, pressAnyKeyStep } from './pressAnyKey.js'
 import { windowedWaitInitialState, windowedWaitStep, RESULTS_17FF_CX } from './windowedWait.js'
 import { composeCodeCardScreen, fontbinPalette, targetFromTickByte, moveCursor, CURSOR_X0, CURSOR_Y0, CODECARD_W, CODECARD_H } from '../formats/fontbin.js'
 import { cycleControl, cycleSound, cycleSmoothness, advanceCheatCursor, redefineKeyAccepted, redefineGroupOf, redefineSlotInGroup, REDEFINE_TOTAL_SLOTS, REDEFINE_SLOTS_PER_GROUP } from './options.js'
@@ -129,10 +130,11 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   const menuReleaseTracker = createMenuReleaseTracker(window)
   /** `1000:179B`'s own P1/P2 readers, SESSION-lifetime (docs/engine.md §9bp). The real keyboard ISR
    * keeps `[0x108B]` current all session long, so a fire key pressed on the PREVIOUS screen (e.g.
-   * the keydown that confirms PRESS_ANY_KEY and so enters RACE_INTRO) is still seen as held when
-   * `179B` starts, and stage 1 debounces it. A reader created at phase entry misses that key: it is
-   * added while that same keydown is still dispatching, so it never sees it, and `179B` would skip
-   * straight to stage 2 (an advisor review caught this; reproduced live). Recreated only when the
+   * the fire that confirms PRESS_ANY_KEY and so enters RACE_INTRO) is still seen as held when
+   * `179B` starts, and stage 1 debounces it. A reader created at phase entry misses a key pressed
+   * before it existed -- as first written, the keydown confirming PRESS_ANY_KEY was the very event
+   * that created RACE_INTRO's reader, which never saw it, so `179B` skipped straight to stage 2 (an
+   * advisor review caught this; reproduced live). Recreated only when the
    * bindings change (`optionsConfirm`). */
   let waitReaders = null
   let waitReadersBinding = null
@@ -580,11 +582,55 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       if (!pickOpponentCharacter(tournament, character)) { enterCharSelect(character, 'opponent'); return } // defensive -- charSelectStep's own taken-guard should make this unreachable
       lastPick.opponent = character
     }
-    // 0C15: "PRESS ANY KEY TO START" -- any key, or ~10 s (0x2BC ticks) with no input.
+    enterPressAnyKey()
+  }
+
+  /** 0C15: "PRESS ANY KEY TO START" (pressAnyKey.js, docs/engine.md §9bt): per tick, any key RELEASE
+   * or P1's fire HELD leaves, or the ~10s (0x2BC-tick) timeout. Replaces the old any-keydown
+   * dismiss and its setTimeout. */
+  let pressAnyKeyState = null
+  let pressAnyKeyRafId = null
+  let pressAnyKeyLast = 0
+  let pressAnyKeyAcc = 0
+  function enterPressAnyKey() {
     phase = 'PRESS_ANY_KEY'
-    clearTimeout(pressAnyKeyTimer)
-    pressAnyKeyTimer = setTimeout(() => { if (phase === 'PRESS_ANY_KEY') confirm() }, (0x2bc * 1000) / 70)
+    menuReleaseTracker.reset() // 0C2D/0C32
+    pressAnyKeyState = pressAnyKeyInitialState()
     paintMenu()
+    pressAnyKeyLast = performance.now()
+    pressAnyKeyAcc = 0
+    if (pressAnyKeyRafId != null) cancelAnimationFrame(pressAnyKeyRafId)
+    pressAnyKeyRafId = requestAnimationFrame(pressAnyKeyTick)
+  }
+  function readPressAnyKeyInput() {
+    const { escReleased, otherReleased } = menuReleaseTracker.read()
+    return { p1FireHeld: (waitReaders.p1.read() & 0x08) !== 0, anyKeyReleased: escReleased || otherReleased } // [0x1080]=0x137B: P1's reader only
+  }
+  function pressAnyKeyWaitTick(input) {
+    if (pressAnyKeyStep(pressAnyKeyState, input).exit) { leavePressAnyKey(); return true }
+    return false
+  }
+  function pressAnyKeyTick(now) {
+    if (phase !== 'PRESS_ANY_KEY') return
+    pressAnyKeyAcc += Math.min(now - pressAnyKeyLast, 250)
+    pressAnyKeyLast = now
+    while (pressAnyKeyAcc >= INTRO_TICK_MS) {
+      pressAnyKeyAcc -= INTRO_TICK_MS
+      if (pressAnyKeyWaitTick(readPressAnyKeyInput())) return
+    }
+    pressAnyKeyRafId = requestAnimationFrame(pressAnyKeyTick)
+  }
+  // NOT startNextRace() directly (a bug an advisor review caught): this PRESS_ANY_KEY is reached
+  // twice -- before the qualifier (where nextAfterOutcome's own needsOpponentPick/shouldShowBoard
+  // checks are both false, so behaviour is unchanged) AND after the opponent picker, right before
+  // race 1 (where shouldShowBoard is TRUE and the board must show -- calling startNextRace()
+  // directly skipped it entirely). The one cosmetic cost: for the H2H qualifier specifically (no
+  // intro, hasRaceIntro()===false), nextAfterOutcome's own unconditional trailing paintMenu()
+  // briefly overwrites runOneRace's own "Loading…" status text with a blank LOADING-phase frame
+  // before the race's own render loop takes over -- harmless, self-correcting.
+  function leavePressAnyKey() {
+    if (pressAnyKeyRafId != null) { cancelAnimationFrame(pressAnyKeyRafId); pressAnyKeyRafId = null }
+    nextAfterOutcome()
   }
 
   /** P3's second item (GOAL-DOS-PARITY.md, docs/engine.md §9az): the real interactive opponent
@@ -726,7 +772,6 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   // AX=0xFFFF entry to 09E0) approximated here as "start from the last pick" -- the player's own,
   // for the first of the 3, then each opponent's own for the next.
   const lastPick = { player: 10, opponent: 9, challengeOpponent: null }
-  let pressAnyKeyTimer = null
   let tournament = null
   let lastStandings = null
   let lastPassed = null
@@ -1204,17 +1249,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     // dedicated reader(s) + the shared menuReleaseTracker (enterTitle/enterTwoItemMenu/
     // enterCharSelect, above), not by this function.
     if (phase === 'PRESS_ANY_KEY') {
-      clearTimeout(pressAnyKeyTimer)
-      // NOT startNextRace() directly (a bug an advisor review caught): this PRESS_ANY_KEY is
-      // reached twice now -- before the qualifier (where nextAfterOutcome's own needsOpponentPick/
-      // shouldShowBoard checks are both false, so behaviour is unchanged) AND after the P3-second-
-      // item opponent picker, right before race 1 (where shouldShowBoard is TRUE and the board,
-      // P3's first item, must show -- calling startNextRace() directly skipped it entirely). The
-      // one cosmetic cost: for the H2H qualifier specifically (no intro, hasRaceIntro()===false),
-      // nextAfterOutcome's own unconditional trailing paintMenu() now briefly overwrites
-      // runOneRace's own "Loading…" status text with a blank LOADING-phase frame before the race's
-      // own render loop takes over -- harmless, self-correcting, not worth a special case for.
-      nextAfterOutcome()
+      leavePressAnyKey() // debug/test entry only (window.mmGame.confirm) -- real input goes through pressAnyKeyTick
       return
     } else if (phase === 'ELIMINATED') {
       // debug/test entry only (window.mmGame.confirm) -- real input goes through eliminationWaitTick
@@ -1260,8 +1295,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     if (phase === 'OPTIONS') { optionsKey(e); return }
     if (phase === 'QUIT') return // real DOS is gone at this point; nothing left to read
     if (phase === 'LOADING') return
-    if (phase === 'SELECT_GAME' || phase === 'ONE_PLAYER_GAME' || phase === 'CHAR_SELECT' || phase === 'BOARD' || phase === 'RACE_INTRO' || phase === 'ELIMINATED' || phase === 'OUTCOME' || phase === 'RESULTS' || phase === 'CHAMPION') return // each phase's own dedicated reader(s) + menuReleaseTracker own its input entirely (RACE_INTRO/ELIMINATED: 179B, raceIntroTick/eliminationTick; OUTCOME: 1C1B, outcomeTick; RESULTS: 13E4, resultsTick; CHAMPION: 1AAD, championTick)
-    if (phase === 'PRESS_ANY_KEY') { confirm(); return } // 0C15: any key click
+    if (phase === 'SELECT_GAME' || phase === 'ONE_PLAYER_GAME' || phase === 'CHAR_SELECT' || phase === 'BOARD' || phase === 'RACE_INTRO' || phase === 'ELIMINATED' || phase === 'OUTCOME' || phase === 'RESULTS' || phase === 'CHAMPION' || phase === 'PRESS_ANY_KEY') return // each phase's own dedicated reader(s) + menuReleaseTracker own its input entirely (RACE_INTRO/ELIMINATED: 179B, raceIntroTick/eliminationTick; OUTCOME: 1C1B, outcomeTick; RESULTS: 13E4, resultsTick; CHAMPION: 1AAD, championTick; PRESS_ANY_KEY: 0C15, pressAnyKeyTick)
     if (e.code === 'Space' || e.code === 'Enter') confirm()
   }
   window.addEventListener('keydown', onKeydown)
@@ -1301,7 +1335,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       if (outcomeRafId != null) cancelAnimationFrame(outcomeRafId)
       if (resultsRafId != null) cancelAnimationFrame(resultsRafId)
       if (championRafId != null) cancelAnimationFrame(championRafId)
-      clearTimeout(pressAnyKeyTimer)
+      if (pressAnyKeyRafId != null) cancelAnimationFrame(pressAnyKeyRafId)
       waitReaders?.p1.dispose(); waitReaders?.p2.dispose()
       titleReader?.dispose()
       twoItemReaders?.p1.dispose(); twoItemReaders?.p2.dispose()
@@ -1376,6 +1410,12 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       const read = () => ({ controlBits: input.controlBits ?? 0 })
       for (let i = 0; i < n; i++) if (championWaitTick(read)) return
     },
+    // Same, for PRESS_ANY_KEY: `input` is `{ p1FireHeld, anyKeyReleased }`.
+    forcePressAnyKeySteps: (n, input = {}) => {
+      if (phase !== 'PRESS_ANY_KEY') return
+      for (let i = 0; i < n; i++) if (pressAnyKeyWaitTick(input)) return
+    },
+    getPressAnyKeyWait: () => (phase === 'PRESS_ANY_KEY' ? { ...pressAnyKeyState } : null),
     getChampionWait: () => (phase === 'CHAMPION' ? { ...championState } : null),
     getResultsWait: () => (phase === 'RESULTS' ? { ticks: resultsWait.ticks, windows: resultsWait.windows, stage: resultsWait.wait.phase } : null),
     // Same fast-forward precedent, for ELIMINATED (P3's third item): the bounce, then 179B's own

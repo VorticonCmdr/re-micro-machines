@@ -26,6 +26,7 @@
     "outcomewait": "node tools/check-outcomewait.mjs",
     "windowedwait": "node tools/check-windowedwait.mjs",
     "champion": "node tools/check-champion.mjs",
+    "pressanykey": "node tools/check-pressanykey.mjs",
     "step": "node tools/check-step.mjs",
     "trace": "node tools/check-trace.mjs",
     "ai": "node tools/check-ai.mjs",

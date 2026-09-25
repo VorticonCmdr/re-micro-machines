@@ -6114,8 +6114,9 @@ design; mouse/joystick fire preempt (disassembly only, not live-checked).
 **Added 2026-09-25 (§9bp-§9bs).** Closed: `UNKNOWN_outcome_screen_timeout` (§9bq). New open:
 `UNKNOWN_champion_slide_duration` (`ShowChampionScreenTune3 1000:1AAD`, §9bs): the 108 slide
 iterations before the champion screen's first poll wait on nothing, so their DOS duration is
-CPU-bound; the port runs one per tick. A GOAL-DOS-PARITY.md Part L item. Also still open in P3:
-PRESS ANY KEY's own wait (`FUN_1000_0C15`, §9bs's closing note).
+CPU-bound; the port runs one per tick. A GOAL-DOS-PARITY.md Part L item. PRESS ANY KEY's own wait
+(`FUN_1000_0C15`) is ported in §9bt. `UNKNOWN_f6a_reader` (§9au) is traced in §9bt: the `25011968`
+cheat's keypad `+`/`-` race skip at the race intro, a real, still unported parity item.
 
 ## 9ar. Six small named globals/writers, chased (2026-09-24)
 
@@ -10863,3 +10864,80 @@ fixed elsewhere.** Disassembled in full (`[STATIC]`): `[0x261F]=0`, the release 
 (`0C4E`, `[0x107E]!=0`) or on fire HELD (`0C55-0C5A`, `[0x108B]&8`, no debounce; whose reader
 `[0x1080]` selects there is not yet traced). The port leaves on any keydown and uses a
 `setTimeout`. Tracked as a new unticked P3 bullet, so P3 is still open.
+
+## 9bt. PRESS ANY KEY's own wait (`0C15`), and the sweep that finds every one-player wait (2026-09-25)
+
+**Purpose.** GOAL-DOS-PARITY.md P3's PRESS ANY KEY bullet (found in §9bs). P3 had been declared
+closed twice (M3.59, M3.72) and each time another screen with its own wait turned up by chance, so
+this item first sweeps every input poll in the game.
+
+**The sweep (`[STATIC]`).** Every input poll calls `2D5B` (it refreshes `[0x108B]` from the reader
+routines) or tests the release latch `[0x107E]` directly. `get_xrefs_to 1000:2D5B` lists 18 call
+sites; a `search_byte_patterns` for `7E 10` lists 37 hits (one, `1D40`, is a false positive
+inside a `JLE` encoding). Every one is classified:
+
+| Site(s) | Function | Status |
+|---|---|---|
+| `0040`, `004A`/`004E` | `real_entry` | boot: `SelectGameSetLvl 2BE8` returns STC at once with no `GAME?.LVL` file (`INT 21h AH=4Eh`, `2C0C`->`2CFE`), so its own polls (`2C56`, `2CC5`) are unreachable with the shipped data |
+| `014A`, `01BB`, `01C6` | `RunTitleScreenAttractLoop` | ported, P2 (§9av) |
+| `038E`, `03B2`, `03CB`, `03D8` | `RunTwoItemMenu` | ported, P2 (§9aw) |
+| `0A25`, `0A55`, `0A87`, `0A91` | `RunCharacterSelectMenuTune2` | ported, P2 (§9ax) |
+| `0BE9` | `FUN_1000_0B51` (handicap question) | two-human, P4 (§9bm) |
+| `0C34`, `0C4B`, `0C50` | `FUN_1000_0C15` (PRESS ANY KEY) | **this item** |
+| `13A4` | `ShowNextRaceIntroScreen...` tail, after `179B` | **new P3 bullet**: the `25011968` cheat's race skip (`UNKNOWN_f6a_reader`, below) |
+| `13EB` | `ShowRaceResultsScreenTune8or6` entry | a latch clear only; the wait is `17FF`, ported (§9br) |
+| `17B2`-`17EE` | `179B` | ported (§9bp) |
+| `1811`-`1849` | `17FF` | ported (§9bq/§9br) |
+| `1C07` | `ShowChampionScreenTune3` | ported (§9bs) |
+| `1C32`, `1DC8`, `1DCF`, `1DD6` | `ShowRaceOutcomeMessageTune8or6` | ported (§9bq) |
+| `2369`, `23B2`, `23D4`, `23DE` | `RunHeadToHeadVehicleSelectTune2` | two-human, P4 (§9bi) |
+| `28B4`-`2AAF` | `RunOptionsScreenWithSettingsDat` | ported, P1 (§9au) |
+| `2B9A`, `2BDA` | `FUN_1000_2B93`, the joystick calibration (game port `0x201`, via `2B8B`/`2B8F`) | P6 (`UNKNOWN_joystick_calibration_body`) |
+| `2F45`, `2F57` | `KeyboardIsr` | the latch's own writer |
+| `3071` | `RunRaceMainLoop` | the race |
+| `3781`, `378B`, `37B9` | `CheckCheatSpotsThenPause` (the pause) | the race; the pause is its own P5 item |
+| `934C`, `9358` | `RunRedefineKeysScreen` | ported, P1 (§9au) |
+
+So in one-player play, the only polls not yet matching DOS after this item are the race-skip at
+`13A4` and the P5 pause. Caveat: this covers the code Ghidra's own xrefs and a byte search can see.
+
+**`UNKNOWN_f6a_reader`, traced (§9au had found it, not traced it).** `[0xF6A]`'s only writer is the
+`25011968` cheat (`2916`, right after `2911`'s `[0xF69]=1`). At `1398`, right after the race
+intro's own `CALL 179B`, if `[0xF6A]!=0` the code reads `[0x107E]` (the scancode of the key whose
+release ended `179B`, if one did): `0x4E` (keypad `+`) moves `[0x28C1]` to the next race unless it
+is already `0x19` (the last); `0x4A` (keypad `-`) moves it back, wrapping 0 to `[0x439]`; then it
+re-derives round and race from `ORDER_TABLE` (`[0x43C+index]`) and jumps back to `11F8` (the race
+setup). A developer race-select, reachable by any player who types the cheat. The port has none of
+it. New P3 bullet.
+
+**PRESS ANY KEY (`FUN_1000_0C15-0C5C`), all `[STATIC]`.** Three callers:
+`RunOnePlayerHeadToHeadVsCpu 101B`, `RunOnePlayerChallenge 108A`, and the opponent picker `1A4A`'s
+tail `1A65`. These are exactly the port's two PRESS_ANY_KEY entries (before the qualifier; after the
+opponent picks). Both setup functions set `[0x1080]=0x137B` (P1's own reader block) at their
+start (`0FD4`, `104C`), before any of this, and `09E0`/`179B`/`17FF` leave it as they found it, so
+the fire test reads P1 only. Entry: `[0x261F]=0`, latch cleared (`0C2D`/`0C32`). Loop:
+`[0x261F] >= 0x2BC` leaves (`0C37`); draw the text, blinking with the ISR's own `[0x26CF]`
+(`0C96`, no wait); one tick (`0C42-0C49`); `2D5B`; leave on any key release (`0C4E`) or P1's fire
+HELD (`0C55-0C5A`, no debounce); loop. The timeout check comes right after each poll, so it lands
+on tick 700 exactly.
+
+**What changed.** `src/frontend/pressAnyKey.js` (new). `flow.js`: `enterPressAnyKey()` runs a
+per-tick loop on the release tracker and the session-lifetime P1 reader. The any-keydown dismiss and
+`pressAnyKeyTimer` are gone. New debug hooks: `forcePressAnyKeySteps(n, {p1FireHeld,
+anyKeyReleased})`, `getPressAnyKeyWait()`.
+
+**Tests.** `tools/check-pressanykey.mjs` (new, `npm run pressanykey`): timeout on tick 700 exactly,
+a release leaves on its tick, a P1 fire held from before leaves on tick 1, a release on tick 700
+wins over the timeout. Reintroduction-proven with four mutations: ignoring fire (2 fail), ignoring
+the release (2), checking the timeout before the poll (1), a one-tick debounce on fire (1). All
+restored, clean. Full regression suite plus `build` clean.
+
+**Live verification, `[PROVEN]` in the port.** `game.html`, the Web Worker RAF shim and worker
+sleeps (§9bq), fresh page load, console tracking on from the start, H2H vs CPU.
+- A real `KeyS` (P1 fire) pressed during the opponent carousel and held through its 5-blink commit:
+  PRESS ANY KEY left 36ms after it appeared (its first tick), into the qualifier.
+- Enter keydown: still PRESS_ANY_KEY 400ms later (ticks 50); keyup: left.
+- `KeyK` (P2's KEYS 1 fire) held 700ms: still PRESS_ANY_KEY (ticks 72), so P2's fire does not count;
+  its keyup then left, as a key release (pressed after the entry reset, so tracked).
+- No input: left 10.013s after entry (700 ticks = 10.0s), last seen at 699.
+- No console errors.
