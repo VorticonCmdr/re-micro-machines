@@ -108,7 +108,6 @@ export function drawCharacterSelect(buf, arena, { scroll = 0, cursor = 0, roster
   }
 }
 
-/** 0C15's "PRESS ANY KEY TO START" (DS:0241), between the select screens and the first race. */
 /** Two-human Head to Head's own labels around the carousel (`1E20`, docs/engine.md §9bv): "PLAYER"
  * over "ONE" on the left (X=4, Y=0x32/0x3B) for P1's pick, "PLAYER" over "TWO" on the right
  * (X=0xBE) for P2's; and `0B51`'s handicap line ("HANDICAP WALTER ? NO", `DS:0x1A0` per character,
@@ -120,72 +119,10 @@ export function drawTwoPlayerPickLabels(buf, arena, { slot, handicap = null }) {
   if (handicap) drawStringCentred(buf, arena, rec('FONT1.CHR'), `HANDICAP ${CHARACTER_NAMES[handicap.character]} ? ${handicap.answer ? 'YES' : 'NO'}`, 0xa8)
 }
 
-/** `RunHeadToHeadTournament 1000:1FAF`'s own per-race info screen (docs/engine.md §9bw), as text:
- * "TOURNAMENT RACE n" (`DS:0975`, the number patched in at `0985`, `2040-204F`), the vehicle class
- * (`2216`'s `DS:002F` name by round), and per player (`240A`/`2481`): the name, the skill label and
- * the lifetime WON/LOST count, and the match's own win tally. The portraits, the class icon and
- * `2216`'s sliding icons are not drawn by the port. */
-export function drawTwoPlayerRaceInfo(buf, arena, { raceNumber, className, players, tally }) {
-  drawStringCentred(buf, arena, rec('FONT2.CHR'), `TOURNAMENT RACE ${raceNumber}`, 0x6e)
-  drawStringCentred(buf, arena, rec('FONT1.CHR'), className, 0x8c)
-  players.forEach((p, i) => {
-    const x = i === 0 ? 4 : 0xbe
-    drawString(buf, arena, rec('FONT1.CHR'), p.name, x, 0x14)
-    drawString(buf, arena, rec('FONT1.CHR'), p.label.trim(), x, 0x1e)
-    drawString(buf, arena, rec('FONT1.CHR'), `WON ${p.wins} LOST ${p.losses}`, x, 0x28)
-    drawString(buf, arena, rec('FONT2.CHR'), String(tally[i]), x + 0x38, 0x3c)
-  })
-}
+// Two-human Head to Head's own screens (CHOOSE GAME, the race info, WINNER!/LOSER!, SELECT VEHICLE)
+// are drawn by `h2hScreens.js`, pixel-checked against DOSBox (docs/engine.md §9bz).
 
-/** `ShowHeadToHeadRaceWinnerTune8 1000:256E`'s own screen (docs/engine.md §9bx), as text:
- * "RESULTS!!" (`DS:095C`, Y=0x3C), "TOURNAMENT RACE n" or "SINGLE RACE" (Y=0x4C, by `[0x8A5]`), and
- * "WINNER!"/"LOSER!" (`DS:0966`/`096E`) at P1's X=0x1D and P2's X=0xB1, Y=0x5C, following whoever
- * actually won (`25CB-25F6`); plus each player's updated name/label/lifetime record and the tally
- * (`240A`/`2481`). The portraits' win/lose poses and their blink, and the sliding class icons, are
- * not drawn by the port. */
-export function drawTwoPlayerResult(buf, arena, { modeLabel, p1Won, players, tally }) {
-  drawStringCentred(buf, arena, rec('FONT2.CHR'), 'RESULTS!!', 0x3c)
-  drawStringCentred(buf, arena, rec('FONT1.CHR'), modeLabel, 0x4c)
-  drawString(buf, arena, rec('FONT2.CHR'), p1Won ? 'WINNER!' : 'LOSER!', 0x1d, 0x5c)
-  drawString(buf, arena, rec('FONT2.CHR'), p1Won ? 'LOSER!' : 'WINNER!', 0xb1, 0x5c)
-  players.forEach((p, i) => {
-    const x = i === 0 ? 4 : 0xbe
-    drawString(buf, arena, rec('FONT1.CHR'), p.name, x, 0x14)
-    drawString(buf, arena, rec('FONT1.CHR'), p.label.trim(), x, 0x1e)
-    drawString(buf, arena, rec('FONT1.CHR'), `WON ${p.wins} LOST ${p.losses}`, x, 0x28)
-    if (tally) drawString(buf, arena, rec('FONT2.CHR'), String(tally[i]), x + 0x38, 0x3c)
-  })
-}
-
-/** `RunHeadToHeadVehicleSelectTune2 1000:2329`'s own select screen (docs/engine.md §9by), as text:
- * "SELECT VEHICLE" (`DS:0913`, centred Y=0x6E), each player's name/label/lifetime record (`240A`/`2481`
- * -- no tally digits in single race, `240A`'s `[0x8A5]` gate), and the class name at Y=0xBF (`0C5D`:
- * `DS:002F` by the pre-remap class, swapped for `DS:00AB` -- the same list with "PRO " blanked --
- * whenever the ISR's 32-tick flag `[0x26CF]` is set, so "PRO" blinks). */
-const SINGLE_RACE_CLASS_NAMES = ['SPORTSCARS', 'POWERBOATS', 'FORMULA ONE', 'TURBO WHEELS', 'FOUR BY FOUR', 'WARRIORS', 'TANKS', 'CHOPPERS', 'RUFFTRUX', 'PRO FORMULA ONE', 'PRO SPORTSCARS'] // DS:002F
-const SINGLE_RACE_CLASS_NAMES_BLINK = ['SPORTSCARS', 'POWERBOATS', 'FORMULA ONE', 'TURBO WHEELS', 'FOUR BY FOUR', 'WARRIORS', 'TANKS', 'CHOPPERS', 'RUFFTRUX', '    FORMULA ONE', '    SPORTSCARS'] // DS:00AB
-export function drawSingleRaceSelect(buf, arena, { players, vehicleClass, blink = false }) {
-  drawStringCentred(buf, arena, rec('FONT2.CHR'), 'SELECT VEHICLE', 0x6e)
-  players.forEach((p, i) => {
-    const x = i === 0 ? 4 : 0xbe
-    drawString(buf, arena, rec('FONT1.CHR'), p.name, x, 0x14)
-    drawString(buf, arena, rec('FONT1.CHR'), p.label.trim(), x, 0x1e)
-    drawString(buf, arena, rec('FONT1.CHR'), `WON ${p.wins} LOST ${p.losses}`, x, 0x28)
-  })
-  drawStringCentred(buf, arena, rec('FONT1.CHR'), (blink ? SINGLE_RACE_CLASS_NAMES_BLINK : SINGLE_RACE_CLASS_NAMES)[vehicleClass - 1], 0xbf)
-}
-
-/** `RunHeadToHeadChooseGameMenu 1000:1EF1`'s own screen: "TOURNAMENT" (X=0x18) and "SINGLE RACE"
- * (X=0x9C) at Y=0xBE, "CHOOSE GAME!" centred at Y=0x68 (`1F25-1F4C`); the two vehicle icons
- * (`1F4F-1F71`) are not drawn by the port. */
-export function drawChooseGame(buf, arena, { selection = 0 } = {}) {
-  drawStringCentred(buf, arena, rec('FONT2.CHR'), 'CHOOSE GAME!', 0x68)
-  const xs = [0x18, 0x9c]
-  ;['TOURNAMENT', 'SINGLE RACE'].forEach((label, i) => {
-    drawString(buf, arena, rec('FONT1.CHR'), (selection === i + 1 ? 'X ' : '  ') + label, xs[i], 0xbe)
-  })
-}
-
+/** 0C15's "PRESS ANY KEY TO START" (DS:0241), between the select screens and the first race. */
 export function drawPressAnyKey(buf, arena) {
   drawStringCentred(buf, arena, rec('FONT2.CHR'), 'PRESS ANY KEY TO START', 96)
 }

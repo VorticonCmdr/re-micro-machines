@@ -127,10 +127,11 @@ and stays local to your machine.
 
 ## What's not implemented
 
-- Two-human head-to-head's pixel art: the portraits, poses and vehicle icons (both modes play, `docs/engine.md` §9bv-§9by) (the tournament board screen, the interactive opponent picker, and the
-  elimination/replacement screen are now all implemented — see above). Palette fades exist (the
-  README previously said otherwise); see `docs/engine.md` §9an for the one real difference (the
-  port fades in at race start, the original doesn't).
+- The race-start palette fade: the port fades in, the original doesn't (`docs/engine.md` §9an).
+  No longer listed here because they are implemented: two-human head-to-head's own screens
+  (portraits, win/lose poses, vehicle icons and their slides, pixel-checked against DOSBox,
+  `docs/engine.md` §9bz), the tournament board screen, the interactive opponent picker, and the
+  elimination/replacement screen.
 - Gamepad/mouse input during a race (keyboard only) -- mouse input elsewhere (the logo intro's
   click-to-skip) is implemented. The GAME OPTIONS screen's own F7 (joystick calibration) is gated
   correctly (never shown without a joystick) but its analog-read body isn't ported, same reason.

@@ -37,6 +37,7 @@
     "finish": "node tools/check-finish.mjs",
     "twocar": "node tools/check-twocar.mjs",
     "twohuman": "node tools/check-twohuman.mjs",
+    "h2hscreens": "node tools/check-h2hscreens.mjs",
     "tournament": "node tools/check-tournament.mjs",
     "menu": "node tools/check-menu.mjs",
     "screens": "node tools/check-screens.mjs",

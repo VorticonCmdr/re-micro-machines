@@ -6123,6 +6123,11 @@ open: `UNKNOWN_single_race_28c1` (§9by): `2329` never writes `[0x28C1]`, so a t
 runs with whatever value the session last left there; the alternate tuning never reads it, and its
 other readers' effect in a single race was not traced (the port passes 1).
 
+**Added 2026-09-25 (§9bz).** The four two-human screens are now drawn from the original's own draw
+calls and pixel-checked against seven DOSBox frames (`npm run h2hscreens`). They are Part F's first
+front-end refs, under `tools/refs/front/`. Still `[STATIC]` only: the intermediate slide positions,
+and the 4-letter-name padding (no capture had a 4-letter name).
+
 ## 9ar. Six small named globals/writers, chased (2026-09-24)
 
 **Scope.** User request: work `UNKNOWN_0f64_speed_zero`, `UNKNOWN_fallbranch_stale_fields`,
@@ -11139,7 +11144,7 @@ result screen, the match loop and the champion screen). Single race is P4's seco
   new `twoHumanSetupState` (the `0EBA` reset), `twoHumanRosterBytes`, `commitTwoHumanPick` (taken
   flag, slot word, the handicap OR and its session store), `H2H_P1_START`/`H2H_P2_START`.
 - `screens.js`: `drawTwoPlayerPickLabels` (PLAYER ONE/TWO and the handicap line) and
-  `drawChooseGame` (the vehicle icons are not drawn).
+  `drawChooseGame` (the vehicle icons are not drawn). **(CORRECTED, §9bz: now drawn from the original's own draw calls in `h2hScreens.js`, pixel-checked against DOSBox; this `screens.js` function is gone.)**
 - `flow.js`: SELECT GAME's TWO PLAYER now runs `enterTwoPlayerSetup` -> two `CHAR_SELECT` picks
   (`charWho` `h2h-p1`/`h2h-p2`, on a separate two-human roster, reading the picking player's own
   session-lifetime reader, so a fire held from the commit reaches the question) -> a `HANDICAP`
@@ -11196,7 +11201,7 @@ SELECT GAME; otherwise `JMP 1FCC` (the next track). No tune is started in `1FAF`
 - CHOOSE GAME's TOURNAMENT now runs `h2hNextRace(seed)`: `nextTrack`, an `H2H_RACE_INFO` phase
   drawn by the new `screens.js` `drawTwoPlayerRaceInfo` (text only: race number, class name, each
   player's name, skill label, lifetime WON/LOST and match tally; the portraits and icons are not
-  drawn), driven by the same `waitScreenStep` composition as the one-player race intro with
+  drawn) **(CORRECTED, §9bz: now drawn from the original's own draw calls in `h2hScreens.js`, pixel-checked against DOSBox; this `screens.js` function is gone.)**, driven by the same `waitScreenStep` composition as the one-player race intro with
   `raceInfoSlideTicks(smoothness)` as the pre-wait slide and `179B` after it; then the race; then
   `reportRace` (tally, lifetime stats, `207A`); first to 4 wins goes to the champion screen, which
   now names `championCharacter` (the match winner here; the player in one-player play), and then
@@ -11245,7 +11250,7 @@ for the next track -- still the count of the `17FF` window that was dismissed (�
   then `17FF` windows (each 21 ticks, `raceResultWaitStep` with CX=20), a blink toggle and a latch
   clear at each, and on a dismiss the window's own tick count as `seed`.
 - `screens.js`: `drawTwoPlayerResult` (text: RESULTS!!, the race label, WINNER!/LOSER! by side, the
-  players' updated records and the tally; the poses, the blink and the icons are not drawn).
+  players' updated records and the tally; the poses, the blink and the icons are not drawn). **(CORRECTED, §9bz: now drawn from the original's own draw calls in `h2hScreens.js`, pixel-checked against DOSBox; this `screens.js` function is gone.)**
 - `flow.js`: after a two-human race, `enterTwoPlayerResult` (tune 8, an `H2H_RESULT` phase on the
   combined readers); its dismiss goes to the champion screen at 4 wins (`2095`) or to the next
   race with the dismissing window's seed (`2092`, replacing commit B's placeholder 0). Debug hooks
@@ -11274,7 +11279,7 @@ race; it closes in §9by.)** The two-human TOURNAMENT is playable end to end: bo
 handicap question, CHOOSE GAME, the no-repeat track per race, the race-info screen, a two-human race
 on the alternate tuning, the WINNER!/LOSER! screen, first to 4 wins, the champion screen. What stays
 open belongs elsewhere: the pixel-level screens (portraits and poses, the class icons and slides,
-the header's extra WORDS.CHR word -- Part F), and SINGLE RACE (P4's second item).
+the header's extra WORDS.CHR word -- Part F; **done in §9bz**), and SINGLE RACE (P4's second item).
 
 ## 9by. P4 two-human Head to Head, single race (`2329`); P4's first and second items closed (2026-09-25)
 
@@ -11309,7 +11314,7 @@ closes here, together with the second item (single race's own track select).
   lazily so a latched release survives the slide); the session cursor `singleRaceCursor`
   (`[0x8A3]`); `reportRace` takes `{ tournament: false }` to skip `207A`'s race-number increment.
 - `screens.js`: `drawSingleRaceSelect` (SELECT VEHICLE, the players' records, the class name with
-  "PRO" blinking).
+  "PRO" blinking). **(CORRECTED, §9bz: now drawn from the original's own draw calls in `h2hScreens.js`, pixel-checked against DOSBox; this `screens.js` function is gone.)**
 - `flow.js`: CHOOSE GAME's SINGLE RACE runs `enterSingleRace` → the `H2H_SINGLE_SELECT` phase → the
   race → `256E` with "SINGLE RACE" and no tally → back to the select; an ESC release returns to
   CHOOSE GAME. Debug hook `getSingleRaceSelect()`.
@@ -11331,4 +11336,97 @@ stepping -1, no fire release-wait, no slide, single race incrementing `[28C1]`).
 
 **P4's first and second items are closed.** Both two-human modes play end to end. What remains is
 pixel art (Part F: the portraits and poses, the class and vehicle icons and their slides, the
-header's extra word) and `UNKNOWN_single_race_28c1`.
+header's extra word) and `UNKNOWN_single_race_28c1`. **(The pixel art is done in §9bz.)**
+
+## 9bz. Two-human Head to Head's own screens, drawn and pixel-checked (2026-09-25)
+
+The four two-human screens (§9bv-§9by) were text-only stand-ins: CHOOSE GAME (`1EF1`), the per-race
+info screen (`1FAF`), SELECT VEHICLE (`2329`) and the WINNER!/LOSER! screen (`256E`). They are now
+drawn from the original's own draw calls (`src/frontend/h2hScreens.js`: one `layout*` function per
+screen returning draw operations, each citing its routine, and `paintOps` to paint them), and
+checked pixel for pixel against seven DOSBox frames.
+
+**The shared routines, `[STATIC]` (read in full), each then pinned by the frames below:**
+- `0400`, the header: clear to 0 (`0876`); BADGE (record `0xB7C`, the opaque `053A` blit) at (0,0);
+  WORDS frame 0 (record `0xCA5`) at (0x48,8); and, with `[0x156]`=1 (two-human play), WORDS frame 1
+  at (0xA2,8) plus a divider: row 0x1E colour 0x12, rows 0x1F-0x20 colour 0x0E, row 0x21 colour 0x12
+  (`0862`, full width).
+- `0DB0`, a portrait: the record's `+0x13` high byte picks the bank: 0 FCNORMAL (frame = the
+  character), 1 FCFROWN, 2 FCHAPPY, 3 FCSAD. Banks 2 and 3 use frame `((cl<<1) | (cl&0x10 ? 1:0)) &
+  0x1F`, which is `character*2 + blink`. The blit is opaque. `06CC` with AL=0xD draws a 1px
+  colour-0xD box from (x-1,y-1) to (x+48,y+48). `0F3C` draws the name at (x,y+0x31) in FONT1 from
+  `DS:0258`'s 8-byte slots. Four-letter names are space-padded there (" MIKE "), so they sit 8px in;
+  that padding is `[STATIC]` only, because both captured characters have six-letter names.
+- `240A` (AX=Y): P1's portrait at X=0x20 and P2's at X=0xB0, each with its box and name. With
+  `[0x8A5]`=1 (tournament) it adds the match tally in FONT2 at X=0x58 and X=0xA0, same Y.
+- `2481`: per player, "WON n" at (X-0x18, Y+0x3A) and "LOST n" at (X+0x18, Y+0x3A), both FONT1. The
+  number comes from `1A34`: two characters, with a space instead of a leading 0. The skill label is
+  at (X-0x18, Y+0x42).
+- `2216`, the slide: MINATURE records 8 and 9 (frames round-1 and round-1+8, the second flipped, the
+  transparent `04B8` blit) at Y=0x46, X and 0xE0-X. X steps by smoothness*4 and rests at the first
+  X past 0x58 (92/132 at HIGH). The class name is at Y=0xBF from `DS:002F`, centred.
+- The screens themselves:
+  - `1EF1` uses `19F2`'s portraits at (0x47,0x24) and (0x87,0x24), "TOURNAMENT" at (0x18,0xBE),
+    "SINGLE RACE" at (0x9C,0xBE), "CHOOSE GAME!" centred at Y=0x68, SELGAM frames 4 and 5 (opaque)
+    at (0x10,0x7C) and (0x94,0x7C), and `0382`'s THUMB at (0x68,0x90). The THUMB frame is the
+    selection itself: 0 none, 1 left, 2 right.
+  - `1FAF` uses `240A`(0x24), "TOURNAMENT RACE nn" centred in FONT2 at Y=0x6E, INTRO frame round-1
+    (opaque) at (0x50,0x7F), then `2216`.
+  - `2329`: `240A`(0x24) without the tally; THUMB frame 1 at (0xB8,0x88); "SELECT VEHICLE"; and,
+    only once `2193` has run (not during `234B`'s own fire release-wait), INTRO and `2216` for the
+    post-remap round. While polling, `0C5D` redraws the class name from `DS:00AB` (the list with
+    "PRO " blanked) whenever `[0x26CF]` is set, so "PRO" blinks.
+  - `256E`: `240A`(0x64); WINNER!/LOSER! in FONT1 at (0x1D,0x5C) and (0xB1,0x5C) by who won;
+    "RESULTS!!" and "TOURNAMENT RACE nn" or "SINGLE RACE" centred in FONT2 at Y=0x3C and Y=0x4C;
+    the icons at Y=0xB6, stepping 4 to rest at 88/136. Each `26A3` XOR redraws the portraits in the
+    winner's FCHAPPY (bank 2) and the loser's FCSAD (bank 3), with the blink bit.
+- Screen X = work X + 32, since the present copies the 256-wide work buffer into columns 32..287.
+  Every capture's side columns are colour 15.
+
+**`[PROVEN]`, pixel for pixel against DOSBox** (`tools/refs/front/h2h_*`, 64000-byte A000 dumps
+plus the DAC, which equals INTRO.PAL in every capture; `npm run h2hscreens`). All seven frames
+are DWAYNE vs JETHRO at smoothness HIGH, and all show 0 differing pixels:
+- the race-info screen at `179B` (race 1, round 1, 0-0);
+- `256E` before its first XOR, and after an odd number of XORs (the winner in FCHAPPY frame 11, the
+  loser in FCSAD frame 13);
+- SELECT VEHICLE on FORMULA ONE, on PRO FORMULA ONE, and on PRO FORMULA ONE with the blink bit set;
+- CHOOSE GAME re-entered by ESC from SELECT VEHICLE, with THUMB frame 2 because `[0x8A0]` still
+  held SINGLE RACE.
+
+Five mutations are caught: swapping the win/lose banks, inverting the blink parity, `2216`'s
+`JLE` as `JL`, a 49px box, and WORDS frame 1 two pixels off. The first CHOOSE GAME capture was
+really the title screen, because CHOOSE GAME idled out during a slow capture. The check caught that
+(29668 pixels off) before anything was built on it, and the screen was recaptured.
+
+**`[STATIC]`, not captured:** the intermediate slide positions, which follow `2216`'s and `256E`'s
+own arithmetic (`slideIconX`, and 4 × the elapsed slide ticks for `256E`).
+
+**What changed.**
+- New `src/frontend/h2hScreens.js`, described above.
+- `flow.js` paints the four phases through it. It repaints every tick during the race-info and
+  result screens (the slides and the pose blink) and during SELECT VEHICLE (the slide and the
+  "PRO" blink).
+- The race-info tick counter lives in the shared per-tick step, so the `force*` debug hooks advance
+  the slide too.
+- `256E`'s icons use the race's own round (records 8 and 9 still carry `2216`'s frames).
+- `screens.js` loses `drawChooseGame`, `drawTwoPlayerRaceInfo`, `drawTwoPlayerResult` and
+  `drawSingleRaceSelect`.
+
+**Live verification, `[PROVEN]` in the port** (`game.html`, Web Worker RAF shim, real key events;
+the live canvas diffed in-page against the same refs):
+- CHOOSE GAME shows 0 differing pixels once RIGHT picks SINGLE RACE. Before that, the only
+  difference is the THUMB frame, 0 against the ref's 2.
+- After a won single race, the result portraits match `h2h_result_blink` exactly (0 differing
+  pixels in both 48×48 boxes) on every odd blink, alternating about every 0.3s.
+- Back on SELECT VEHICLE, the whole frame matches `h2h_selectvehicle` with 0 differing pixels (the
+  1-0 records now match too).
+- RIGHT to PRO FORMULA ONE: the icons slid in (left edge 81 → 89 → 93), and the frame alternates
+  between 0 differing pixels against `_pro` and against `_problink`.
+- In a TOURNAMENT on another track (round 4), both the result screen (on every blink, tally 1-0)
+  and race 2's info screen equal the pixel-proven layout for that state, with 0 differing pixels.
+
+**Corrections in place:** §9bv, §9bw, §9bx and §9by said these screens were text-only. Each passage
+now points here.
+
+The front-end part of Part F is not closed by this. It covers only the H2H screens; the other
+screens in F1's list still need captures and a `check-front.mjs`.
