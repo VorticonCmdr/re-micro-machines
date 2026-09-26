@@ -178,9 +178,9 @@ Legend: decoder status as shown in the viewer. Details and evidence per family l
 
 The registry is `docs/engine.md` §10: every `UNKNOWN_*` ID used anywhere in this repository, one row each, with its status, the section that answers it and its address. Close an item there (and in the doc that owns it) in the same commit as the work. This section used to hold its own running list; that history is in `docs/engine.md` §10's cited sections.
 
-Open or narrowed as of 2026-09-26 (24 IDs plus 5 unnamed items, `docs/engine.md` §10.1/§10.2):
+Open or narrowed as of 2026-09-26 (23 IDs plus 5 unnamed items, `docs/engine.md` §10.1/§10.2):
 
-- **Live captures** (`GOAL-DOS-PARITY.md` Part L): `UNKNOWN_live_verification` (the key-press → control-byte leg, sfx 2, a longer trace), `UNKNOWN_race_4th_engine_delay`, `UNKNOWN_race_live_reverify`, `UNKNOWN_opl_sample_fidelity`/`UNKNOWN_waveform_target`, and the unnamed race-end, rubber-band, drawn-but-invisible and LIVES-poll captures.
+- **Live captures** (`GOAL-DOS-PARITY.md` Part L): `UNKNOWN_live_verification` (the key-press → control-byte leg, sfx 2, a longer trace), `UNKNOWN_race_live_reverify`, `UNKNOWN_opl_sample_fidelity`/`UNKNOWN_waveform_target`, and the unnamed race-end, rubber-band, drawn-but-invisible and LIVES-poll captures.
 - **Front-end pixel parity** (Part F): `UNKNOWN_codecard_pixel_diff`, `UNKNOWN_options_pixel_diff` (the `0400` header), `UNKNOWN_title_pixel_diff`, `UNKNOWN_menu_pixel_diff`, `UNKNOWN_carousel_pixel_diff`, `UNKNOWN_thumb_frame1_invisible`.
 - **Front-end logic, small**: `UNKNOWN_0db0_ch1_frown_trigger`, `UNKNOWN_0eba_0400_menu_calls`, `UNKNOWN_162_stale_direction`, `UNKNOWN_26cf_prompt_blink`, `UNKNOWN_989_98b_meaning`, `UNKNOWN_challenge_qualifier_intro_banner`, `UNKNOWN_menu_default_persistence`, `UNKNOWN_single_race_28c1`, `UNKNOWN_intro_loop_vs_total_gap`.
 - **Other**: `UNKNOWN_overlay_tile_191`, `UNKNOWN_mouse_host_scale`, and the two tooling questions `UNKNOWN_dosbox_wait_frames_cadence`, `UNKNOWN_replay_determinism`.
