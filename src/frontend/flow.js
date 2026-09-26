@@ -50,7 +50,7 @@ import { createSmoothnessGate } from '../engine/smoothness.js'
 import { introInitialState, introStep, smPalette, SCREEN_W as LOGO_W, SCREEN_H as LOGO_H } from '../formats/gfx1.js'
 import { attractInitialState, attractStep } from './attract.js'
 import { twoItemMenuInitialState, twoItemMenuStep } from './frontMenu.js'
-import { charSelectInitialState, charSelectStep, handicapQuestionApplies, handicapInitialState, handicapStep } from './charSelect.js'
+import { charSelectInitialState, charSelectStep, handicapQuestionApplies, handicapInitialState, handicapStep, CAROUSEL_INITIAL_DIRECTION } from './charSelect.js'
 import { boardInitialState, boardStep } from './board.js'
 import { eliminationInitialState, eliminationStep } from './elimination.js'
 import { waitScreenInitialState, waitScreenStep, holdTicksPreStep } from './keyWait.js'
@@ -594,6 +594,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   // this screen reads ONLY P1's own reader slot -- unlike SELECT_GAME/ONE_PLAYER_GAME's combined
   // both-players byte.
   let charSelectState = null
+  let carouselDirection = CAROUSEL_INITIAL_DIRECTION // [0x162]: session-wide, every carousel reads and writes the same word (§9dq)
   let charSelectReader = null
   let charSelectRafId = null
   let charSelectLast = 0
@@ -636,7 +637,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     canvas.height = MENU_VIEW.h
     phase = 'CHAR_SELECT'
     charWho = who
-    charSelectState = charSelectInitialState(startIndex, rosterBytes())
+    charSelectState = charSelectInitialState(startIndex, rosterBytes(), carouselDirection)
     // Two-human picks read the PICKING player's own reader (1E20: [0x1080]=0x137B, then 0x14DF), and
     // the session-lifetime one, so the handicap question after it sees a fire still held from the
     // commit (0B51 has no release-wait, docs/engine.md §9bk/§9bv)
@@ -671,6 +672,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
    * functions. */
   function leaveCharSelect(exit, character) {
     if (charSelectRafId != null) { cancelAnimationFrame(charSelectRafId); charSelectRafId = null }
+    carouselDirection = charSelectState.direction
     charSelectReader?.dispose(); charSelectReader = null
     if (exit === 'cancel') {
       if (charWho === 'challenge-opponent') { enterOpponentPick(); return } // 1A4A: ESC just re-prompts, never exits
@@ -683,11 +685,9 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       lastPick.player = character
       lastPick.challengeOpponent = null // a fresh tournament: 1A4A's own AX=0xFFFF should carry from THIS pick, not a previous run's last opponent
       if (tournament.format === 'twocar') {
-        // 0FBF's second 09E0: "WHO DO YOU WANT TO RACE ?", starting on the last opponent pick and
-        // stepping on (the carousel's remembered direction, LEFT by default) past a taken entry.
-        let opp = lastPick.opponent
-        while (tournament.roster[opp].taken) opp = (opp + 1) % 11
-        enterCharSelect(opp, 'opponent')
+        // 0FBF's second 09E0: "WHO DO YOU WANT TO RACE ?", starting on the last opponent pick; a
+        // taken start is stepped past by 09E0's own entry skip, in [0x162]'s direction (§9dq).
+        enterCharSelect(lastPick.opponent, 'opponent')
         return
       }
     } else if (charWho === 'challenge-opponent') {

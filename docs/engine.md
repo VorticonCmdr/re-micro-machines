@@ -6177,6 +6177,24 @@ The text and target overlay (rows 0-178) matched from the start. The grid did no
 
 `fontbin.js`: `STRIP_SRC_X = 8`, `STRIP_VISIBLE_H = 161`, a transparent strip blit, the cursor at x-8. `check-front` now also renders the code card and compares it in RGB (it failed with 10,881 px on the old code): **0 px**, so all 19 captures are exact.
 
+## 9dq. Part F3: one session side by side (2026-09-26)
+
+One session in DOSBox and `game.html` in a foreground Chrome tab, step by step: boot, code card, OPTIONS, the `25011968` cheat, title, SELECT GAME, ONE PLAYER GAME, Challenge, the player pick, QUALIFYING RACE, the qualifier, QUALIFIED FOR CHALLENGE!, the opponent picker (three picks), PRESS ANY KEY, the board, the race 1 intro, race 1 lost, RESULTS, ONE LIFE LOST, the board and intro again, then ESC from the race, ESC at the title, ESC at OPTIONS.
+
+**How the results were forced.** Both sides used the same lever: the cheat typed on OPTIONS, then in the race SPACE, an X tap (the gated release that ends the first pause stage), F2+F3 held, and an X tap after the restarted pause (§9cn 2). This won the qualifier with the instant-win body (`36A7`, `[26C6]`=4 read back live). Race 1 was lost by not driving at all. So the qualifier result is forced, not played.
+
+**What matched** (each screen compared by eye in both, plus the port's phase log):
+- the code card's two rounds and the interstitial, OPTIONS, the cheat (`[0F69]`=`[0F6A]`=1 live), the title showcase (both on the same class when read at the same moment), both menus and their picks, the idle cancel (28.7 s measured in the port against 2000 ticks);
+- the player carousel, QUALIFYING RACE, QUALIFIED FOR CHALLENGE! with LIVES 10, the picker's face panel, the board, the RACE 1 THE BREAKFAST BENDS intro;
+- race 1 lost: RESULTS (MIKE, ANNE, WALTER, SPIDER FAILED), ONE LIFE LOST with LIVES 9 on both (the cheat's reset to 10 happens in the next race's setup, `11AF` in `115C`, §9bc), then the board and the intro of the same race again;
+- the ESC quit from the race straight to the title, ESC at the title to OPTIONS, ESC at OPTIONS to DOS.
+
+The port's waits, measured in its own phase log: PRESS ANY KEY 10.0 s, board 10.3 s, race intro 11.8 s, RESULTS 10.3 s, outcome 10.0 s, all with no key pressed, as their own checks require (§9bp-§9bt).
+
+**Differences found, each fixed in its own commit:**
+
+1. **The carousel's entry-skip direction.** The picker opens where the player's pick left the scroll (SPIDER, now taken) and steps past taken characters. DOS settled on WALTER, the port on BONNIE; the same on the next two picks (MIKE and ANNE in DOS, BONNIE in the port). The direction is `[0x162]` (`0a6c`), and its only writer is a real LEFT/RIGHT press (`0aac`, +1 LEFT, -1 RIGHT); nothing was pressed on any carousel in that session. Read live: `[0x162]`=0xFFFF, and the static DS image holds 0xFFFF too. With BX<0, `0cd3` takes its subtract branch, which moves to index +1. The port had started every carousel with +1 (the add branch, index -1) as a stated simplification (`UNKNOWN_162_stale_direction`, §9ax). Now `CAROUSEL_INITIAL_DIRECTION` = -1, `flow.js` carries the value from one carousel to the next for the whole session, and the one-player H2H opponent pick lets the carousel's own entry skip step past a taken start instead of stepping +1 itself. `check-charselect` checks the three live picks and both directions (3 failures without the fix).
+
 ## 10. Open items
 
 Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: `open`, `narrowed` (part answered; the rest is the open question), `closed`. **Section** is where the answer (or the question) is written up; the history, wrong turns included, stays in those sections and is not repeated here. **Address** is `MICROU.EXE`'s (`1000:` code, `DS:` data) unless another file is named. This table replaced a run-on paragraph of dated notes on 2026-09-26 (`GOAL-DOS-PARITY.md` D2, §9cx); each ID's status was re-read from its latest dated note. When an item opens or closes, change its row here in the same commit.
@@ -6187,7 +6205,6 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 |---|---|---|---|---|
 | `UNKNOWN_0db0_ch1_frown_trigger` | open | §9bl | `0DB0`, `[BX+0x13]` high byte (CH=1) | What writes CH=1 so that `0DB0` draws the FCFROWN bank; neither `256E` nor `09E0`'s commit-blink writes it (low priority). |
 | `UNKNOWN_0eba_0400_menu_calls` | narrowed | §9aw (callees read §9az/§9bj/§9bz) | `0369`, `0EBA`, `0400` | 0EBA is ResetTournamentState and 0400 is the header draw. [0x160]/[0x192] remain UNKNOWN_0160_0192_meaning. |
-| `UNKNOWN_162_stale_direction` | open | §9ax | `DS:0162` | The carousel entry-skip scroll direction is whatever a prior screen left there; the port defaults to LEFT/+1 (charSelect.js:61). |
 | `UNKNOWN_26cf_prompt_blink` | narrowed | §9dn (§9ax; PRESS ANY KEY §9bt) | `0C96`,`[0x26CF]` | The Challenge carousel's prompt now blinks with the 32-tick `[0x26CF]` toggle; the Head-to-Head carousels (older renderer) still do not. |
 | `UNKNOWN_989_98b_meaning` | open | §9bj (still open §9bl) | `1EF1` zeroing at `1F09-1F18`, `DS:0989`/`DS:098B` | No live reader; only the dead ShowHeadToHeadResultUnreferenced `2099-216B` uses them, as extra tally counters. |
 | `UNKNOWN_dosbox_wait_frames_cadence` | open | §9f | - | What `dosbox.wait_frames(1)` measures (host tick vs retrace) was never pinned down; dedup made it immaterial for M3.4. |
@@ -6217,6 +6234,7 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_1254_1256` | closed | §9v (re-confirmed §9cf) | `CarRecord+0x1254/+0x1256` | Dead per-car static words, 0 references in the image; values follow (car+1)·0x2400 and car·0x3600. |
 | `UNKNOWN_1386` | closed | §9v | `[1386]` (writers `43AC`,`6AD0`,`6ADE`) | Write-only; exact logical NOT of [1388]/onBridge, no reader found in a full-coverage search [STATIC]. |
 | `UNKNOWN_138A_clear` | closed | §9v | `DS:138A` | No clear-to-0 site exists (4 writers set 1, 3 readers), so wall bounces always halve. |
+| `UNKNOWN_162_stale_direction` | closed | §9dq (raised §9ax) | `DS:0162`, `0a6c`, `0aac` | A session global: static 0xFFFF (RIGHT, index +1), rewritten only by a real LEFT/RIGHT press, read by every carousel's entry skip; ported (`CAROUSEL_INITIAL_DIRECTION`, carried in `flow.js`) [PROVEN]. |
 | `UNKNOWN_17DA_semantics` | closed | §9v | `5960-5B34`,`DS:10A0` | CONTACT_TABLE's angle and SINE8's index use the same convention with no transform; the port was already correct. |
 | `UNKNOWN_17ff_other_callers` | closed | §9br (raised §9bl) | `17FF` (sites `1908`,`1919`,`196C`,`1988`,`164B`,`1E0C`,`26BA`,`2166`) | All 8 xref sites read. Board, results and outcome waits are ported; 26BA is ported in §9bx; 2166 is in dead code. |
 | `UNKNOWN_22E1_scope` | closed | §9r | `DS:22E1`, `6AE5-6FEA` | DS:22E1 is exactly 74 bytes: 5 × 7-word round-3 drop-in entries plus a FFFF,FFFF terminator [PROVEN] (live read). |
@@ -7207,7 +7225,7 @@ new `faceFrame()` reproduces this exact 3-way branch.
 New open items, not blocking: `UNKNOWN_162_stale_direction` (the entry-skip loop's own scroll
 direction, `[0x162]`, is whatever a PRIOR screen last left it -- a genuinely stale global this port
 does not replicate exactly, defaulting to LEFT/+1 instead, documented in `charSelect.js`'s own
-header); `UNKNOWN_26cf_prompt_blink` (`FUN_1000_0c96`'s own `[0x26CF]`-gated prompt-text flicker
+header; **closed §9dq**: static 0xFFFF, RIGHT, ported); `UNKNOWN_26cf_prompt_blink` (`FUN_1000_0c96`'s own `[0x26CF]`-gated prompt-text flicker
 during IDLE, not ported -- a cosmetic nicety); `UNKNOWN_carousel_pixel_diff` (same shape as every
 other screen's own pixel-diff item, left for Part F).
 

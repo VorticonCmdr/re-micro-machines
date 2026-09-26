@@ -24,6 +24,11 @@ export const CAROUSEL_TOTAL_PX = CAROUSEL_SLOT_COUNT * CAROUSEL_SLOT_PX // 0x2C0
 export const CAROUSEL_CENTER_PX = 0x140 // 320 -- DrawCharacterSelectGrid's own centred position
 export const BLINK_COUNT = 5 // 1000:0ad7-0af9: CX=5, XOR the frame's blink bit, redraw, wait, loop
 export const BLINK_TICKS = 16 // 1000:0af1-0af6: CMP [0x2],0xF; JLE -- waits until DS:0002 > 15
+// [0x162]: the carousel's last LEFT/RIGHT direction, a session global. Its only writer is a real
+// press (0aac: +1 LEFT, -1 RIGHT); the entry-skip loop only reads it (0a6c). The static DS image
+// holds 0xFFFF, so until the first press the skip runs RIGHT (0cd3's subtract branch): live, the
+// Challenge opponent picker opened on SPIDER (taken) and settled on WALTER, not BONNIE (§9dq).
+export const CAROUSEL_INITIAL_DIRECTION = -1
 
 /**
  * `scroll` for a given starting character index: DS:016F's own 11-word table, re-derived as a
@@ -52,13 +57,14 @@ function centeredRosterValue(scroll, roster) {
 /**
  * `startIndex`: the caller's own starting character (0fbf/102b pass DS:016F-derived scroll
  * positions for [3F4]/[3F6]'s own last picks, docs/engine.md §9an). `roster`: tournament.js's
- * roster array (raw byte values).
+ * roster array (raw byte values). `direction`: `[0x162]` as the previous carousel left it (the
+ * caller keeps it across visits; `state.direction` holds the new value on exit).
  */
-export function charSelectInitialState(startIndex, roster) {
+export function charSelectInitialState(startIndex, roster, direction = CAROUSEL_INITIAL_DIRECTION) {
   const scroll = startScroll(startIndex)
   return {
     scroll,
-    direction: 1, // [0x162]'s own real value here is whatever a PRIOR screen last left it (a genuinely stale global) -- this port defaults to LEFT/+1 for the entry-skip loop as a documented simplification (docs/engine.md §9ax)
+    direction, // [0x162], read by the entry-skip loop (0a6c)
     phase: 'AWAIT_RELEASE',
     scrollStepIndex: 0,
     scrollAccum: 0,

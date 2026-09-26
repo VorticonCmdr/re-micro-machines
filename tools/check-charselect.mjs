@@ -51,6 +51,30 @@ for (let start = 0; start < 11; start++) {
   check('entry-skip actually moved off the taken one', s.cursor !== 5)
 }
 
+// 3b. The entry skip's direction is [0x162], a session global whose static value is 0xFFFF
+// (RIGHT, index +1) until a real press rewrites it (docs/engine.md §9dq). Live: the Challenge
+// opponent picker opened on SPIDER (taken) and settled on WALTER, with [0x162] read as 0xFFFF.
+{
+  const settle = (start, roster, dir) => {
+    const s = dir === undefined ? charSelectInitialState(start, roster) : charSelectInitialState(start, roster, dir)
+    let n = 0
+    while (s.phase !== 'IDLE' && n < 1000) { charSelectStep(s, { bits: 0 }, roster); n++ }
+    return s
+  }
+  const roster = freshRoster()
+  roster[10] |= 0x40 // SPIDER taken
+  check('entry skip, [0x162] untouched: SPIDER (taken) -> WALTER, as live', settle(10, roster).cursor === 0)
+  check('entry skip after a LEFT press ([0x162]=+1): SPIDER -> BONNIE', settle(10, roster, 1).cursor === 9)
+  check('entry skip after a RIGHT press ([0x162]=-1): SPIDER -> WALTER', settle(10, roster, -1).cursor === 0)
+  roster[0] |= 0x40 // the second pick, live: opened on WALTER (just taken), settled on MIKE
+  check('entry skip, [0x162] untouched: WALTER (taken) -> MIKE, as live', settle(0, roster).cursor === 1)
+  roster[1] |= 0x40 // the third pick, live: opened on MIKE, settled on ANNE
+  check('entry skip, [0x162] untouched: MIKE (taken) -> ANNE, as live', settle(1, roster).cursor === 2)
+  const s = settle(5, freshRoster())
+  charSelectStep(s, { bits: 0x80 }, freshRoster())
+  check('a LEFT press writes +1 into the direction the caller carries (0aac)', s.direction === 1)
+}
+
 // 4. LEFT/RIGHT moves exactly one slot in 13 ticks (the full ease table), landing there even if
 // the destination is taken -- no auto-skip on a real user-driven press.
 {
