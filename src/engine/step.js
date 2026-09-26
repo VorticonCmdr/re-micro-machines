@@ -25,7 +25,7 @@ import { applyScriptedDrift } from './dropin.js'
 import { runStates } from './states.js'
 import { updateCamera } from './camera.js'
 import { initTwoCarMatch, twoCarFinishedCar, checkBothDown, twoCarRenderGate, twoCarBanners, stepExchange, twoCarFinalOrder, applyScoreSlotGarbage, exitHold855a } from './twocar.js'
-import { raceOverGateCar, isOplDriver } from './sound.js'
+import { raceOverGateCar, isOplDriver, updateEngines } from './sound.js'
 import { sar16 } from './int16.js'
 
 const bit = (controlBits, mask) => (controlBits & mask) !== 0
@@ -417,12 +417,15 @@ export function animTimerPass(car, bx, ctx) {
  * `3064` resets it only after this call. When it draws, it runs everything a render runs: the
  * projectile draw's count-up (8712), every state handler (car 0's state-A handler advances
  * `[26D5]` with no per-car pass after it, so every timer ends the countdown one lower: 94, not 95)
- * and the round-2/8 tile animation counter (89E0 `INC [26D1]`). The caller decides whether it runs. */
-export function runPreLoopRender(world, cars, raceState, ctx) {
+ * the round-2/8 tile animation counter (89E0 `INC [26D1]`) and, given the session's `jitter`, the engine
+ * sounds (`7B46`). The caller decides whether it runs. */
+export function runPreLoopRender(world, cars, raceState, ctx, jitter = null) {
   const progressScale = world.map.maxPlane2
   ctx = { ...ctx, progressScale, halfMaxProgress: progressScale >> 1 }
   const twoCar = ctx.raceFormat === 2 && ctx.round !== 9
   if (twoCar && !raceState.twoCar) initTwoCarMatch(raceState)
   renderPass(world, cars, raceState, ctx, twoCar, { preRender: true })
   raceState.tileAnimCounter = (raceState.tileAnimCounter ?? 0) + 1
+  // 9281 -> 7B46: the render's engine update runs here too, before 39F3's AH=7 (§9cs).
+  if (ctx.sound && jitter) updateEngines(ctx.sound, cars, ctx, jitter)
 }

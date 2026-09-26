@@ -31,6 +31,9 @@ Open the URL Vite prints. Three pages:
   players pick characters (with the original's handicap question), and TOURNAMENT plays a real
   two-human match to 4 wins, with the WINNER!/LOSER! screen after each race, and SINGLE RACE lets
   them pick any of 10 tracks and race it as often as they like (`docs/engine.md` §9bv-§9by).
+  As in the original, one race's leftovers reach the next: the bits of each car's state that the
+  race setup never resets (a shot still reloading, the last knockout point, and so on) and the
+  engine-sound randomness carry over for the whole session (`docs/engine.md` §9cs).
 - **`viewer.html`** — a developer asset viewer: every decoded format (tracks, sprites, sound,
   palettes…) browsable directly, useful for seeing what a file *is* independent of the game.
 

@@ -90,6 +90,8 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   // The car records' bytes race setup never writes carry from one race into the next, BX-quirk
   // garbage included (docs/engine.md §9cs) -- once per session too.
   const carRecordCarry = createCarRecordCarry()
+  // The engine-pitch PRNG (7CAE) keeps its state in CS:7CDB and nothing reseeds it: one per session.
+  const engineJitter = createRaceJitter()
   const brkBuffer = createBrkBuffer()
 
   statusEl.textContent = 'Loading front-end assets…'
@@ -902,9 +904,9 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     if (round === 9) raceCtx.ruffTruxTime = RUFF_TRUCK_TIMES[race - 1]
     const raceState = {}
     currentRaceState = raceState
-    const jitter = createRaceJitter()
+    const jitter = engineJitter
     const smoothGate = createSmoothnessGate(smoothnessN) // fresh per race -- see the comment above
-    if (presentCountdown === 1) runPreLoopRender(world, cars, raceState, raceCtx) // 39E8, before 3064 resets [2638]
+    if (presentCountdown === 1) runPreLoopRender(world, cars, raceState, raceCtx, jitter) // 39E8, before 3064 resets [2638]
     raceStart(sound)
     // KEYS1(4) or KEYS2(5) -- the only two devices reachable yet (P6 adds JOY1/JOY2/MOUSE).
     const humanReader = recordingReader(createKeyboardReader(settings.p1Control === 4 ? settings.keys1 : keys2, window))

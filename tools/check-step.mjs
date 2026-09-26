@@ -907,6 +907,16 @@ function newCar(fields) {
     const r2 = {}
     runPreLoopRender(world, cs, r2, ctx)
     check('pre-loop render: [26D5] one step ahead, the water counter [26D1] too, no blink tick (the ISR\'s)', r2.dropInTimer === 1 && r2.tileAnimCounter === 1 && !r2.blinkTick)
+    {
+      // 39E8's 90C5 is a whole render (docs/engine.md §9cr/§9cs): the ranking 923E, and 9281 -> 7B46's
+      // engine update with the session's jitter, before 39F3's AH=7.
+      const cs2 = spawnCars(strt, 2, 2, { tournamentIndex: 8 })
+      let calls = 0, draws = 0
+      const driver = { kind: 'opl', engine: () => { calls++ }, playSfx() {}, keepAliveSfx() {} }
+      const r3 = {}
+      runPreLoopRender(world, cs2, r3, { ...ctx, sound: driver }, () => { draws++; return 0 })
+      check(`pre-loop render: the engines update once (4 cars, 4 jitter draws; got ${calls}/${draws}) and the ranking runs`, calls === 4 && draws === 4 && Array.isArray(r3.rankOrder))
+    }
     let k = 0
     while (cs[0].state !== 0 && k < 200) { runStep(world, cs, [0, 0, 0, 0], r2, ctx); k++ }
     check('pre-loop render: every car then enters state 0 with 94 (live, a race after the first), not 95', cs.every((c) => c.animTimer === 94))

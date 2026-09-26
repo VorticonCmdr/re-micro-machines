@@ -75,8 +75,8 @@ export function raceInstrument(round) {
  * added afterward is an integer constant (`floor(x)+n == floor(x+n)` for integer `n`). Skipped
  * entirely while any car is in the two-car "loser" state 0xB (not reachable in this port's
  * one-player scope, checked anyway since it costs nothing). `jitter` is a `createEngineJitter()`
- * closure -- one per race, shared by all 4 cars, matching the single `CS`-relative PRNG state the
- * real driver call site uses.
+ * closure shared by all 4 cars, matching the single `CS`-relative PRNG state (`7CAE`, `CS:7CDB`) the
+ * real call site uses. Nothing reseeds that state, so `flow.js` keeps one per session (§9cs).
  */
 export function updateEngines(driver, cars, ctx, jitter) {
   // 7B46 is called from the render's tail (9281), which returns at its top unless [2638]==1: at

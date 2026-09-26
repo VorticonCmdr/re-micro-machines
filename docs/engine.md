@@ -12852,6 +12852,22 @@ fresh spawn outside it. Before any save, `apply` changes nothing. A no-op `apply
 Dropping `0x6E` from the list fails the `[12B8]` check. The byte-for-byte check reads the list itself,
 so it cannot catch a wrong list entry; the list rests on the scan above.
 
+**What the scan checked beyond explicit displacements.** None of the following writes lands in the
+records. The string writes in the setup tree go to other segments (`3B78`/`4478` for the map copies at
+`44BF-4560`, `4D78`/`5D78` for `463C-4740`) or above them in DS (`0x3EE3`, `0x3FE3`, `0x5EE3`).
+`2D4C` fills `DS:1083-1089`. The callees the listing misaligns (`327A`, `7AF8`, `3547` with the LZ
+codec `3333`) were re-disassembled from their entry points and scanned; they add only `7AF8`'s speed
+words. All 34 `INT 21h` sites in the tree read into other segments or into DS at `0x195B` and above.
+
+**Two more carry-overs, the same kind.** The engine-pitch PRNG `7CAE` keeps its state in
+`CS:7CDB-7CDE`, which only `7CAE` itself reads and writes, so it is never reseeded and runs on from
+race to race. The port made a fresh one per race; `flow.js` now keeps one per session. The pre-loop
+render `39E8 -> 90C5` also reaches `9281 -> 7B46`, the engine update, before `39F3`'s `AH=7`;
+`runPreLoopRender` now takes the session's jitter and does it. `check-step` covers the second: one
+engine update with 4 jitter draws, and the ranking. It fails without the call. The session jitter is
+`flow.js` wiring with no headless test, like the record carry itself: removing either `flow.js` line
+fails nothing.
+
 **Not live-proven.** The planned proof is to fill the records with a marker at `RunRaceMainLoop`'s entry
 `3039`, break at `3055` and read back which bytes kept the marker. It was not done this session. A first
 try filled the records during a race that was already running, because the SPACE meant as "any key"
