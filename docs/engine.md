@@ -12602,7 +12602,11 @@ INTRO.PAL into `7D78:0000` and sets all 256 DAC entries from it with INT 10h AX=
 | `1E01` | outcome, SIMPLE | the same entry, draw, present | the first `17FF` window (latch clear); gated by `[0x311]` |
 | `2641` | two-human result | draw, present | the icon slide, then `17FF` windows |
 
-(`2160` is in the unreferenced `ShowHeadToHeadResultUnreferenced`.) So five screens show their first
+(`2160` is in the unreferenced `ShowHeadToHeadResultUnreferenced`.) The outcome's `[0x311]` gate adds
+nothing reachable: its only clear is `119D` in `SetupTournamentRace 115C`, before every race (the
+bonus race too: `TriggerBonusRace 1A82` calls `115C`), and within one outcome visit `[26CE]` is 0
+after the first fade anyway. `[26CE]`'s static value is 0 (`193C:26CE`), so the boot title does not
+fade. So five screens show their first
 frame fading up from black. The champion screen shows black for the 17 ticks (VRAM was black after
 `26EC`, live) and then appears at full palette. On the outcome screen the fade spends 17 ticks of the
 ~700-tick timeout, since `[261F]` was zeroed before it.
@@ -12625,7 +12629,10 @@ two-human race info or SELECT VEHICLE) to black over 16 ticks (§9co), unless th
     clear of the results' first `17FF`, of the race intro's `179B`, and of the outcome SIMPLE path's
     first `17FF`; the outcome screen also adds the fade's 17 ticks to its `[261F]` count;
   - `runOneRace` fades `menuBuf` out over 16 ticks before the race-start hold (skipped when the flag
-    is 1), draining the pause key's press edge, and `finishRace` sets the flag.
+    is 1), draining the pause key's press edge, and `finishRace` sets the flag;
+  - `paintMenu` draws nothing in LOADING, so on the no-intro path (the H2H qualifier after PRESS ANY
+    KEY) the screen before the race stays in `menuBuf` for that fade-out instead of a blank frame;
+  - on the frame that ends a fade, its dt is the fade's, not the screen's (each tick's `*Last`).
 - Simplified: the outcome LIVES path's fade sits after the first iteration's five ticks in DOS; the
   port runs it first. The same total, 5 ticks earlier. The time `26C0`'s reload takes (8 ticks
   live, CPU/disk-bound) is not reproduced.
@@ -12634,4 +12641,5 @@ two-human race info or SELECT VEHICLE) to black over 16 ticks (§9co), unless th
 sequence (no fade at boot, setup fade-out, cleared by the race start, the first screen after a race
 fades and freezes for 16 whole ticks with `onDone` once, the next screen doesn't, a setup with the
 flag already 1 skips its fade-out, the champion holds black). On the old `fade.js` the `'up'` checks
-and the tick-17 release fail. Not browser-checked: the Chrome window was hidden again.
+and the tick-17 release fail. Not browser-checked: the Chrome window was hidden again. The
+`flow.js` side (the `onDone` lambdas, the LOADING paint, the hold wiring) has no headless test.

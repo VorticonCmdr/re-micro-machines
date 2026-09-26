@@ -412,7 +412,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
   function titleTick(now) {
     if (phase !== 'TITLE') return
-    if (screenFadeHold(now - titleLast)) { titleLast = now; titleRafId = requestAnimationFrame(titleTick); return }
+    if (dac.screen) { const held = screenFadeHold(now - titleLast); titleLast = now; if (held) { titleRafId = requestAnimationFrame(titleTick); return } } // the ending frame's dt is the fade's, not the screen's
     titleAcc += Math.min(now - titleLast, 250)
     titleLast = now
     while (titleAcc >= INTRO_TICK_MS) {
@@ -659,10 +659,9 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   // twice -- before the qualifier (where nextAfterOutcome's own needsOpponentPick/shouldShowBoard
   // checks are both false, so behaviour is unchanged) AND after the opponent picker, right before
   // race 1 (where shouldShowBoard is TRUE and the board must show -- calling startNextRace()
-  // directly skipped it entirely). The one cosmetic cost: for the H2H qualifier specifically (no
-  // intro, hasRaceIntro()===false), nextAfterOutcome's own unconditional trailing paintMenu()
-  // briefly overwrites runOneRace's own "Loading…" status text with a blank LOADING-phase frame
-  // before the race's own render loop takes over -- harmless, self-correcting.
+  // directly skipped it entirely). For the H2H qualifier (no intro, hasRaceIntro()===false),
+  // nextAfterOutcome's trailing paintMenu() runs in LOADING, which paints nothing (the PRESS ANY KEY
+  // screen stays up for race setup's fade-out, docs/engine.md §9cp).
   function leavePressAnyKey() {
     if (pressAnyKeyRafId != null) { cancelAnimationFrame(pressAnyKeyRafId); pressAnyKeyRafId = null }
     nextAfterOutcome()
@@ -814,6 +813,9 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   let currentRaceState = null // likewise
 
   function paintMenu() {
+    // LOADING draws nothing: the screen before the race stays up, as in DOS during the load, and it
+    // is what race setup's 395A fade-out then darkens (docs/engine.md §9cp).
+    if (phase === 'LOADING') return
     menuBuf.fill(0)
     if (phase === 'PRESS_ANY_KEY') drawPressAnyKey(menuBuf, arena)
     else if (phase === 'RACE_INTRO') drawRaceIntro(menuBuf, arena, { ...currentRace(tournament), participants: raceIntroParticipants(tournament) })
@@ -1175,7 +1177,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
   function outcomeTick(now) {
     if (phase !== 'OUTCOME') return
-    if (screenFadeHold(now - outcomeLast)) { outcomeLast = now; outcomeRafId = requestAnimationFrame(outcomeTick); return }
+    if (dac.screen) { const held = screenFadeHold(now - outcomeLast); outcomeLast = now; if (held) { outcomeRafId = requestAnimationFrame(outcomeTick); return } } // the ending frame's dt is the fade's, not the screen's
     outcomeAcc += Math.min(now - outcomeLast, 250)
     outcomeLast = now
     while (outcomeAcc >= INTRO_TICK_MS) {
@@ -1451,7 +1453,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
   function h2hResultTick(now) {
     if (phase !== 'H2H_RESULT') return
-    if (screenFadeHold(now - h2hResultLast)) { h2hResultLast = now; h2hResultRafId = requestAnimationFrame(h2hResultTick); return }
+    if (dac.screen) { const held = screenFadeHold(now - h2hResultLast); h2hResultLast = now; if (held) { h2hResultRafId = requestAnimationFrame(h2hResultTick); return } } // the ending frame's dt is the fade's, not the screen's
     h2hResultAcc += Math.min(now - h2hResultLast, 250)
     h2hResultLast = now
     while (h2hResultAcc >= INTRO_TICK_MS) {
@@ -1491,7 +1493,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
   function resultsTick(now) {
     if (phase !== 'RESULTS') return
-    if (screenFadeHold(now - resultsLast)) { resultsLast = now; resultsRafId = requestAnimationFrame(resultsTick); return }
+    if (dac.screen) { const held = screenFadeHold(now - resultsLast); resultsLast = now; if (held) { resultsRafId = requestAnimationFrame(resultsTick); return } } // the ending frame's dt is the fade's, not the screen's
     resultsAcc += Math.min(now - resultsLast, 250)
     resultsLast = now
     while (resultsAcc >= INTRO_TICK_MS) {
@@ -1540,7 +1542,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
   function championTick(now) {
     if (phase !== 'CHAMPION') return
-    if (screenFadeHold(now - championLast)) { championLast = now; championRafId = requestAnimationFrame(championTick); return }
+    if (dac.screen) { const held = screenFadeHold(now - championLast); championLast = now; if (held) { championRafId = requestAnimationFrame(championTick); return } } // the ending frame's dt is the fade's, not the screen's
     championAcc += Math.min(now - championLast, 250)
     championLast = now
     while (championAcc >= INTRO_TICK_MS) {
@@ -1613,7 +1615,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
   function raceIntroTick(now) {
     if (phase !== 'RACE_INTRO') return
-    if (screenFadeHold(now - raceIntroLast)) { raceIntroLast = now; raceIntroRafId = requestAnimationFrame(raceIntroTick); return }
+    if (dac.screen) { const held = screenFadeHold(now - raceIntroLast); raceIntroLast = now; if (held) { raceIntroRafId = requestAnimationFrame(raceIntroTick); return } } // the ending frame's dt is the fade's, not the screen's
     raceIntroAcc += Math.min(now - raceIntroLast, 250)
     raceIntroLast = now
     while (raceIntroAcc >= INTRO_TICK_MS) {
