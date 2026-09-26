@@ -12,7 +12,7 @@ import { loadWorld, loadBrk, roundCtx, spawnCars } from '../src/engine/race.js'
 import { runStep, applySteerAndThrottle, animTimerPass } from '../src/engine/step.js'
 import { droneControlByte } from '../src/engine/ai.js'
 import { initCameraState, updateCamera } from '../src/engine/camera.js'
-import { initTwoCarMatch, resetCarsAfterKnockout, lineUpBothCars, stepExchange, twoCarFinishedCar, twoCarBanners, twoCarFinalOrder, applyScoreSlotGarbage } from '../src/engine/twocar.js'
+import { initTwoCarMatch, resetCarsAfterKnockout, lineUpBothCars, stepExchange, twoCarFinishedCar, twoCarBanners, twoCarFinalOrder, applyScoreSlotGarbage, exitHold855a } from '../src/engine/twocar.js'
 import { toI16 } from '../src/engine/int16.js'
 import { toBytes } from '../src/engine/car.js'
 import { STATE1_ANIM_DEFAULT } from '../src/data/engine-tables.js'
@@ -404,6 +404,72 @@ async function settled(round, race) {
   let n = 0
   while (!rs.raceOver && n < 300) { if (n === 50) rs.rankOrder = [3, 2, 1, 0]; runStep(world, cars, [0, 0, 0, 0], rs, ctx); n++ }
   check('(g4) instant-win cheat, four-car: the exit re-forces car0/car2/car1/car3 (3115-313A)', rs.raceOver && rs.rankOrder.join() === '0,2,1,3')
+}
+
+// (g5) the exit hold's 855A (30F2-3100, docs/engine.md §9cm): BX drifts (92BC clears BL), so the gate passes on iteration 1 when the exit's camera car is the
+// scorer, and on all 100 when that car is P1 (BX 0 == [26B8] 0). A deciding point writes [2630].
+{
+  const setup = (spotlight, score, shadow) => { const rs = fresh(); Object.assign(rs.twoCar, { spotlight, score, shadow }); return rs }
+  let rs = setup(1, 7, 8)
+  check('(g5) natural end, P2 scoring the deciding point, camera car 1: one pass, [2630]=2', exitHold855a(pair(), rs, { round: 1 }, 1) === 1 && rs.twoCar.winnerSide === 2)
+  rs = setup(0, 8, 7)
+  check('(g5) P1 scoring but the camera car is 1 (the midpoint): no pass at all (0x164, then 0x100)', exitHold855a(pair(), rs, { round: 1 }, 1) === 0 && !rs.twoCar.winnerSide)
+  rs = setup(0, 8, 7)
+  const cs = pair({ heading: 0x10 })
+  check('(g5) camera car 0 and P1 the scorer: all 100 iterations pass (BX stays 0)', exitHold855a(cs, rs, { round: 8 }, 0) === 100 && rs.twoCar.winnerSide === 1)
+  check('(g5) ...and in round 8 the scorer spins 8/256 on each (8573)', cs[0].heading === ((0x10 + 800) & 0xff))
+  rs = setup(1, 4, 5)
+  check('(g5) a non-deciding point takes the "Bonus" path: one pass, [2630] untouched', exitHold855a(pair(), rs, { round: 1 }, 1) === 1 && !rs.twoCar.winnerSide)
+  rs = setup(null, 7, 8)
+  check('(g5) no exchange ([26B8]="none", the literal 1): never passes', exitHold855a(pair(), rs, { round: 1 }, 0) === 0)
+}
+{
+  // Through runStep: the instant-win cheat ends the race while P2's deciding point blinks with the
+  // camera on P2 ([27B5]=2) -- the exit's 855A pass writes [2630]=2 and the fix-up turns the cheat
+  // into a loss (slot 0 = car 2).
+  const strt = parseStrtPos(await read('GAME1/STRT_POS.BIN'))
+  const cars = spawnCars(strt, 1, 1, { raceFormat: 2 })
+  const world = await loadWorld(read, 1, 1)
+  const ctx = { ...roundCtx(1, 1, { raceFormat: 2 }), brk: await loadBrk(read, 1, 1), tournamentIndex: 0, world, camera: initCameraState(strt.find((e) => e.round === 1 && e.race === 1)) }
+  const rs = {}
+  runStep(world, cars, [0, 0, 0, 0], rs, ctx)
+  Object.assign(rs.twoCar, { spotlight: 1, score: 7, shadow: 8 })
+  rs.cameraIndex = 2
+  rs.raceOverCount = 4
+  rs.cheatWin = true
+  runStep(world, cars, [0, 0, 0, 0], rs, ctx)
+  check(`(g5) cheat exit during P2's deciding blink, camera on P2: the exit hold's 855A makes it a loss (slot 0 = ${rs.rankOrder?.[0]})`, rs.raceOver && rs.rankOrder[0] === 2 && rs.twoCar.winnerSide === 2)
+}
+
+// (g6) A double fall (UNKNOWN_rematch_fail_stale_2682, docs/engine.md §9cm), forced through the real
+// per-step pipeline on two-car ROUND31: P1's fall exchange, then [2682]=P2 and [2911]=1 again.
+// Mid-blink the fall branch (no 0xC guard) re-targets the exchange -- [26B8]=P2, states C/B -- but
+// the blink is not re-armed: it resumes where it was, swapping P1's shadow (score+1), makes its 8
+// swaps in all and commits the CURRENT scorer's point, so P1's point is lost and P2 gains one. During
+// the re-appear it is a clean second exchange. (Neither window is reachable in play: see §9cm.)
+{
+  const strt = parseStrtPos(await read('GAME1/STRT_POS.BIN'))
+  const world = await loadWorld(read, 3, 1)
+  const brk = await loadBrk(read, 3, 1)
+  const run = (when) => {
+    const cars = spawnCars(strt, 3, 1, { raceFormat: 2 })
+    const ctx = { ...roundCtx(3, 1, { raceFormat: 2 }), brk, tournamentIndex: 0, world, camera: initCameraState(strt.find((e) => e.round === 3 && e.race === 1)) }
+    const rs = {}
+    for (let i = 0; i < 120; i++) runStep(world, cars, [0, 0, 0, 0], rs, ctx)
+    const start = rs.twoCar.score
+    rs.fallLatch = 0; rs.knockoutRequest = 1
+    let fired = null
+    for (let t = 0; t < 800; t++) {
+      if (fired == null && when(rs, cars)) { fired = rs.twoCar.blink; rs.fallLatch = 1; rs.knockoutRequest = 1 }
+      runStep(world, cars, [0, 0, 0, 0], rs, ctx)
+      if (fired != null && cars[0].state === 0 && cars[1].state === 0 && rs.knockoutRequest === 0) break
+    }
+    return { start, end: rs.twoCar.score, fired, states: cars.slice(0, 2).map((c) => c.state), spot: rs.twoCar.spotlight }
+  }
+  const mid = run((rs) => rs.twoCar.blink === 40)
+  check(`(g6) mid-blink double fall: the blink resumes (not re-armed) and only P2's point counts (${mid.start} -> ${mid.end})`, mid.fired === 40 && mid.end === mid.start - 1 && mid.states.join() === '0,0')
+  const late = run((rs, cars) => cars[0].state === 2)
+  check(`(g6) double fall during the re-appear: a clean second exchange, both points count (${late.start} -> ${late.end})`, late.end === late.start && late.states.join() === '0,0' && late.spot === null)
 }
 
 // (h) 7429's BX clobber (docs/engine.md §9an): the BX each exchange tick leaves for the pass's

@@ -23,7 +23,8 @@ import { fireProjectile, updateProjectileFlight, resolveProjectileHits, projecti
 import { applyScriptedDrift } from './dropin.js'
 import { runStates } from './states.js'
 import { updateCamera } from './camera.js'
-import { initTwoCarMatch, twoCarFinishedCar, checkBothDown, twoCarRenderGate, twoCarBanners, stepExchange, twoCarFinalOrder, applyScoreSlotGarbage } from './twocar.js'
+import { initTwoCarMatch, twoCarFinishedCar, checkBothDown, twoCarRenderGate, twoCarBanners, stepExchange, twoCarFinalOrder, applyScoreSlotGarbage, exitHold855a } from './twocar.js'
+import { raceOverGateCar } from './sound.js'
 import { sar16 } from './int16.js'
 
 const bit = (controlBits, mask) => (controlBits & mask) !== 0
@@ -341,7 +342,9 @@ export function runStep(world, cars, controls, raceState, ctx) {
     // the instant-win cheat's [2635] re-forces car0/car2/car1/car3 in a four-car race too (the
     // [26C6] recount at 4B85 can un-freeze the ranking after the cheat, docs/engine.md §9an); two-car
     // then also applies the [2630] Winner fix-up (3143-3156), and slot 0 decides.
-    if (twoCar) raceState.rankOrder = twoCarFinalOrder(raceState)
+    // The hold between (30F2-3100) runs 855A up to 100 times with a drifting BX, which can still
+    // write [2630] before the fix-up reads it (docs/engine.md §9cm).
+    if (twoCar) { exitHold855a(cars, raceState, ctx, raceOverGateCar(raceState, ctx.raceFormat)); raceState.rankOrder = twoCarFinalOrder(raceState) }
     else if (raceState.cheatWin) raceState.rankOrder = [0, 2, 1, 3]
     return
   }

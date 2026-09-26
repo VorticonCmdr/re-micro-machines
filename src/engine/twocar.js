@@ -394,6 +394,35 @@ function scorerBanner(carIndex, cars, m, ctx, draws) {
   draws.push({ index: 1, cx: m.bannerX, cy: m.bannerY }) // 8623-862D
 }
 
+/**
+ * The race exit's 100-tick hold (`30F2-3100`, docs/engine.md §9cm): each iteration is `3165` (a tick),
+ * `855A` with whatever BX holds, then `92BC`, which clears BL (`92D3`). (`855A` doesn't save BX, but its
+ * Winner path only sets it to `[26B8]` (`8606`), the value that passed.) Iteration 1's BX is 4AEE's
+ * camera-table car (`gateCar`, the same one `30DF`'s sfx gate reads); the later ones see it with BL
+ * cleared: 0, 0x100, 0x200 or 0x400. So the gate `BX == [26B8]` (`856A`) passes on iteration 1 when
+ * the gate car is the scorer, and on all 100 when BX is 0 and P1 is the scorer (`[26B8]` = 0; "none"
+ * is the literal 1, never matched). A passing call is the ordinary `855A` body: on a deciding point
+ * it writes `[2630]`/`[2621]` and slides the banner globals, and in round 8 spins the scorer 8/256.
+ * Its drawing goes through ES=DS (`193C`, `3053`) into the reloaded-per-race PH0 art, never
+ * presented. The sfx-16 keep-alive is left to `raceOverStart` (the port's driver has no query).
+ * Returns how many iterations passed the gate.
+ */
+export function exitHold855a(cars, raceState, ctx, gateCar) {
+  const m = raceState.twoCar
+  if (!m) return 0
+  const base = (i) => i * 0x164
+  let bx = base(gateCar)
+  let passes = 0
+  for (let i = 0; i < 100; i++) {
+    if (m.spotlight !== NONE && bx === base(m.spotlight)) {
+      passes++
+      scorerBanner(m.spotlight, cars, m, { ...ctx, sound: null }, []) // (8606's BX = [26B8] is the value that passed)
+    }
+    bx &= 0xff00 // 92BC: 92D3 MOV BL,0xC8 ... 92E4 DEC BL to 0
+  }
+  return passes
+}
+
 /** `8634`: after an exchange "Bonus" slides out to the left (bannerMode 1/2), "Play Off" shows while
  * the finish-block sequencer holds 3..99, nothing at 100 and above. (864F-866D is unreachable.) */
 function slideBanner(m, draws) {
