@@ -847,7 +847,7 @@ Commit each item on its own, including any capture file under `tools/refs/`.
 - [ ] `UNKNOWN_opl_sample_fidelity`/`UNKNOWN_waveform_target`: an audio-level comparison of the JS
   OPL2 core against DOSBox's own output.
 - [ ] `UNKNOWN_class8_choppers`, live confirmation (optional; it is already resolved `[STATIC]`).
-- [ ] Mouse/joystick fire preempt, live (§9aq 4). Do this after P6.
+- [x] Mouse/joystick fire preempt, live (§9aq 4). Do this after P6. **Done (§9cv): live, the mouse pre-empts (4D70 taken with 0xA8, 4DB4 never), the joystick does not (4DB4 reached with 0xA8, it turns and accelerates).**
 - [ ] Whether a "drawn but invisible" car is actually absent from the screen (§9ap).
 
 ## Part R: remaining static RE items (Ghidra only; can go to subagents, no DOSBox)

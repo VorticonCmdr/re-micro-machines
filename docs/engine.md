@@ -5860,7 +5860,7 @@ set. `4D70`: `JMP 4F03`, skipping the steering test (`4D73`, `TEST DL,0xC0`) and
 entirely for that whole tick, for a keyboard or mouse human (`4D4B-4D69` reads the controller-type
 table, `[2658+2(slot-1)]`, and both joystick device codes bypass this whole test at `4D50`/`4D64`).
 
-Live: with car 0 (a `KEYS2` human, `controllerType` 5 -- the mouse and joystick paths are not covered
+(**The mouse and joystick paths were checked live in §9cv.**) Live: with car 0 (a `KEYS2` human, `controllerType` 5 -- the mouse and joystick paths are not covered
 by this live check, disassembly only) out of its own start-of-race hold, wrote its own `[BX+137B]`
 directly at the physics-step breakpoint (`4AEE`, right after the real `PollAllCarInputs` had already
 run for that tick, so this overrides it -- this checks control byte to behaviour, not the earlier
@@ -6147,6 +6147,8 @@ not a closure.
 matched, now pinned by a test), and the race-start fade-in (the port now holds black for the fade-up
 and steps nothing, then shows the first frame at full palette). Still unported: the race setup's own
 `395D` fade-out of the screen before the race (the port's front-end screens have no fades at all).
+
+**Added 2026-09-26 (§9cv).** The mouse/joystick fire preempt is live-proven: with fire held a mouse car neither steers nor accelerates, a joystick car does both.
 
 **Added 2026-09-26 (§9cu).** JOY 1/JOY 2 via the Gamepad API with the real F7 calibration, and the
 mouse reader over a model of the untouched INT 33h driver; MOUSE is never offered, because `3A44` has
@@ -13027,3 +13029,37 @@ memory. The file was restored from `../micro_machines.zip`, which is byte-identi
 state, and given its old modification time back. Nothing else in `game/` changed. Next time: clear
 `[0F63]` right after the last calibration stage, before sending anything else, and compare
 `SETTINGS.DAT` before and after every live session.
+
+## 9cv. The fire preempt for the mouse and the joystick, live (2026-09-26)
+
+GOAL-DOS-PARITY.md Part L, from §9aq 3. §9aq showed live that a keyboard car's fire pre-empts
+steering and throttle. The mouse and joystick paths were `[STATIC]`:
+- `4D4B-4D69` reads the controller type `[2658+2(slot-1)]`;
+- 1 and 2 (the joysticks) skip the test;
+- 3 (the mouse) is tested like the keyboard: 0x08 jumps `4D70 -> 4F03`, past the steering at
+  `4DB4`/`4DE3` and the throttle.
+
+Both are now `[PROVEN]`, in the §9cu DOSBox session, with car 0 in state 0.
+
+**The mouse** (`[2658]` poked to 3 before race setup, so `2D00` put `2E02` in `[1083]`, read back
+live):
+- Holding the left button, the control byte `[137B]` read 0x28 (accelerate + fire) and the speed
+  stayed 0 for 3 s. As a control, the right button read 0x10 and the car reversed to speed −88.
+- A warp of DOSBox's mouse left (x=100) with no button reached `4DB4` for car 0 with `DL=0x80`.
+- With the left button held and the mouse warped left, `4D70` was reached with `BX=0` and
+  `DL=0xA8`, and the jump taken there is unconditional. Three more left warps were read (each
+  re-centred the cursor to 160), and `4DB4` never ran for car 0.
+
+**The joystick** (DOSBox has no stick here). In RAM only:
+- `[2658]` and the reader `[1083]` were set to JOY 1 (`2E6C`) with `[108C]=1`;
+- `2D5B`'s port read of stick A (`2D63-2D72`) was replaced with NOPs;
+- the stick state was written directly: `[108D]=10`, left of the 87 threshold, and `[1095]=0x20`,
+  button 2.
+
+The byte was the same 0xA8. `4DB4` was reached with `BX=0`, `DL=0xA8` and `AX=1` (the controller
+type `4D5E` read), and a second later the heading was 253 (turned left) and the speed 287. The patch,
+`[2658]`, `[1083]` and `[108C]` were restored afterwards.
+
+So with fire held, a mouse car neither steers nor accelerates, and a joystick car does both, as the
+port has had since §9an 5a. `check-devices` pins both with `applySteerAndThrottle`
+(controller types 3 and 1, byte 0xA8).
