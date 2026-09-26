@@ -180,7 +180,14 @@ export async function bootRace({ canvas, statusEl, pickButton, dropZone, oplStri
       requestAnimationFrame(frame)
       return
     }
-    updateFade(fadeState, dtMs)
+    if (fadeState.active) {
+      // 39F0 -> 32CE: the fade-up over zeroed VRAM, before the main loop -- black, nothing steps.
+      updateFade(fadeState, dtMs)
+      ctx2d.fillStyle = '#000'
+      ctx2d.fillRect(0, 0, canvas.width, canvas.height)
+      requestAnimationFrame(frame)
+      return
+    }
 
     const { pressed, held } = pauseKey.read() // a press since the last frame counts as held: 3074 samples at 35 Hz, a frame can miss a short tap
     const paused = updatePause(pauseState, dtMs, { spaceHeld: held || pressed, released: releaseTracker.isrState().latch }, cars[0], cheats, ROUND, RACE, globalState, sound)

@@ -745,10 +745,10 @@ docs, (6) commit.
 - [x] **The pause minimum.** **Done (§9cl, M3.92): no minimum without the cheat flag; the pause ends at the first gated key release (live-proven).** `src/engine/pause.js` has `MIN_PAUSE_MS = 2000`. DOS resumes on the
   first key click (§9an, "Corrected"). Fix it, and update the comment in `pause.js` that calls
   2000 "the precise real-world duration".
-- [ ] **The race-start fade-in.** The port fades the scene in; DOS shows black, then the first
+- [x] **The race-start fade-in.** **Done (§9co, M3.96): the port holds black for the 17-tick fade-up with nothing stepping, then the first frame at full palette.** The port fades the scene in; DOS shows black, then the first
   frame at full palette (§9an 8). Fix it in both `play.js` and `flow.js`.
-- [ ] **`UNKNOWN_fade_duration`.** The exit fade is unpaced. Measure it live (Part L) and pace it.
-- [ ] **`UNKNOWN_countdown_hud_digit`.** The HUD digit reads 3 during the start countdown and 4
+- [x] **`UNKNOWN_fade_duration`.** **Done (§9co, M3.96): `327A` took 16 ticks live, `32CE` 17 (CPU-bound; DOSBox's numbers); the port uses them.** The exit fade is unpaced. Measure it live (Part L) and pace it.
+- [x] **`UNKNOWN_countdown_hud_digit`.** **Done (§9co, M3.96): DOS also shows 3, then 4 at the first progress write; the port already matched, now tested.** The HUD digit reads 3 during the start countdown and 4
   once racing. Capture the original's value live (Part L) and match it.
 - [x] **`UNKNOWN_round3_bridge_path`.** **Done (§9cc, M3.83): `5740-57F7` is round 3's whole collision path; ported with the CX=12 quirk.** `1000:5740-57f7` is unported, including the `683c` ramp path
   that stores progress 12. This is round 3 physics. Port it and add a `check-step`/`check-rounds` test.
@@ -822,8 +822,8 @@ Commit each item on its own, including any capture file under `tools/refs/`.
 - [ ] `UNKNOWN_0f64_speed_zero`: `car.speed` and the OPL pitch reaching 0 at a real `7AF8` call
   (pause entry, race exit, an exchange) (§9ar a).
 - [ ] `UNKNOWN_exit_banner_live`: ES at `30DF` (§9an 8).
-- [ ] `UNKNOWN_fade_duration`: the exit fade's length in ticks. This feeds P5.
-- [ ] `UNKNOWN_countdown_hud_digit`: the digit shown during the start countdown. This feeds P5.
+- [x] `UNKNOWN_fade_duration` (**§9co: 16 ticks, the fade-up 17**): the exit fade's length in ticks. This feeds P5.
+- [x] `UNKNOWN_countdown_hud_digit` (**§9co: 3, as the port**): the digit shown during the start countdown. This feeds P5.
 - [ ] A whole race end: the countdown and the final order. The ROUND21 lead rule firing (§10,
   "Added 2026-09-23 (§9ah)").
 - [ ] The rubber band boosting while car 0 genuinely leads mid-race, and the grip ×1.5 site (§9aq 4).

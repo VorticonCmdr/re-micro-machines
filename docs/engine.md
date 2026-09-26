@@ -5165,7 +5165,7 @@ phases, `startNextRace`/`nextAfterOutcome`), `screens.js` (`drawCharacterSelect`
 **The race start is not faded in by the original.** `39F0 32CE` fades up over VRAM zeroed at
 `3963-396D`, and every `ROUNDn.PAL` entry 0 is black. The screen stays black for the fade, and the
 first frame appears at full brightness at the first `30CE` flip. The port still fades the scene in;
-this is recorded, not changed (open items). `32CE` is 128 calls / 64 increments, not 126 (a §9q slip).
+this is recorded, not changed (open items). **(Fixed 2026-09-26, §9co: the port now holds black.)** `32CE` is 128 calls / 64 increments, not 126 (a §9q slip).
 
 ### 3. The instant-win cheat on `game.html` -- ported
 
@@ -6138,6 +6138,13 @@ other readers' effect in a single race was not traced (the port passes 1).
 **Added 2026-09-25 (§9ca).** ESC during a race is ported the DOS way (P5's first item, closed). One
 new data point for `UNKNOWN_fade_duration`: `327A` took ~0.23s under DOSBox's CPU setting. That is
 not a closure.
+
+**Added 2026-09-26 (§9co).** Closed: `UNKNOWN_fade_duration` (`327A` took 16 ticks of `[261F]` live,
+`32CE` 17 -- CPU-bound, the DOSBox setting's numbers, now the port's), `UNKNOWN_countdown_hud_digit`
+(the original also shows 3 through the countdown and 4 at the first progress write; the port already
+matched, now pinned by a test), and the race-start fade-in (the port now holds black for the fade-up
+and steps nothing, then shows the first frame at full palette). Still unported: the race setup's own
+`395D` fade-out of the screen before the race (the port's front-end screens have no fades at all).
 
 **Added 2026-09-25 (§9bz).** The four two-human screens are now drawn from the original's own draw
 calls and pixel-checked against seven DOSBox frames (`npm run h2hscreens`). They are Part F's first
@@ -12486,3 +12493,62 @@ matching the scancode. F1/F2/F3 are slots 5/6/7 (0x0400/0x0200/0x0100), and SPAC
 
   Disabling the combo code fails two of them.
 - `check-escquit`: the word's slot bits, and the first-slot rule.
+
+## 9co. The race-start fade, the exit fade's length, and the countdown HUD digit (2026-09-26)
+
+GOAL-DOS-PARITY.md P5's last three items and Part L's `UNKNOWN_fade_duration` /
+`UNKNOWN_countdown_hud_digit`. `[STATIC]` from a re-disassembly of `327A-3332`; `[PROVEN]` where
+marked, from one live DOSBox run (a Challenge race 1, THE BREAKFAST BENDS, `[28BF]=5`), with execute
+breakpoints on the entry and exit of both fade routines and the 70 Hz ISR counter `[261F]` read at
+each stop (a breakpoint stops the emulated clock too, so the reading is exact).
+
+**The two routines** (`[STATIC]`):
+- `PaletteFadeToBlack 327A`: skipped when `[26CE]==1` (already faded), else sets it; reads the live
+  DAC into `7D78:0000` (INT 10h AX=1017h, 256 entries); then `CX=0x7E` calls to `32AE`. A call with CX
+  even decrements every nonzero byte (`32BE-32C8`); every call uploads all 768 bytes (`331F-332F`).
+  CX starts even, so the first upload already shows v-1, the last v-63.
+- `PaletteFadeUpFromBlack 32CE`: runs only when `[26CE]==1`, and clears it; zero-fills the shown
+  buffer `7D78:0300`, then calls `3303` with CX = 0..0x7F (128 calls). An even CX steps every byte +1
+  toward the target at `7D78:0000` (`330D-331A`); every call uploads.
+- Neither waits on anything (no INT 1Ah, no port 3DAh, no `[261F]` poll): both are CPU-bound.
+
+**Live** (`[PROVEN]`):
+- Race setup's own `327A` (return address `395D`, the race intro screen fading out): entered at
+  `[261F]`=721, left `32AA` (CX=0) at 737 -- **16 ticks**, 0.229 s (§9ca had ~0.23 s from a sampler).
+- The race start's `32CE` (return `39F3`, i.e. the `39F0` call): entered at 739 with `[26CE]=1`, left
+  `32FF` (CX=0x80) at 756 -- **17 ticks**. A screen capture at both stops was all black: VRAM was
+  zeroed at `3963-396D`, and ROUNDn.PAL's entry 0 is black, so the fade-up shows nothing.
+- All four cars in state 0xA with 3 laps during both fades.
+
+These are the DOSBox CPU setting's numbers. A different CPU gives different ones; there is no
+constant in the game to port instead, so the port uses these.
+
+**The HUD digit** (`[PROVEN]`, a change-only sampler of the four `[12ED]` lap words and states, car
+0 left idle):
+- 3,3,3,3 through the whole countdown (state 0xA) and on the first state-0 sample (tick 947);
+- 4,4,3,3 at tick 949: the back row (cars 0 and 1) counts its first progress write as a backward
+  crossing (§9ah), the front row doesn't;
+- car 1 back to 3 at tick 978, 29 ticks later; idle car 0 stayed at 4 (a capture showed "4").
+
+The port does exactly this: 3333 on the first state-0 step, 4433 on the next, and car 1 back to 3
+fourteen steps later (29 ticks at the 2-tick step). No code change; `UNKNOWN_countdown_hud_digit`
+is closed as "already matching".
+
+**Port.**
+- `fade.js`: `FADE_OUT_TICKS = 16`, `FADE_UP_TICKS = 17` at 1000/70 ms a tick, replacing the chosen
+  800 ms. The fade-out keeps the byte arithmetic (k = 1..63 over the duration). The `'in'` state is
+  now a black hold: `applyFade` returns an all-zero palette while it runs and the real one after.
+- `play.js`/`flow.js`: while the fade-up runs, the canvas is filled black and nothing else happens
+  (no step, no pause poll, no render), as the main loop has not started in DOS. The first frame then
+  appears at full palette on the first drawn step.
+- Not ported: `395D`'s fade-out of the screen before the race (the port's front-end screens have
+  no palette fades at all).
+
+**Tests.** `check-play`:
+- the black hold is still all zero just before tick 17 and the full palette at 17;
+- the fade-out is k=32 at tick 8 and fully black at 16, and still running just before 16;
+- the HUD digit sequence above on ROUND51 at tournament index 1.
+
+On the old `fade.js` four of the fade checks fail. The HUD digit checks pass on both (no fix).
+The loop change (black, no steps) was not browser-checked: the Chrome window was hidden, so
+`requestAnimationFrame` never ran.

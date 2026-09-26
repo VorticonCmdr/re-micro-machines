@@ -2145,6 +2145,34 @@ async function checkPause() {
 }
 
 /**
+ * The HUD's top digit (car 0's lapsRemaining) around the start countdown, against the live DOSBox
+ * capture (docs/engine.md §9co, closing UNKNOWN_countdown_hud_digit): THE BREAKFAST BENDS (ROUND51,
+ * Challenge race 1), car 0 left idle. Live: 3 for all four cars through state 0xA and the first
+ * state-0 tick (947); two ticks later (949) cars 0 and 1 (the back row) read 4 and cars 2/3 stay 3; car 1 went back to 3 29
+ * ticks (14 steps) later, and car 0 stayed at 4. The port already did this; this pins it.
+ */
+async function checkCountdownHudDigit() {
+  const strt = parseStrtPos(await read('GAME1/STRT_POS.BIN'))
+  const cars = spawnCars(strt, 5, 1)
+  const world = await loadWorld(read, 5, 1)
+  const ctx = { ...roundCtx(5, 1), brk: await loadBrk(read, 5, 1), tournamentIndex: 1, world, camera: initCameraState(strt.find((s) => s.round === 5 && s.race === 1)) }
+  const rs = {}
+  let countdownOk = true, first = -1, car1Back = -1, seenAtFirst = ''
+  for (let step = 0; step < 300; step++) {
+    runStep(world, cars, cars.map((c, i) => (i > 0 && c.active ? droneControlByte(c, ctx) : 0)), rs, ctx)
+    const laps = cars.map((c) => c.lapsRemaining).join('')
+    if (first < 0 && cars[0].state === 0xa && laps !== '3333') countdownOk = false
+    if (first < 0 && cars[0].state === 0) first = step
+    if (first >= 0 && step === first + 1) check(`HUD digit: 3,3,3,3 on the first state-0 step, 4,4,3,3 on the next, as live (got ${laps})`, laps === '4433' && seenAtFirst === '3333')
+    if (step === first) seenAtFirst = laps
+    if (first >= 0 && step > first + 1 && car1Back < 0 && cars[1].lapsRemaining === 3) car1Back = step
+  }
+  check('HUD digit: 3 on every car through the whole start countdown (state 0xA), as live', countdownOk && first > 0)
+  check(`HUD digit: car 1 back to 3 fourteen steps after reading 4, as live's 29 ticks (got ${car1Back - first - 1})`, car1Back - first - 1 === 14)
+  check('HUD digit: idle car 0 stays at 4, as live', cars[0].lapsRemaining === 4)
+}
+
+/**
  * Palette fade (engine/fade.js, docs/engine.md §9q) -- operates on the palette's own 6-bit DAC
  * bytes, not the converted 8-bit RGBA this port renders with (see the module's own header comment
  * for why: ramping the 8-bit values would be a visibly different curve, not the same algorithm).
@@ -2153,16 +2181,19 @@ async function checkFade() {
   const { createFadeState, updateFade, applyFade } = await import('../src/engine/fade.js')
   const dac6 = new Uint8Array(768).fill(63) // max 6-bit value on every channel
 
-  // (a) fade-in starts black and ends at the real palette.
+  const TICK = 1000 / 70
+  // (a) the race start (39F0 -> 32CE over zeroed VRAM, docs/engine.md §9co): black for the whole
+  // 17-tick fade-up, measured live, then the real palette at once -- no ramp over the scene.
   {
     const s = createFadeState('in')
-    check('applyFade: fade-in starts fully black', applyFade(dac6, s).every((v) => v === 0))
-    updateFade(s, 10000) // far past FADE_MS
-    check('applyFade: fade-in settles at the real 6-bit values once elapsed >= duration', applyFade(dac6, s).every((v) => v === 63))
-    check('updateFade: deactivates once its duration has elapsed', s.active === false)
+    check('applyFade: the race-start hold starts fully black', applyFade(dac6, s).every((v) => v === 0))
+    updateFade(s, 16.9 * TICK)
+    check('applyFade: still fully black just before tick 17 (no partial brightness at any point)', s.active && applyFade(dac6, s).every((v) => v === 0))
+    updateFade(s, 0.2 * TICK)
+    check('applyFade: the real 6-bit values at tick 17 (32CE took 17 ticks live)', !s.active && applyFade(dac6, s).every((v) => v === 63))
   }
 
-  // (b) fade-out starts at the real palette and ends black.
+  // (b) fade-out starts at the real palette and ends black, over the 16 ticks 327A took live.
   {
     const s = createFadeState('out')
     // PaletteFadeToBlack 327A/32AE (docs/engine.md §9an): the first upload already shows v-1, and
@@ -2170,11 +2201,13 @@ async function checkFade() {
     const mix = new Uint8Array([63, 10, 0, 1])
     const first = applyFade(mix, s)
     check('applyFade: fade-out starts one step down, max(0, v-1) (32C4 DEC if nonzero)', first[0] === 62 && first[1] === 9 && first[2] === 0 && first[3] === 0)
-    updateFade(s, 400) // half of FADE_MS
+    updateFade(s, 8 * TICK) // half of the 16 ticks
     const mid = applyFade(mix, s)
-    check(`applyFade: at half time k = 32 is subtracted from every channel: 63 -> 31, 10 -> 0 (got ${mid[0]}, ${mid[1]})`, mid[0] === 31 && mid[1] === 0)
-    updateFade(s, 10000)
-    check('applyFade: fade-out settles fully black once elapsed >= duration', applyFade(dac6, s).every((v) => v === 0))
+    check(`applyFade: at tick 8 of 16, k = 32 is subtracted from every channel: 63 -> 31, 10 -> 0 (got ${mid[0]}, ${mid[1]})`, mid[0] === 31 && mid[1] === 0)
+    updateFade(s, 7.9 * TICK)
+    check('updateFade: the fade-out is still running just before tick 16', s.active)
+    updateFade(s, 0.2 * TICK)
+    check('applyFade: fade-out fully black at tick 16 (327A took 16 ticks live)', !s.active && applyFade(dac6, s).every((v) => v === 0))
   }
 
   // (c) an inactive/absent state is a safe no-op (identity), so a caller can call applyFade unconditionally.
@@ -2183,16 +2216,6 @@ async function checkFade() {
     updateFade(s, 10000)
     check('applyFade: inactive state returns the palette unchanged (identity)', applyFade(dac6, s) === dac6)
     check('applyFade: no state at all is also a safe identity no-op', applyFade(dac6, null) === dac6)
-  }
-
-  // (d) monotonic: brightness only moves toward the target, never overshoots or reverses mid-fade.
-  {
-    const s = createFadeState('in')
-    updateFade(s, 200)
-    const early = applyFade(dac6, s)[0]
-    updateFade(s, 200)
-    const later = applyFade(dac6, s)[0]
-    check('applyFade: fade-in brightness is non-decreasing over time', later >= early)
   }
 
   // (e) a real, previously-live-only bug: `io/source.js`'s readers all resolve to a raw
@@ -2204,8 +2227,8 @@ async function checkFade() {
   // would have missed this entirely; only caught by an actual `npm run dev` browser load.
   {
     const buf = new Uint8Array(768).fill(40).buffer
-    const s = createFadeState('in')
-    updateFade(s, 200) // mid-fade, so applyFade must actually allocate+scale, not take the identity shortcut
+    const s = createFadeState('out')
+    updateFade(s, 100) // mid-fade, so applyFade must actually allocate, not take the identity shortcut
     let threw = null, out
     try { out = applyFade(buf, s) } catch (e) { threw = e }
     check(`applyFade: a raw ArrayBuffer input doesn't throw (${threw?.message ?? 'ok'})`, !threw)
@@ -2514,6 +2537,7 @@ async function main() {
   await checkAnimationOverlaysAndRotor()
   await checkPause()
   await checkFade()
+  await checkCountdownHudDigit()
   checkRanking()
   await checkRaceEnd()
   await checkLapCountSanity()

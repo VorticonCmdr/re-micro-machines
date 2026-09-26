@@ -955,7 +955,15 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
           requestAnimationFrame(frame)
           return
         }
-        updateFade(fadeState, dtMs)
+        if (fadeState.active) {
+          // 39F0 -> 32CE: the fade-up over zeroed VRAM, before the main loop -- black, nothing steps.
+          updateFade(fadeState, dtMs)
+          const c2d = canvas.getContext('2d')
+          c2d.fillStyle = '#000'
+          c2d.fillRect(0, 0, canvas.width, canvas.height)
+          requestAnimationFrame(frame)
+          return
+        }
 
         // 3789/37B8: the first key release through the ISR's gate ends the pause (docs/engine.md §9cl),
         // so an ESC release does too; 35F0 returns into the middle of the iteration (307B), which runs
