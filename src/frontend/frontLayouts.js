@@ -4,6 +4,10 @@
 // takes `ctx` = `{ settings }` (the parsed SETTINGS.DAT the capture ran with).
 import { header, portrait, PORTRAIT_NAMES } from './h2hScreens.js'
 import { drawOptionsScreen, drawJoystickCalibrationScreen } from './screens.js'
+import { caseImage } from '../formats/chr.js'
+import { blitTransparent } from '../render/blit.js'
+import { MENU_VIEW } from '../render/menuView.js'
+import { ORDER_TABLE, BOARD_ICON_POSITIONS } from '../data/frontend-tables.js'
 
 /** GAME OPTIONS (`2770`): the `0400` header (`[0x156]`=0), then the body `drawOptionsScreen` draws
  * (exact below row 30 since §9cu). */
@@ -184,9 +188,120 @@ export function layoutRaceIntro({ slots, raceNumber, trackName, round, vehicleCl
   return ops
 }
 
+/** `1867`'s race line at `y`: the track name at X = ((0xFF-((len+1)*8+0x40))>>1)+0x40 and "RACE nn"
+ * (`1A34`) at X-0x40, FONT2; the last race only the slot's own string, centred (`1888`). */
+function raceLine(y, raceNumber, trackName, last) {
+  if (last) return [{ op: 'text', font: 'FONT2.CHR', text: trackName, centre: true, y }]
+  const x = ((0xff - ((trackName.length + 1) * 8 + 0x40)) >> 1) + 0x40
+  const digits = `${raceNumber >= 10 ? Math.floor(raceNumber / 10) : ' '}${raceNumber % 10}`
+  return [{ op: 'text', font: 'FONT2.CHR', text: trackName, x, y }, { op: 'text', font: 'FONT2.CHR', text: `RACE ${digits}`, x: x - 0x40, y }]
+}
+
+const RESULT_FACES = [[0x3f, 0x47], [0x86, 0x47], [0x3f, 0x8f], [0x86, 0x8f]] // records [3FC]/[3FE]/[400]/[402]
+const RESULT_ICONS = [[6, 0x6f, false], [0xc8, 0x6f, true], [6, 0xb7, false], [0xc8, 0xb7, true]] // resting X after the slide
+
+/** The results screen (`13E4`, Challenge) as it rests in its `17FF` windows. `places`: the four
+ * finishers in order, `{ character, car }`; `playerPlace`: 0-3; `passed`: QUALIFY vs FAILED; `b`:
+ * the blink phase of the 1st/4th faces (1 on the first present). Header; "RESULTS!" (`DS:036C`)
+ * FONT2 centred at y 0x25; the race line at y 0x34; NOS digits 1-4 opaque; the faces' borders
+ * (colour 0xF, `150A`); per place its MINATURE icon (frame round-1 + 8*car, opaque after the slide,
+ * the right ones mirrored), its name, and for the player QUALIFY/FAILED (`DS:039A`/`03A2`, FONT1,
+ * x 4 left or 0xBC right, y face+0x20); then the faces in their result banks: 1st FCHAPPY
+ * char*2+b, 2nd FCNORMAL, 3rd FCFROWN, 4th FCSAD char*2+b. */
+export function layoutResults({ raceNumber, trackName, last = false, round, places, playerPlace, passed, b = 1 }) {
+  const ops = [...header({ words: 2 }), { op: 'text', font: 'FONT2.CHR', text: 'RESULTS!', centre: true, y: 0x25 }, ...raceLine(0x34, raceNumber, trackName, last)]
+  ;[[0, 7, 0x47], [2, 7, 0x8f], [1, 0xc6, 0x47], [3, 0xc6, 0x8f]].forEach(([f, x, y]) => ops.push({ op: 'sprite', chr: 'NOS.CHR', frame: f, x, y, opaque: true }))
+  RESULT_FACES.forEach(([x, y]) => ops.push({ op: 'border', x: x - 1, y: y - 1, w: 50, h: 50, color: 0x0f }))
+  places.forEach(({ character, car }, k) => {
+    const [x, y] = RESULT_FACES[k], [ix, iy, flip] = RESULT_ICONS[k]
+    ops.push({ op: 'sprite', chr: 'MINATURE.CHR', frame: round - 1 + 8 * car, x: ix, y: iy, opaque: true, flip })
+    ops.push({ op: 'text', font: 'FONT1.CHR', text: PORTRAIT_NAMES[character], x, y: y + 0x31 })
+    if (k === playerPlace) ops.push({ op: 'text', font: 'FONT1.CHR', text: passed ? 'QUALIFY' : 'FAILED', x: k % 2 === 0 ? 4 : 0xbc, y: y + 0x20 })
+  })
+  const bank = [['FCHAPPY.CHR', true], ['FCNORMAL.CHR', false], ['FCFROWN.CHR', false], ['FCSAD.CHR', true]]
+  places.forEach(({ character }, k) => {
+    const [x, y] = RESULT_FACES[k], [chr, blinks] = bank[k]
+    ops.push({ op: 'sprite', chr, frame: blinks ? character * 2 + b : character, x, y, opaque: true })
+  })
+  return ops
+}
+
+/** The outcome message (`1C1B`), resting: header; the player's name at (0x68,0x77) and a 0xD border
+ * round (0x68,0x46); message `code` (`DS:081F`) FONT2 centred at y 0x32; "LIVES nn" (`DS:0893`,
+ * FONT1, (0x60,0x8C)) except for codes 0 and 4; the face opaque at (0x68,0x46) -- FCHAPPY for odd
+ * codes, FCSAD for even, frame char*2+b. */
+export function layoutOutcome({ code, message, character, lives, b, words = 2 }) {
+  const ops = [
+    ...header({ words }),
+    { op: 'text', font: 'FONT1.CHR', text: PORTRAIT_NAMES[character], x: 0x68, y: 0x77 },
+    { op: 'border', x: 0x67, y: 0x45, w: 50, h: 50, color: 0x0d },
+    { op: 'text', font: 'FONT2.CHR', text: message, centre: true, y: 0x32 },
+  ]
+  if (code !== 0 && code !== 4) ops.push({ op: 'text', font: 'FONT1.CHR', text: `LIVES ${lives >= 10 ? Math.floor(lives / 10) : ' '}${lives % 10}`, x: 0x60, y: 0x8c })
+  ops.push({ op: 'sprite', chr: code % 2 ? 'FCHAPPY.CHR' : 'FCSAD.CHR', frame: character * 2 + b, x: 0x68, y: 0x46, opaque: true })
+  return ops
+}
+
+/** The tournament board (`18D8`/`198E`): header; CASE's tile map (`0710`, opaque) at (-1,32); an icon
+ * per `ORDER_TABLE[1..raceIndex]` at `DS:0312`'s position, frame (round-1)+8*(race-1), transparent;
+ * the newest one blinks (`iconOn`). */
+export function layoutBoard({ raceIndex, iconOn }) {
+  const ops = [...header({ words: 2 }), { op: 'call', fn: (buf, arena) => blitTransparent(buf, MENU_VIEW.w, MENU_VIEW.h, -1, 32, caseImage(arena), { colorKey: -1 }) }]
+  for (let i = 1; i <= raceIndex; i++) {
+    if (i === raceIndex && !iconOn) continue
+    const { round, race } = ORDER_TABLE[i], { x, y } = BOARD_ICON_POSITIONS[i - 1]
+    ops.push({ op: 'sprite', chr: 'MINATURE.CHR', frame: round - 1 + 8 * (race - 1), x, y })
+  }
+  return ops
+}
+
+/** The elimination screen (`16DE`) at its `179B` wait, after the bounce: `19F2`'s panel with the
+ * victim's slot ORed with 0x40 (FCNORMAL frame 13, all colour 0, its name still drawn), the victim's
+ * name (`DS:0258`) FONT2 at (0x48,0x64) and "IS OUT!!" (`DS:03B6`) at (0x80,0x64). */
+export function layoutEliminated({ slots, victimSlot }) {
+  const panelSlots = slots.map((v, i) => (i === victimSlot ? v | 0x40 : v))
+  const ops = [...header({ words: 2 })]
+  panelSlots.forEach((v, i) => {
+    const x = 8 + 0x40 * i
+    ops.push({ op: 'sprite', chr: 'FCNORMAL.CHR', frame: faceFrameOf(v & 0x4f), x, y: 0x24, opaque: true })
+    ops.push({ op: 'border', x: x - 1, y: 0x23, w: 50, h: 50, color: 0x0d })
+    ops.push({ op: 'text', font: 'FONT1.CHR', text: PORTRAIT_NAMES[v & 0xf], x, y: 0x55 })
+  })
+  ops.push({ op: 'text', font: 'FONT2.CHR', text: 'IS OUT!!', x: 0x80, y: 0x64 })
+  ops.push({ op: 'text', font: 'FONT2.CHR', text: PORTRAIT_NAMES[slots[victimSlot] & 0xf], x: 0x48, y: 0x64 })
+  return ops
+}
+
+/** The champion screen (`1AAD`) at the end of its slide: header; CUP frame 0 opaque at (0x50,0x5A);
+ * a colour-0xF band (0x68-0x97, 0x62-0x65); the FCHAPPY face (char*2+b) transparent at (0x68,0x35);
+ * rows 0x26-0x35 cleared and "CHAMPIONSHIP WINNER!!" (`DS:0384`) FONT2 at (titleX, 0x26) -- 0x26 on
+ * the slide's last iteration, 0x28 from the next one on; CUP frame 1 transparent at (0x50,0x62) and
+ * frames 2-9 opaque below it; rows 0xA4-0xB3 cleared and the name FONT2 at (0x68,0xA4). */
+export function layoutChampion({ character, b, titleX = 0x28, words = 2 }) {
+  const ops = [
+    ...header({ words }),
+    { op: 'sprite', chr: 'CUP.CHR', frame: 0, x: 0x50, y: 0x5a, opaque: true },
+    { op: 'rect', x: 0x68, y: 0x62, w: 0x30, h: 4, color: 0x0f },
+    { op: 'sprite', chr: 'FCHAPPY.CHR', frame: character * 2 + b, x: 0x68, y: 0x35 },
+    { op: 'rows', y: 0x26, count: 16, color: 0 },
+    { op: 'text', font: 'FONT2.CHR', text: 'CHAMPIONSHIP WINNER!!', x: titleX, y: 0x26 },
+    { op: 'sprite', chr: 'CUP.CHR', frame: 1, x: 0x50, y: 0x62 },
+  ]
+  for (let f = 2; f <= 9; f++) ops.push({ op: 'sprite', chr: 'CUP.CHR', frame: f, x: 0x50, y: 0x6a + 8 * (f - 2), opaque: true })
+  ops.push({ op: 'rows', y: 0xa4, count: 16, color: 0 }, { op: 'text', font: 'FONT2.CHR', text: PORTRAIT_NAMES[character], x: 0x68, y: 0xa4 })
+  return ops
+}
+
 const FREE_ROSTER = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 export const FRONT_SCREENS = {
+  results_lost: () => layoutResults({ raceNumber: 1, trackName: 'THE BREAKFAST BENDS', round: 5, places: [{ character: 0, car: 1 }, { character: 1, car: 2 }, { character: 2, car: 3 }, { character: 10, car: 0 }], playerPlace: 3, passed: false, b: 1 }),
+  outcome_qualified: () => layoutOutcome({ code: 1, message: 'QUALIFIED FOR CHALLENGE!', character: 10, lives: 3, b: 1 }),
+  outcome_lifelost: () => layoutOutcome({ code: 2, message: 'ONE LIFE LOST', character: 10, lives: 2, b: 0 }),
+  board_a: () => layoutBoard({ raceIndex: 1, iconOn: false }),
+  board_b: () => layoutBoard({ raceIndex: 1, iconOn: true }),
+  eliminated: () => layoutEliminated({ slots: [10, 0, 1, 2], victimSlot: 1 }),
+  champion: () => layoutChampion({ character: 10, b: 0, titleX: 0x26 }),
   charselect: () => layoutCharSelect({ scroll: settledScroll(10), roster: FREE_ROSTER }),
   picker: () => layoutPicker({ slots: [10, 0xb, 0xb, 0xb], scroll: settledScroll(0), roster: FREE_ROSTER.map((v) => (v === 10 ? 0x4a : v)) }),
   qualintro: () => layoutQualifierIntro({ vehicleClass: 2 }),

@@ -43,9 +43,9 @@ import { RUFF_TRUCK_TIMES } from '../data/engine-tables.js'
 import { initTournament, isInQualifier, applyRaceSkip, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, raceIntroHoldTicks, raceIntroParticipants, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, resultsPassed, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, OUTCOME } from './tournament.js'
 import { CHARACTER_NAMES, OUTCOME_MESSAGES, resolveSmoothnessForPlay } from '../data/frontend-tables.js'
 import { ORDER_TABLE, TRACK_NAMES } from '../data/frontend-tables.js'
-import { layoutOptions, layoutJoyCal, layoutTitle, layoutSelectGame, layoutOnePlayerGame, layoutCharSelect, layoutPicker, layoutQualifierIntro, layoutRaceIntro } from './frontLayouts.js'
+import { layoutOptions, layoutJoyCal, layoutTitle, layoutSelectGame, layoutOnePlayerGame, layoutCharSelect, layoutPicker, layoutQualifierIntro, layoutRaceIntro, layoutResults, layoutOutcome, layoutBoard, layoutEliminated, layoutChampion } from './frontLayouts.js'
 import { paintOps, layoutChooseGame, layoutTwoPlayerRaceInfo, layoutTwoPlayerResult, layoutSingleRaceSelect, slideIconX } from './h2hScreens.js'
-import { drawTwoPlayerPickLabels, drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawOpponentPanel, drawEliminatedScreen, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawJoystickCalibrationScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
+import { drawTwoPlayerPickLabels, drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawOpponentPanel, drawEliminatedScreen, drawEliminationIcon, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawJoystickCalibrationScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
 import { createSmoothnessGate } from '../engine/smoothness.js'
 import { introInitialState, introStep, smPalette, SCREEN_W as LOGO_W, SCREEN_H as LOGO_H } from '../formats/gfx1.js'
 import { attractInitialState, attractStep } from './attract.js'
@@ -787,7 +787,10 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   function paintEliminated() {
     menuBuf.fill(0)
     const { victim, slot } = tournament.pendingElimination
-    drawEliminatedScreen(menuBuf, arena, { victim, playerCharacter: tournament.playerCharacter, opponents: tournament.opponents, slot, step: eliminationState.step, frameOn: eliminationState.frameOn, done: eliminationState.done })
+    // 16DE's static screen is pixel-exact (docs/engine.md §9dm); the bounce is drawn over it.
+    const slots = [tournament.playerCharacter, ...tournament.opponents.map((o, i) => (i === slot ? victim : o ?? 0xb))]
+    paintOps(menuBuf, arena, layoutEliminated({ slots, victimSlot: slot + 1 }))
+    if (!eliminationState.done) drawEliminationIcon(menuBuf, arena, { victim, slot, step: eliminationState.step, frameOn: eliminationState.frameOn })
     paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
     statusEl.textContent = 'ELIMINATED'
   }
@@ -839,7 +842,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   let boardAcc = 0
   function paintBoard() {
     menuBuf.fill(0)
-    drawTournamentBoard(menuBuf, arena, { raceIndex: effectiveRaceIndex(tournament), blinkOn: boardState.blinkOn })
+    paintOps(menuBuf, arena, layoutBoard({ raceIndex: effectiveRaceIndex(tournament), iconOn: boardState.blinkOn })) // 18D8, pixel-exact (docs/engine.md §9dm)
     paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
     statusEl.textContent = 'BOARD'
   }
@@ -892,6 +895,9 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   let tournament = null
   let lastStandings = null
   let lastPassed = null
+  let lastResultsRace = null
+  let screenTicks = 0 // ticks since the current results/outcome/champion screen opened (the face blink)
+  const blinkB = () => (1 + ((screenTicks / 16) | 0)) & 1 // 1 on the first present, then toggling
   let currentCars = null // exposed on the session for debugging (play.js's own bootRace precedent)
   let currentRaceState = null // likewise
 
@@ -910,9 +916,15 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
         ? layoutQualifierIntro({ vehicleClass: round })
         : layoutRaceIntro({ slots: raceIntroParticipants(tournament), raceNumber: index, trackName: TRACK_NAMES[(round - 1) * 4 + (race - 1)], round, last: index === ORDER_TABLE.length - 1 }))
     } else if (phase === 'RACE_INTRO') drawRaceIntro(menuBuf, arena, { ...currentRace(tournament), participants: raceIntroParticipants(tournament) })
-    else if (phase === 'RESULTS') drawResults(menuBuf, arena, { standings: lastStandings, passed: lastPassed })
-    else if (phase === 'OUTCOME') drawOutcome(menuBuf, arena, { message: OUTCOME_MESSAGES[tournament.lastOutcome] })
-    else if (phase === 'CHAMPION') drawChampion(menuBuf, arena, { playerName: CHARACTER_NAMES[championCharacter ?? tournament.playerCharacter] })
+    else if (phase === 'RESULTS' && lastResultsRace && lastStandings?.length === 4 && lastStandings.every((st) => st.character != null)) {
+      // Pixel-exact (docs/engine.md §9dm): 13E4's layout at rest.
+      const { round, race, index, passed } = lastResultsRace
+      paintOps(menuBuf, arena, layoutResults({ raceNumber: index, trackName: TRACK_NAMES[(round - 1) * 4 + (race - 1)], last: index === ORDER_TABLE.length - 1, round, places: lastStandings.map(({ character, car }) => ({ character, car })), playerPlace: lastStandings.findIndex((st) => st.car === 0), passed, b: blinkB() }))
+    } else if (phase === 'RESULTS') drawResults(menuBuf, arena, { standings: lastStandings, passed: lastPassed })
+    else if (phase === 'OUTCOME') {
+      const code = tournament.lastOutcome
+      paintOps(menuBuf, arena, layoutOutcome({ code, message: OUTCOME_MESSAGES[code], character: tournament.playerCharacter, lives: tournament.lives, b: blinkB(), words: tournament.format === 'challenge' ? 2 : 1 })) // 1C1B, pixel-exact (§9dm)
+    } else if (phase === 'CHAMPION') paintOps(menuBuf, arena, layoutChampion({ character: championCharacter ?? tournament.playerCharacter, b: blinkB(), words: tournament.format === 'challenge' ? 2 : 1 })) // 1AAD at rest, pixel-exact (§9dm)
     paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
     statusEl.textContent = phase
   }
@@ -1167,6 +1179,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     // for a Challenge non-qualifier, non-bonus race (the only case `next==='RESULTS'` below can
     // produce), but harmless to compute unconditionally.
     const resultsWasPassed = resultsPassed(tournament, result.finishPosition)
+    lastResultsRace = { round: race.round, race: race.race, index: effectiveRaceIndex(tournament), passed: resultsWasPassed } // before reportRaceResult advances it
     if (race.round === 9) {
       reportRaceResult(tournament, { won: result.won, lifeDelta: result.lifeDelta, cheatActive })
       lastStandings = null
@@ -1187,7 +1200,8 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       // Two-car: racePosition can be stale for car 1 (car 2 can hold a slot, docs/engine.md §9am), so
       // the two places come from the result itself.
       const twoCarPlaces = tournament.format === 'twocar' ? [result.finishPosition, 3 - result.finishPosition] : null
-      lastStandings = result.cars.map((car, i) => ({ name: names[i], position: twoCarPlaces?.[i] ?? car.racePosition, present: car.present }))
+      const characters = [tournament.playerCharacter, ...raceOpponents]
+      lastStandings = result.cars.map((car, i) => ({ name: names[i], character: characters[i], car: i, position: twoCarPlaces?.[i] ?? car.racePosition, present: car.present }))
         .filter((s) => s.present).sort((a, b) => a.position - b.position)
       lastPassed = tournament.lastOutcome !== OUTCOME.QUALIFIER_FAILED && tournament.lastOutcome !== OUTCOME.ONE_LIFE_LOST
     }
@@ -1243,6 +1257,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     raceOutcomeMusic(sound, tournament.lastOutcome) // ShowRaceOutcomeMessageTune8or6 1000:1c84, docs/engine.md §9ai
     menuReleaseTracker.reset() // 1C30/1C35
     outcomeWait = outcomeWaitInitialState(tournament.lastOutcome)
+    screenTicks = 0
     // 1D82/1E01: the fade runs after 1C1B/1D1F zeroed [261F], so it spends 17 ticks of the timeout;
     // on the SIMPLE path the first 17FF (and its latch clear) only opens after it.
     beginScreenFadeUp('up', () => {
@@ -1276,6 +1291,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     while (outcomeAcc >= INTRO_TICK_MS) {
       outcomeAcc -= INTRO_TICK_MS
       if (outcomeWaitTick(readOutcomeInput)) return
+      const b = blinkB(); screenTicks++; if (blinkB() !== b) paintMenu()
     }
     outcomeRafId = requestAnimationFrame(outcomeTick)
   }
@@ -1572,6 +1588,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     menuReleaseTracker.reset() // the first 17FF call's own 180F/1814
     beginScreenFadeUp('up', () => menuReleaseTracker.reset()) // 1546 comes before that first 17FF
     resultsWait = windowedWaitInitialState({ cx: RESULTS_17FF_CX })
+    screenTicks = 0
     paintMenu()
     resultsLast = performance.now()
     resultsAcc = 0
@@ -1592,6 +1609,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     while (resultsAcc >= INTRO_TICK_MS) {
       resultsAcc -= INTRO_TICK_MS
       if (resultsWaitTick(readWaitInput())) return
+      const b = blinkB(); screenTicks++; if (blinkB() !== b) paintMenu()
     }
     resultsRafId = requestAnimationFrame(resultsTick)
   }
@@ -1618,6 +1636,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     beginScreenFadeUp('in') // 1BCF before 1BD3's first present: black, then the screen at full
     championMusic(sound)
     championState = championInitialState()
+    screenTicks = 0
     paintMenu()
     championLast = performance.now()
     championAcc = 0
@@ -1641,6 +1660,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     while (championAcc >= INTRO_TICK_MS) {
       championAcc -= INTRO_TICK_MS
       if (championWaitTick(readChampionInput)) return
+      const b = blinkB(); screenTicks++; if (blinkB() !== b) paintMenu()
     }
     championRafId = requestAnimationFrame(championTick)
   }

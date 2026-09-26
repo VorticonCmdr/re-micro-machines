@@ -6152,6 +6152,17 @@ From a read-only disassembly (`[STATIC]`), each checked at 0 px against its capt
 
 `game.html` draws the Challenge carousel, picker and race intros from these layouts; the Head-to-Head variants (not captured) keep the older renderers, as does the round-9 bonus race's intro (`1219-126A`, not specified). Not ported: the intro icons' slide into place (they are drawn at rest).
 
+## 9do. Part F2: results, outcome, board, elimination and champion (2026-09-26)
+
+From a read-only disassembly (`[STATIC]`), checked at 0 px against the captures (`[PROVEN]`); the spec agent had also painted each state with the port's primitives before the layouts were written.
+- **Results** (`13E4`, Challenge): header ("Challenge"); "RESULTS!" (`DS:036C`) FONT2 centred at y 0x25; `1867`'s race line at y 0x34; NOS digits 1-4 opaque at (7,0x47)/(0xC6,0x47)/(7,0x8F)/(0xC6,0x8F); the four faces at (0x3F,0x47), (0x86,0x47), (0x3F,0x8F), (0x86,0x8F) with colour-0xF borders (`150A`); per place its MINATURE icon, opaque at the end of its slide (x 6 or 0xC8, y 0x6F/0xB7, the right ones mirrored), frame (round-1)+8*car (the `DEC CL` at `1511` is missing from Ghidra's function listing of `13E4`); the name; for the player "QUALIFY"/"FAILED" (`DS:039A`/`03A2`, FONT1, x 4 or 0xBC, y face+0x20). Then the faces in their result banks, blinking in the `17FF` windows: 1st FCHAPPY char*2+b, 2nd FCNORMAL, 3rd FCFROWN, 4th FCSAD char*2+b.
+- **Outcome** (`1C1B`): header; the name at (0x68,0x77); a 0xD border round (0x68,0x46); the message (`DS:081F`) FONT2 centred at y 0x32; "LIVES nn" (`DS:0893`, FONT1, (0x60,0x8C)) except for codes 0 and 4; the face at (0x68,0x46), FCHAPPY for odd codes and FCSAD for even ones, frame char*2+b. (The LIVES digit slide is not ported; the resting screen is.)
+- **The board** (`18D8`/`198E`): header; CASE's tile map opaque at (-1,32) (`0710`); the icons at `DS:0312`'s positions, frame (round-1)+8*(race-1), transparent, the newest blinking.
+- **Elimination** (`16DE`, at `179B`): the panel with the victim's slot ORed with 0x40 (FCNORMAL frame 13, all colour 0, the name still drawn); the victim's name FONT2 at (0x48,0x64) and "IS OUT!!" (`DS:03B6`) at (0x80,0x64). The bounce is drawn over it as before.
+- **Champion** (`1AAD`): header; CUP frame 0 opaque at (0x50,0x5A); a colour-0xF band (0x68-0x97, 0x62-0x65); the FCHAPPY face transparent at (0x68,0x35); rows 0x26-0x35 cleared and "CHAMPIONSHIP WINNER!!" (`DS:0384`) FONT2 at X 0x26 on the slide's last iteration (the capture) and 0x28 from the next one on; CUP frame 1 transparent at (0x50,0x62) and frames 2-9 opaque below; rows 0xA4-0xB3 cleared and the name FONT2 at (0x68,0xA4).
+
+All 18 captured screens are now 0 px in `npm run front`. `game.html` draws these screens from the layouts (the results/outcome/champion faces blink with a 16-tick period from b=1; the exact phase is not modelled). Checked in the browser (a hidden Chrome window, so through the page's own step hooks): the page's own canvas is 0 px off the captures for OPTIONS, the title, SELECT GAME, the Challenge character select and the qualifier's intro, and ONE PLAYER GAME differs only in the thumb (the page enters it with the boot's persisted pick 2, as DOS does; the capture had 0 poked). Found on the way: a Challenge pick is followed by PRESS ANY KEY (`0C15`), which the capture run had dismissed unseen. The later screens need a race, which a hidden window cannot run (`requestAnimationFrame`); F3's walk covers them.
+
 ## 10. Open items
 
 Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: `open`, `narrowed` (part answered; the rest is the open question), `closed`. **Section** is where the answer (or the question) is written up; the history, wrong turns included, stays in those sections and is not repeated here. **Address** is `MICROU.EXE`'s (`1000:` code, `DS:` data) unless another file is named. This table replaced a run-on paragraph of dated notes on 2026-09-26 (`GOAL-DOS-PARITY.md` D2, §9cx); each ID's status was re-read from its latest dated note. When an item opens or closes, change its row here in the same commit.
@@ -6179,7 +6190,7 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 
 | Item | Status | Section | Address | Open question |
 |---|---|---|---|---|
-| Front-end pixel parity | open | GOAL Part F | `0400` | No byte-exact diff of most front-end screens (the options/F7 header, the carousel's look, the H2H vs CPU race-intro sprite panel); §9bz's four H2H screens and §9cu's options body are the exceptions. |
+| Front-end pixel parity | narrowed | §9dm-§9do; GOAL Part F | - | All 18 captured screens are 0 px in `npm run front`. Still open: the code card (`UNKNOWN_codecard_pixel_diff`), the Head-to-Head vs CPU variants of the carousel/intro, and the bonus race's intro. |
 
 ### 10.3 Closed
 

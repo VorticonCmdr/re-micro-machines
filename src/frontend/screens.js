@@ -288,6 +288,14 @@ export function eliminatedPanelSlots(opponents, slot) {
   return opponents.map((o, i) => (i === slot ? 0x40 : o))
 }
 
+/** Just `16DE`'s bouncing FCSAD icon (the squash described above), for drawing over the exact
+ * static layout (`frontLayouts.js` `layoutEliminated`, docs/engine.md §9dm). */
+export function drawEliminationIcon(buf, arena, { victim, slot, step = 0, frameOn = true }) {
+  const offset = WOBBLE_TABLE[step] ?? 0
+  const face = rec('FCSAD.CHR')
+  blitChr(buf, arena, face, victim * 2 + (frameOn ? 1 : 0), PANEL_X0 + (slot + 1) * PANEL_STEP_X, PANEL_Y + offset, { cropRows: face.height - offset })
+}
+
 export function drawEliminatedScreen(buf, arena, { victim, playerCharacter, opponents, slot, step = 0, frameOn = true, done = false }) {
   drawOpponentPanel(buf, arena, { slots: [playerCharacter, ...eliminatedPanelSlots(opponents, slot)] })
   drawString(buf, arena, rec('FONT2.CHR'), CHARACTER_NAMES[victim] ?? '', 0x48, 0x64)
