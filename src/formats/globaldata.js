@@ -34,12 +34,20 @@ export const DEFAULT_SETTINGS = {
   p2Control: 5, // KEYS2
   smoothness: 1, // HIGH
   soundDriver: 2, // SPEAKER
-  joystick1: { left: 0, right: 0 },
-  joystick2: { left: 0, right: 0 },
+  // [28FD]..[2907]'s static values: with the file missing, 2798 JC 27E0 skips the load at 27C5-27D1
+  // and they stay (read live, docs/engine.md §9cu). 0/0 here made JOY 1 read right on every poll.
+  joystick1: { left: 10, right: 200 },
+  joystick2: { left: 10, right: 200 },
   keys1: [0x2c, 0x2d, 0x10, 0x1e, 0x2e], // Z, X, Q, A, C
   f1f3: [0x3b, 0x3c, 0x3d],
   keys2: [0x4b, 0x4d, 0x48, 0x50, 0x52], // arrows + Insert
   dSpaceV: [0x20, 0x39, 0x2f], // D, SPACE, V
+}
+
+/** A deep copy of DEFAULT_SETTINGS: the options screen (F1-F7, F5's keys, F7's thresholds) edits the
+ * session's settings in place, which must never reach the shared defaults. */
+export function freshDefaultSettings() {
+  return structuredClone(DEFAULT_SETTINGS)
 }
 
 /** The inverse of parseSettings: packs the same fields back into a 32-byte buffer, the exact

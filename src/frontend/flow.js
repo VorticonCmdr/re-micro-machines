@@ -17,7 +17,7 @@ import { resolveSource } from '../io/resolveSource.js'
 import { loadTileBank, buildWordMap, vehicleFrames, TILE_BYTES } from '../formats/race.js'
 import { decodePalette } from '../formats/pal.js'
 import { decompress } from '../formats/lz.js'
-import { parseStrtPos, parseSettings, parseCheats, serializeSettings, DEFAULT_SETTINGS, CONTROL_NAME } from '../formats/globaldata.js'
+import { parseStrtPos, parseSettings, parseCheats, serializeSettings, freshDefaultSettings, CONTROL_NAME } from '../formats/globaldata.js'
 import { buildArena } from '../formats/chr.js'
 import { indexedToRgba, paint } from '../render/raster.js'
 import { composeRaceView, bannerBlinkPhase } from '../render/raceView.js'
@@ -120,7 +120,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   // game/SETTINGS.DAT the first time (matching the goal's own instruction), falling further back
   // to the DS image's own static defaults (globaldata.js's DEFAULT_SETTINGS) only if that file is
   // missing too.
-  const settings = loadStoredSettings() ?? (settingsBytes ? parseSettings(settingsBytes) : { ...DEFAULT_SETTINGS })
+  const settings = loadStoredSettings() ?? (settingsBytes ? parseSettings(settingsBytes) : freshDefaultSettings())
   let settingsDirty = false
   function persistSettingsIfDirty() {
     if (!settingsDirty) return // 2A13: `[0xF63]==0` skips the write entirely

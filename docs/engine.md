@@ -13013,6 +13013,18 @@ drawn (GOAL Part F).
 Six mutations each fail it: the left compare, stick 2's shift, the timeout, the mouse re-centre, the
 halving, and the prompt's y.
 
+**Follow-up: the defaults without a `SETTINGS.DAT`.** With the file missing, the open fails
+(`2798 JC 27E0`), the load at `27C5-27D1` is skipped, and the thresholds keep their static 10/200
+(read live). The port's `DEFAULT_SETTINGS` had 0/0, so JOY 1 would have read right on every poll. It
+now has 10/200, and `check-devices` compares them with the DS image. `flow.js` also copied the defaults
+shallowly, so F7 and F5 would have edited the shared object; it now uses `freshDefaultSettings()`,
+a deep copy.
+
+**A limitation, MOUSE only.** `mouseByte` re-centres the one shared driver on every read. DOS reads
+each slot once per `2D5B` poll. So if a tick read two P1 reader objects while MOUSE is in use, the
+second would see a centred cursor and lose the direction. MOUSE is only reachable through a
+`SETTINGS.DAT` that already holds it, so this is recorded rather than restructured.
+
 **Not browser-checked.** The Chrome window was hidden, so animation frames don't run and a fake
 gamepad couldn't be driven through `game.html`. What was checked: both pages load with no console
 error, and `index.html`'s race steps with `controllerTypes [5,6,6,6]` taken from `SETTINGS.DAT`.

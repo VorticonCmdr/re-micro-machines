@@ -112,6 +112,20 @@ check('the calibration arithmetic: (centre + extreme) >> 1 on 16 bits', calibrat
   check('mouse: 6 down -> brake', mouseByte(m) === 0x10)
 }
 
+// With SETTINGS.DAT missing the thresholds keep their static values (2798 JC 27E0), read here from
+// the DS image itself; and the session's copy of the defaults is a deep one.
+{
+  const { DEFAULT_SETTINGS, freshDefaultSettings } = await import('../src/formats/globaldata.js')
+  const exe = readFileSync(join(ROOT, 'game', 'MICROU.EXE'))
+  const ds = exe.readUInt16LE(8) * 16 + (0x193c - 0x1000) * 16
+  const w = (o) => exe.readUInt16LE(ds + o)
+  check(`no SETTINGS.DAT: the thresholds are [28FD]..[2907]'s static ${w(0x28fd)}/${w(0x28ff)}, ${w(0x2905)}/${w(0x2907)}`,
+    DEFAULT_SETTINGS.joystick1.left === w(0x28fd) && DEFAULT_SETTINGS.joystick1.right === w(0x28ff) && DEFAULT_SETTINGS.joystick2.left === w(0x2905) && DEFAULT_SETTINGS.joystick2.right === w(0x2907))
+  check('no SETTINGS.DAT: a centred pad reads no direction, a full deflection does', joystickByte(readGamePort([pad(0)]), 1, DEFAULT_SETTINGS.joystick1) === 0 && joystickByte(readGamePort([pad(-1)]), 1, DEFAULT_SETTINGS.joystick1) === 0x80)
+  const a = freshDefaultSettings(); a.joystick1.left = 99; a.keys1[0] = 0
+  check('freshDefaultSettings: a deep copy -- F7 and F5 editing it leave the defaults alone', DEFAULT_SETTINGS.joystick1.left === w(0x28fd) && DEFAULT_SETTINGS.keys1[0] === 0x2c)
+}
+
 // 2D00's reader per control word.
 {
   const kb = (sc) => ({ read: () => sc[0], dispose() {} })
