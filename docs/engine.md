@@ -6088,6 +6088,26 @@ Neither writes `[1382]`, which the port zeroed. The port set only the state (and
 
 **Port.** No change. The port's sound model issues commands between ticks, the case where no tick interrupts a command. Whether one does on DOS depends on where the 70 Hz IRQ lands, not on a rule the game follows.
 
+## 9dj. Part L: the JS OPL2 core against DOSBox's audio (2026-09-26)
+
+`GOAL-DOS-PARITY.md` Part L, `UNKNOWN_opl_sample_fidelity` and `UNKNOWN_waveform_target`. Until now only the register stream was proven (§9di, `docs/sound.md` §7); the synth's audio had never been compared with DOSBox's.
+
+**The capture** (`[PROVEN]`): the bridge's video recorder (`video_capture_start`) writes a ZMBV AVI with DOSBox's mixer audio, even headless and muted: 48 kHz stereo, extracted with ffmpeg and mixed to mono. A 76 s recording covered a race end, the results screen (tune 6 from silence), the race intro (tune 4 from 16 s of silence) and the menus. DOSBox's OPL is its Nuked OPL3 core (the build behind every live capture, `src/audio/opl2.js`'s header).
+
+**The comparison.** Each of the 8 tunes is rendered through the driver model and `opl2.js` from a reset and resampled to 48 kHz. It is aligned to the DOSBox segment by cross-correlating 10 ms RMS envelopes (within ±1.5 s), and scored as the median correlation of log-magnitude spectra (0-5 kHz, 2048-sample Hann frames) at 40 positions. `opl2.js` was written independently and does not aim at sample-exactness, so a spectral match is the claim.
+
+| DOSBox segment | the right tune | best other tune |
+|---|---|---|
+| race intro, 32.0-37.5 s | tune 4: **0.841** (default and strict alike) | tune 6: 0.63 |
+| results screen, 7.2-13.2 s | tune 6: **0.758** (strict 0.757) | tune 7: 0.61 |
+| menus, 42.75 s on | no tune above 0.56 | (not a clean start: the menu music was already running) |
+
+So the JS core plays recognisably the same music as DOSBox, clearly set apart from every other tune. **`UNKNOWN_opl_sample_fidelity` closed** at this level. Sample-level equality with Nuked is out of scope by design; if it is ever wanted, the way is to port Nuked, not to tune this core.
+
+**`UNKNOWN_waveform_target` stays open.** Only tunes 6 and 7 write a non-zero waveform (2, one instrument; a register scan of 10 s of each tune), and the metric does not separate the default (waveforms honoured, as Nuked does) from `strictOpl2` (YM3812 sines) on tune 6: 0.758 against 0.757. A per-channel comparison of that instrument would be needed. DOSBox's core ignores reg 01 by construction (`opl2.js`'s header), so the open question is only which chip a DOS player had.
+
+**Check.** `tools/refs/si2/dosbox_tune4_intro_features.json` (52 KB: the envelope and the 40 spectra of the intro segment, not the audio). `npm run oplaudio` (`tools/check-opl-audio.mjs`, new, in the regression suite) renders tunes 4, 1, 6 and 8 and requires tune 4 ≥ 0.8 and at least 0.15 above the others (now 0.840 against 0.626 at best).
+
 ## 10. Open items
 
 Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: `open`, `narrowed` (part answered; the rest is the open question), `closed`. **Section** is where the answer (or the question) is written up; the history, wrong turns included, stays in those sections and is not repeated here. **Address** is `MICROU.EXE`'s (`1000:` code, `DS:` data) unless another file is named. This table replaced a run-on paragraph of dated notes on 2026-09-26 (`GOAL-DOS-PARITY.md` D2, §9cx); each ID's status was re-read from its latest dated note. When an item opens or closes, change its row here in the same commit.
@@ -6109,14 +6129,13 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_menu_default_persistence` | narrowed | §9aw | `0220`,`02CB`,`0360`,`[0x130]`,`[0x132]` | The asymmetric persistence is explained [PROVEN]; still open: why one fire once seemed to pass both menu levels. |
 | `UNKNOWN_menu_pixel_diff` | open | §9aw; GOAL Part F | - | No DOSBox pixel diff yet of SELECT GAME / ONE PLAYER GAME. |
 | `UNKNOWN_mouse_host_scale` | open | §9cu | - | Browser pointer pixels to INT 33h mickeys is taken as 1:1 per CSS pixel; the true scale is not established. |
-| `UNKNOWN_opl_sample_fidelity` | open | `docs/sound.md` §6-§8; GOAL Part L | - | The JS OPL2 core's audio has never been compared against DOSBox; only the register stream is proven. |
 | `UNKNOWN_options_pixel_diff` | narrowed | §9cu | `0400`, `DS:0E88` | The options/F7 body (rows 30-199) is 0 px off against three live frames. The `0400` logo-header background is still undrawn (GOAL Part F). |
 | `UNKNOWN_overlay_tile_191` | open | `docs/track-graphics.md` overlay tiles; §9d | `9214-9237` | Round 2 overlay index 191's +12 variant differs from its base; how it looks with a car under it is unverified. |
 | `UNKNOWN_replay_determinism` | open | PLAN-ENGINE.md §4 | - | Is a replay deterministic across DOSBox sessions? Matters only for human-tape replays; never investigated. |
 | `UNKNOWN_single_race_28c1` | open | §9by | `2329`, `DS:28C1` | 2329 never writes [28C1], so a two-human single race runs on a stale value. Effect via its non-tuning readers untraced (port passes 1). |
 | `UNKNOWN_thumb_frame1_invisible` | open | §9av (from §9ao 7) | `0382`, `[130]` | Why SELECT GAME's THUMB frame 1 renders no visible highlight live while frame 2 does (a sprite-art question). |
 | `UNKNOWN_title_pixel_diff` | open | §9av; GOAL Part F | - | LOGO's exact y position on the title screen was never re-read live, and no title pixel diff exists. |
-| `UNKNOWN_waveform_target` | open | `docs/sound.md` §8; GOAL Part L | - | YM3812 sines vs OPL3/DOSBox waveforms: both are implemented, but there is no audio-level diff of the JS OPL2 core against DOSBox. |
+| `UNKNOWN_waveform_target` | open | §9dj; `docs/sound.md` §8 | - | YM3812 sines vs OPL3/DOSBox waveforms: both are implemented. DOSBox's audio was compared (§9dj), but only tunes 6/7 use a waveform and the spectral metric cannot tell the modes apart; which chip a DOS player had is not in the binary. |
 
 ### 10.2 Open, without an ID
 
@@ -6223,6 +6242,7 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_map_plane2` | closed | `docs/track-layout.md` Open items | - | `.MAP` plane 2 is the per-tile track-progress value (wrong-way check, `.BRK` offset) [STATIC]. |
 | `UNKNOWN_microu_runs_standalone` | closed | §9cf 8 | - | Yes: MICROU.EXE alone runs through the code card and options into a race [PROVEN]. |
 | `UNKNOWN_modex` | closed | `docs/track-graphics.md` Video pipeline | - | No sequencer, graphics-controller or CRTC start-address writes: plain mode 13h, no Mode-X, no page flipping [STATIC]. |
+| `UNKNOWN_opl_sample_fidelity` | closed | §9dj (`docs/sound.md` §6-§8) | - | The JS core's audio matches DOSBox's spectrally (tune 4 0.84, tune 6 0.76 against ≤0.63 for any other tune) [PROVEN]; sample-exactness is not a goal; `npm run oplaudio`. |
 | `UNKNOWN_outcome_screen_timeout` | closed | §9bq (M3.71) | `1C1B`, `17FF`, `[261F]` | SIMPLE path: 17FF CX=15 windows, timeout at tick 704. LIVES path: 30-step slide, poll every 6 ticks, timeout 702. Both ported [STATIC]. |
 | `UNKNOWN_overlay_ranges_other_rounds` | closed | §2; `docs/track-graphics.md` | `397F-39E4`,`[042E]` | Overlay bit-15 ranges are hard-coded for rounds 2 and 3 only, gated on GAME1; no table exists. |
 | `UNKNOWN_pause_banner_position` | closed | §9q | `35F0`, `9289` | The Paused! banner's Y offset is the hand-authored constant 48 (not 89), drawn with a colour-0-transparent blit [PROVEN] (by disassembly). |

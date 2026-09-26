@@ -43,6 +43,7 @@
     "tournament": "node tools/check-tournament.mjs",
     "menu": "node tools/check-menu.mjs",
     "screens": "node tools/check-screens.mjs",
+    "oplaudio": "node tools/check-opl-audio.mjs",
     "opl-toggle": "node tools/check-opl-toggle.mjs",
     "smoothness": "node tools/check-smoothness.mjs",
     "tracks": "node tools/render-tracks.mjs",

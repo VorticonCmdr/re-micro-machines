@@ -116,7 +116,7 @@ disagree with it -- `README.md`'s fades, `docs/track-graphics.md`'s "Still open"
 
 ```bash
 for s in catalog lz chrtable tables car intro codecard options title mainmenu charselect board elimination keywait outcomewait windowedwait champion pressanykey raceskip step trace ai play sound rounds finish twocar twohuman h2hscreens escquit tournament \
-         beeper menu screens opl-toggle smoothness si2 live smoke pages devices; do npm run -s $s || echo "FAIL $s"; done
+         beeper menu screens oplaudio opl-toggle smoothness si2 live smoke pages devices; do npm run -s $s || echo "FAIL $s"; done
 npm run build
 ```
 
@@ -839,8 +839,8 @@ Commit each item on its own, including any capture file under `tools/refs/`.
 - [x] The outcome screen's LIVES-path timing **(§9de: `[261F]`=156 at `1DCD` live, as predicted)** (docs/engine.md §9bq assumptions a-c): a breakpoint at
   `1000:1DCD` on a real ONE LIFE LOST screen, reading `[0x261F]` at the first poll. The port's
   model predicts 156.
-- [ ] `UNKNOWN_opl_sample_fidelity`/`UNKNOWN_waveform_target`: an audio-level comparison of the JS
-  OPL2 core against DOSBox's own output.
+- [x] `UNKNOWN_opl_sample_fidelity`/`UNKNOWN_waveform_target`: an audio-level comparison of the JS
+  OPL2 core against DOSBox's own output. **(§9dj: spectral match, tune 4 0.84 against ≤0.63 for other tunes, `npm run oplaudio`; `UNKNOWN_waveform_target` stays open, the metric cannot separate the two waveform modes.)**
 - [ ] `UNKNOWN_class8_choppers`, live confirmation (optional; it is already resolved `[STATIC]`).
 - [x] Mouse/joystick fire preempt, live (§9aq 4). Do this after P6. **Done (§9cv): live, the mouse pre-empts (4D70 taken with 0xA8, 4DB4 never), the joystick does not (4DB4 reached with 0xA8, it turns and accelerates).**
 - [ ] Whether a "drawn but invisible" car is actually absent from the screen (§9ap).
