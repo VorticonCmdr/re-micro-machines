@@ -6,7 +6,7 @@
 // tools/refs/race_R21_a000.bin (no per-step trace exists yet, that's M3.4), so the boat's exact
 // world position/heading/z are unknown. What IS known: the camera (414,500) that makes the track
 // pixel-exact (tools/check-live.mjs), and the boat's screen bbox in that frame (x116-138,y86-113).
-// UNKNOWN_car_draw_anchor's inference (sprite centred at car pos, see src/render/raceView.js) puts
+// The draw anchor (sprite centred at car pos, docs/engine.md §9d, src/render/raceView.js) puts
 // the followed car at screen centre (128,100) — this script renders candidate headings there and
 // crops the same region from the real frame so the two can be eyeballed side by side.
 //

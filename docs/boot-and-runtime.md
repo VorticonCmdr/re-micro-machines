@@ -22,4 +22,4 @@ DOSBox recipe: `bridge_start` → `drive_mount C /Users/valentin.pletzer/Downloa
 
 ## Video `[STATIC]`
 
-VGA mode 13h, 320×200, 256 colours, linear frame buffer at `A000:0000` unless the video agent finds Mode-X reprogramming (`UNKNOWN_modex`). The 768-byte `.PAL` files have max byte 63 in every file — consistent with 6-bit DAC values (`[STATIC]`, not yet tied to the upload loop).
+VGA mode 13h, 320×200, 256 colours, linear frame buffer at `A000:0000`; there is no Mode-X reprogramming (`UNKNOWN_modex`, closed in `docs/track-graphics.md`, Video pipeline). The 768-byte `.PAL` files have max byte 63 in every file — consistent with 6-bit DAC values (`[STATIC]`, not yet tied to the upload loop).

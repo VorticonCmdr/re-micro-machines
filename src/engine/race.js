@@ -250,9 +250,9 @@ const INIT_CAM_HALF_W = [0x80, 0xa0, 0xc0, 0xe0]
  * `0` -- and two-human H2H's own entry always sets that fork nonzero, taking `altTuningFieldsFor`'s
  * own SEPARATE, symmetric-across-every-slot computation (`3F3B-3FBD`) instead. `spawnCars`'s own
  * `altTuning` option selects this explicitly -- DOS decides by MODE, not by inferring it from
- * `controllerTypes` (the same `[0x8A2]` fork's own `CX==2` value, still `UNKNOWN_8a2_meaning`, may
- * also select it for the single-race format P4 item 2 covers, unrelated to who is controlling which
- * car), so this function never infers it either.
+ * `controllerTypes` (the `[0x8A2]` fork holds the CHOOSE GAME pick, tournament or single race --
+ * `UNKNOWN_8a2_meaning`, closed in docs/engine.md §9bg -- unrelated to who is controlling which car),
+ * so this function never infers it either.
  * @param {{x:number,y:number}[]} strtPosEntries  `parseStrtPos`'s output
  * @param {{raceFormat?: number, tournamentIndex?: number, opponentCharacters?: number[], controllerTypes?: number[], altTuning?: boolean, rosterWords?: number[]}} opts
  *   `raceFormat: 2` (M3.8): cars 2/3 are absent (docs/engine.md §1 "cars 2,3 = 0 in a two-car

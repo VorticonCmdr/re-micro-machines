@@ -5,8 +5,8 @@
 // n=1, and the options screen showed "SMOOTHNESS ... HIGH" for it (docs/boot-and-runtime.md) --
 // i.e. the UI label is the INVERSE of the stored word (n=1 is the smoothest, most-often-redrawn
 // setting, not the choppiest one a naive reading of "higher number = smoother" would suggest).
-// `UNKNOWN_smoothness_label_map`: only that one (HIGH -> 1) pairing is established; this port
-// exposes the raw 1..4 number rather than inventing LOW/MEDIUM/HIGH labels for the other three.
+// `UNKNOWN_smoothness_label_map`, closed (docs/engine.md §9t, §9au): 1 HIGH, 2 GOOD, 3 MEDIUM, 4 LOW,
+// and AUTO a fifth value that resolves at RETURN.
 //
 // On modern hardware there is no performance reason to skip draws -- this exists for parity with
 // the original's own user-facing setting, not because the browser needs it.

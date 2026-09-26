@@ -34,7 +34,8 @@ export const CARD_SIZE = 16
  * (ink column centres 30,50,…,170 and row centres 12,30,…,138 → cells start at (20,3)).
  * The module blits the strip at screen (216,179) and starts the cursor at (226,181), which
  * would put cell (0,0) at strip (10,2) — 10 px left of where the symbols actually are; how the
- * cursor frame lines up on screen is UNKNOWN_codecard_cursor_origin (needs a live look).
+ * cursor frame lines up on screen was UNKNOWN_codecard_cursor_origin: a live capture shows it framing
+ * cell (0,0) correctly (docs/intro-and-codecard.md, M3.30).
  */
 export const GRID = { cols: 8, rows: 8, pitchX: 20, pitchY: 18, cellX: 20, cellY: 3, stripX: 216, stripY: 179, cursorX: 226, cursorY: 181 }
 

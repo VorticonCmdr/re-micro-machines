@@ -24,9 +24,9 @@
 //   PH0         BITSFILE.PH0 unpacks to 26048 B (DS:3FE3): 3 × 8 frames of 8×8 puffs at +0/+0x200/+0x400
 //               (DrawWheelEffectPuffs 1000:8083). +0x0600–0x1140 (2880 B) is the state-2/0xD knockout/
 //               re-appear animation: 5 distinct 24×24 frames (table DS:289D/28AB), drawn from DS:45E3
-//               (=PH0+0x600) by the shared state-2/0xD handler (1000:82BE) via 1000:8339. Only
-//               +0x1140–0x1380 (576 B) is still unmapped (UNKNOWN_ph0_1140_1380 — register-relative
-//               addressing defeats xrefs-to on this runtime buffer). From +0x1380 to EOF every boundary
+//               (=PH0+0x600) by the shared state-2/0xD handler (1000:82BE) via 1000:8339. Then
+//               +0x1140–0x1380 (576 B) is a sixth knockout slot the frame table 28AB never selects
+//               (UNKNOWN_ph0_1140_1380, closed in docs/engine.md §9cf). From +0x1380 to EOF every boundary
 //               is accounted for with zero gaps: warning icon (+0x1380, 16×16) / finished flag icon
 //               (+0x1C00, 16×16) — DrawCarCheckpointDirectionIcon 1000:903F picks between them by
 //               [BX+0x12ED]==0, i.e. the car's LAPS-REMAINING field reaching 0 (not a checkpoint
@@ -255,7 +255,7 @@ export function remapHudIconColours(frame, offset) {
 export const PH0_LAYOUT = {
   puffs: [{ offset: 0x0000 }, { offset: 0x0200 }, { offset: 0x0400 }], // 8 frames of 8×8 each
   knockout: { offset: 0x0600, count: 5, width: 24, height: 24, stride: 576 }, // state-2/0xD overlay, see module comment above and ph0KnockoutFrame
-  // 0x1140–0x1380 (576 B): UNKNOWN_ph0_1140_1380, still no consumer found.
+  // 0x1140–0x1380 (576 B): knockout slot 5, never selected (docs/engine.md §9cf).
   icons: { warning: 0x1380, flag: 0x1c00, width: 16, height: 16 }, // DrawCarCheckpointDirectionIcon 1000:903F; flag shown when the drawn car's laps-remaining field ([BX+0x12ED]) reaches 0
   digits: { offset: 0x1480, count: 11, width: 8, height: 16, stride: 128 }, // 0–9 + blink glyph (index 10)
   lights: { red: 0x1a00, blue: 0x1b00, width: 16, height: 16 }, // HUD indicator dots; on/off vs red/blue role UNKNOWN

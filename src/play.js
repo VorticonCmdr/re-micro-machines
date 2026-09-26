@@ -236,8 +236,8 @@ const ORDINAL = ['1st', '2nd', '3rd', '4th']
 
 /** The status line. `lapsRemaining` is the HUD's own top digit: 3 during the start countdown, 4 the
  * moment the back row's first progress write (0 -> max, the grid sits just behind the line) counts
- * as a backward crossing, then 3, 2, 1 as laps are completed (docs/engine.md §9ah; what the
- * original shows during its countdown is UNKNOWN_countdown_hud_digit). */
+ * as a backward crossing, then 3, 2, 1 as laps are completed (docs/engine.md §9ah; the original
+ * shows the same 3 during its countdown, live, §9co). */
 export function raceStatusText(car0, raceState, steps) {
   const place = ORDINAL[(car0.racePosition ?? 1) - 1] ?? '?'
   if (raceState.raceOver) return `Race over — you finished ${place}. Press R to race again.`

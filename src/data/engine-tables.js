@@ -9,8 +9,8 @@
 // chrDescriptorTable: DS:0A14 == file 0xA254, 0xA254-0xA14 = 0x9840); tools/check-tables.mjs
 // uses the same constant.
 //
-// Tables NOT here yet, deliberately: the camera table (DS:27B5, `UNKNOWN_car_camera_2p`, not
-// needed before M3.3's camera code) and the front-end tables (order table 043C, track names
+// The camera target table (DS:27B7, `UNKNOWN_car_camera_2p`, closed) is further down. Not here,
+// deliberately: the front-end tables (order table 043C, track names
 // 0460, character data, H2H tables 09BA/09D9), which belong to M3.9's frontend/ module, not the
 // race engine.
 
@@ -279,7 +279,7 @@ export const STATE_HANDLER_NAMES = {
 // --- State 1/2/4/5/D animation tables, DS:27C1-28B9 (docs/engine.md §4) ------------------------
 // Each is a {threshold[], frames[]} pair: walk threshold[] for the first entry > animTimer (0xFFFF
 // sentinel always last), the same index into frames[] is the frame id (-2/-1 are sentinels, not
-// frame ids -- their meaning isn't nailed down yet, UNKNOWN_state1_880a). 27C1 and 27DD are two
+// frame ids -- how the tail treats them is below and in docs/engine.md §9w; UNKNOWN_state1_880a is closed). 27C1 and 27DD are two
 // COMPLETE, independently-addressed {threshold,frames} tables that happen to share an identical
 // threshold row (not one shared threshold table split across two frame halves, as an earlier
 // reading of this file had it) -- used together for "rounds 9/4 align heading to 0/0x80"

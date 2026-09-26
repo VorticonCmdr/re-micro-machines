@@ -57,16 +57,11 @@ Don't read `docs/engine.md` from start to finish. It is 6,000 lines. Jump to sec
 
 ## Stale sources: trust order
 
-`docs/engine.md` §10 overrides every other list. These are known to be stale:
-
-- `README.md` "What's not implemented" says palette fades are missing. They exist; the real
-  problem is the reverse: the port fades in at race start and DOS doesn't (see P5).
-- The "Still open" list in `docs/track-graphics.md` names items that §10 shows as resolved
-  (`UNKNOWN_ph0_tail_icons`, `UNKNOWN_tile_index_overflow`).
-- The "superseded" section of `PLAN-ENGINE.md` (line ~149) is historical, not status.
-- `docs/engine.md` §7 still calls `UNKNOWN_26B8_polarity` "contested". §9u and §9ag resolved it.
-- Many `src/` comments cite IDs that are now closed. Fixing these contradictions is part of the job
-  (item D1).
+`docs/engine.md` §10 overrides every other list. As of D1 (§9cy, 2026-09-26) the lists that used to
+disagree with it -- `README.md`'s fades, `docs/track-graphics.md`'s "Still open", `docs/engine.md` §7's
+"contested" `UNKNOWN_26B8_polarity`, `PLAN.md` §9, `docs/track-layout.md`, `docs/sound.md` §8 and the
+`src/` comments citing closed IDs -- have been brought into line. Still historical, not status: the
+"superseded" section of `PLAN-ENGINE.md` (line ~149) and the dated notes inside the §9 sections.
 
 ## Hard rules
 
@@ -880,7 +875,7 @@ commits.
 
 ## Part D: documentation and repository debt
 
-- [ ] D1. Make every open-item list agree with §10: `PLAN.md` §9, `docs/track-graphics.md`,
+- [x] D1. **Done (§9cy).** Make every open-item list agree with §10: `PLAN.md` §9, `docs/track-graphics.md`,
   `docs/track-layout.md`, `docs/sound.md` §8, the `docs/engine.md` §7 wording on `26B8`, and the
   `UNKNOWN_*` comments in `src/` that cite closed IDs (`rtk proxy grep -rn UNKNOWN_ src`).
 - [x] D2. **Done (§9cx): 158 IDs, 27 open or narrowed; `UNKNOWN_4be7_twocar_rubberband` found already answered.** Rewrite §10 itself as a clean table (ID | status | section | address) instead of one

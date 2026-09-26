@@ -19,20 +19,18 @@
 //                  reading had it), see docs/track-layout.md
 //   bits 4–2     — one of 8 {dx, dy} spawn-position nudge vectors (an 8-point compass rose using only
 //                  {-36, 0, +36} components), table at DS:1FCB, added to the 96px-grid-snapped respawn point
-//   bits 1–0     — not exercised by either traced consumer (UNKNOWN_lev_low_bits)
+//   bits 1–0     — read by no instruction; authoring data (UNKNOWN_lev_low_bits, closed §9cf)
 //
 // .BRK — a variable-length stream of AI brake/speed-limit records, one file per RACE (not per round);
 // round 9 ships none (drone-free / different AI for that class). Indexed not by position-in-file-as-array
 // but by a per-car "track progress" value ([BX+12E3], fed from .MAP's second plane) used directly as a
 // byte offset (1000:5495) — so parsing it as a flat byte array (this module's `parseBrk`) already matches
-// how the game itself walks it. Each byte: high nibble dispatches on exactly 0/1/2 (1000:54A3-54AD);
-// EVERY OTHER VALUE falls to the same shared branch (54AF), which then tests a runtime flag, not the
-// nibble, so 0/3/4/.../15 are behaviourally identical in this consumer. Tabulated across all 26 files
-// the high nibble is only ever 0, 1, 2, 4 or 15 (plus 3 exactly 3 times) — never 5-14 — which rules out a
-// bitfield reading (UNKNOWN_brk_nibble_reuse: why the data bothers to distinguish 0/4/15 when the code
-// doesn't is open). Low nibble = a 4-bit magnitude feeding a per-type threshold formula for types 1/2.
-// UNKNOWN_brk_record_types: the real-world meaning of types 1 vs 2 (both "check a speed limit", scaled
-// differently) is not established.
+// how the game itself walks it. Each byte's high nibble (docs/track-layout.md, both IDs closed):
+//   0      — advance the target speed, never brake; the low nibble is not read (54A3 JZ 54B7).
+//   1      — brake if the CURRENT speed exceeds 896 + 128n (n = low nibble; TANKS and race 23 adjust it).
+//   2      — raise the TARGET speed to at least 1536 + 64n; never brakes.
+//   3/4/15 — the type-1 check, but only while the drone is correcting its heading ([137B]&0xC0),
+//            else like 0 (54AF). Across all 26 files the nibble is only 0, 1, 2, 4, 15 and three 3s.
 
 import { toU8 } from './bytes.js'
 
@@ -54,7 +52,7 @@ function levEntry(byte) {
     unsafeRespawn: (byte & 0x80) !== 0, // 1000:5de6
     heading: LEV_HEADING_TABLE[(byte >> 5) & 3], // 1000:70c8 / 7181-719f; also the .DIR remap "bucket" (docs/engine.md)
     nudge: { dx, dy },
-    lowBits: byte & 3, // UNKNOWN_lev_low_bits
+    lowBits: byte & 3, // unread by the game (docs/engine.md §9cf)
   }
 }
 

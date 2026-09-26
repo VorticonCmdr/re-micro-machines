@@ -7,8 +7,8 @@
 //         byte plane holding a per-tile TRACK-PROGRESS value (read at 1000:58d8, max-scanned at
 //         1000:3d32): consumed by TestColMaskBitAtWorldXY and fed into a car's [BX+12E3]/[12E1]
 //         fields, which the wrong-way check (1000:5f25) and the .BRK byte offset (1000:5495,
-//         src/formats/levbrk.js) both use. The bit-transform inside TestColMaskBitAtWorldXY that
-//         turns the raw byte into that value is UNKNOWN_589c_progress_transform.
+//         src/formats/levbrk.js) both use. There is no transform: TestColMaskBitAtWorldXY returns
+//         the raw byte (UNKNOWN_589c_progress_transform, closed, docs/engine.md §3).
 //                                                                (TestColMaskBitAtWorldXY 1000:589c)
 //   .COL  18 B per tile = 12×12 one-bit collision mask, MSB first, bit index suby*12+subx.
 //         SI = tile*18 + (suby*12+subx)/8, mask 0x80 >> ((suby*12+subx) % 8).      (1000:589c)
@@ -20,7 +20,8 @@
 //             heading lookup (remap table DS:191B, then a verified 16-point-compass table DS:18FB)
 //             that drives AI steering — a genuine flow field.
 //   .CT   72 B per tile = 6 rows × 12 bytes, copied per MAP cell into two 384×96-byte arenas
-//         (row stride 0x180) before the race; the cell encoding is UNKNOWN_ct_tile_pixel_layout.
+//         (row stride 0x180) before the race; each cell is a 16-bit tile index, not pixels
+//         (UNKNOWN_ct_tile_pixel_layout, closed, docs/track-layout.md).
 //                                                                   (InitRaceCarsFromTables 1000:448c)
 // All four are read whole and verbatim (PROVEN live for round 2). Tile counts: COL/18.
 

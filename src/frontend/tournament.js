@@ -264,9 +264,8 @@ export function hasRaceIntro(state) {
  * finding) to have **no derivable tick duration at all**: it is a busy loop with no `INT 1Ah`/vsync
  * wait anywhere in it, paced purely by 1994 CPU speed, "no derivable value to port." So the REAL
  * total hold (screen-appears to input-accepted) is `raceIntroHoldTicks`'s own count PLUS an
- * unknown, non-zero, non-tick-expressible amount for that fade -- new, narrower open item
- * `UNKNOWN_race_intro_prehold`, matching the SAME open-endedness the palette-fade finding already
- * has elsewhere, not a new kind of gap.
+ * amount for that fade. That was `UNKNOWN_race_intro_prehold`, closed in docs/engine.md §9co/§9cp:
+ * `32CE` took 17 ticks live, runs only when `[26CE]==1`, and is ported (`dacFade.js`).
  *
  * Only reached for a REGULAR race: NOT the qualifier (`[28C1]==0`, `12BD` is never reached -- H2H
  * shows no intro at all, `hasRaceIntro` above; Challenge's own qualifier banner at `127E` is a

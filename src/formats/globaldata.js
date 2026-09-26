@@ -8,8 +8,9 @@
 // CHEATS.BIN (360 B): 30 x 12-byte records {round:u16, race:u16, x:u16, y:u16, type:u16 (0-9), param:u16}.
 //   Matched by round/race and car position in FUN_1000_35f0 (1000:3601-3652). All 10 effects of `type`
 //   0-9 are now decoded (docs/engine.md §6, CheckCheatSpotsThenPause 1000:35f0): 0 lose a life, 1 instant
-//   win, 2/3/4 override grip threshold/grip slew/accel, 5/6/9 set flag words (downstream use not traced),
-//   7 hazard-immune, 8 max speed. Was UNKNOWN_cheats_type; narrowed, not fully closed.
+//   win, 2/3/4 override grip threshold/grip slew/accel, 5/6/9 set flag words (5/9 disable the fire
+//   entry; 6's [2917]/[291B] are write-only, so it does nothing), 7 hazard-immune, 8 max speed.
+//   UNKNOWN_cheats_type is closed (docs/engine.md §9cf).
 // SETTINGS.DAT (32 B): read by RunOptionsScreenWithSettingsDat (1000:2770).
 //   8 words: P1 control, P2 control, smoothness, sound driver (0 DRIVER0/1 DRIVER1/2 DRIVER2),
 //   joystick1 {L,R}, joystick2 {L,R}. Control words are a 1-based enum: 1 JOY1, 2 JOY2, 3 MOUSE,

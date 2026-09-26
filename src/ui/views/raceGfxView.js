@@ -78,7 +78,7 @@ export async function bitsfileView(container, ctx) {
   container.append(el('p', { class: 'muted' }, `LZ-unpacked ${fmtBytes(unpacked.length)} (0x${unpacked.length.toString(16)}), copied to DS:3FE3 every race (LoadBitsFilePh0 1000:482F). Shared race graphics; shown with ROUND1.PAL.`))
   const show = (img, z) => { const c = el('canvas', { class: 'pixels', style: { background: CHECKER_CSS } }); paint(c, img.width, img.height, indexedToRgba(img.indexed, rgb, { transparent: 0 }), { zoom: z }); return c }
   for (let s = 0; s < 3; s++) container.append(el('h3', {}, `Puff animation set ${s} (8 frames of 8×8 @ +0x${(s * 0x200).toString(16)})`), show(ph0Puffs(unpacked, s), Math.max(4, zoom * 2)))
-  container.append(el('h3', {}, 'UNKNOWN_ph0_0600_1380: +0x0600–0x1380 (3456 B, no consumer identified)'), (() => {
+  container.append(el('h3', {}, '+0x0600–0x1380 (3456 B): the state-2/0xD knockout frames, the last 576 B an unused sixth slot (docs/engine.md §4, §9cf)'), (() => {
     const w = 24, h = Math.floor(0xd80 / w)
     const raw = toU8(unpacked).subarray(0x600, 0x600 + w * h)
     return show({ width: w, height: h, indexed: raw }, Math.max(3, zoom))
@@ -96,7 +96,7 @@ export async function bitsfileView(container, ctx) {
   container.append(el('h3', {}, 'Dual-purpose slot @ +0x1F00 (32×32, 5 frames, stride 1024)'),
     el('p', { class: 'muted' }, 'Round 2 (POWERBOATS): these are PH0’s own bytes, a boat-landing splash animation (spawn trigger 1000:74A3, gated on round==2). Round 8 (CHOPPERS): LoadRoundVh0AndSplit (1000:4676–468F) overwrites this exact DS-relative slot with ROUND8BR.VH0 bank-2 bytes instead, drawn as a spinning rotor blade — open that file’s view to see it. The two effects never coexist; shown below is PH0’s own content (the round-2 splash).'),
     show(ph0Round2SplashFrames(unpacked), Math.max(2, zoom)))
-  container.append(el('h3', {}, 'UNKNOWN_ph0_tail_icons: 5× 8×8 icons @ +0x3300, stride 64 (no consumer identified)'), show(ph0TailIcons(unpacked), Math.max(4, zoom * 2)))
+  container.append(el('h3', {}, 'Projectile tail icons: 5× 8×8 @ +0x3300, stride 64 (1000:8712 uses 0 and 1; docs/engine.md §9q)'), show(ph0TailIcons(unpacked), Math.max(4, zoom * 2)))
   container.append(el('h3', {}, 'Banners (88×24 @ +0x3440, stride 2112, drawn height 22) — DrawBanner88x22Blinking 1000:9289'),
     el('div', {}, ...PH0_LAYOUT.bannerText.map((t) => el('p', { class: 'mono muted' }, t))), show(ph0BannerStack(unpacked), Math.max(2, zoom)))
   const probe = el('div', {})

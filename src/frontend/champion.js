@@ -22,7 +22,7 @@
 // **The slide's DURATION is not derivable** (`UNKNOWN_champion_slide_duration`): its iterations
 // wait on nothing (no `3165`, no `[0x2]` spin, no `0x3DA` poll in any of its calls -- unlike
 // `256E`'s 22-iteration slide, which waits a tick per iteration via `3165` at `2685`), so on DOS
-// they run as fast as the CPU draws them, plus the first iteration's fade (`UNKNOWN_fade_duration`).
+// they run as fast as the CPU draws them, plus the first iteration's fade (17 ticks live, §9co).
 // The port runs one iteration per tick (~1.5s for the slide), a port choice, not a measurement: an
 // upper bound under the project's own assumption that each draw fits in a tick. Zero would let a
 // held control key skip the screen instantly, which DOS never does.

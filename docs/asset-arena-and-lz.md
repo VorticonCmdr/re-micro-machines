@@ -45,7 +45,7 @@ Verification: `npm run lz` decompresses all 41 packed files; the JS output is by
 
 `COMPRESS.PI0–PI6` are the arena `2B78..7D78` cut into 48 KB slabs and compressed — the dead dev tool `DumpAssetArenaToPaulDat 1000:2736` writes exactly that range to `Paul.dat`. The 18 members are described by `chrDescriptorTable` at `DS:0A14` (file offset `0xA254`): 20-byte records `{name[13], +0xD u16, +0xF u16, +0x11 frames u8, +0x12 segment u16}`, bound to sprite objects by `BindSpriteObjToChrDescriptor 1000:049c`. The "byte before each name" seen in `strings` output was the previous record's segment high byte.
 
-**Dimension order is (height, width)**: `MINATURE.CHR` (16, 32, 38 frames) renders as clean 32×16 vehicle miniatures and `LOGO.CHR` (96, 248) as the 248×96 Micro Machines logo; the opposite reading shears both. Frames are consecutive row-major 8-bpp blocks; palette `INTRO.PAL`. `CASE.CHR` (6400 B) and `CASE.MAP` (674 B) are raw blobs (`UNKNOWN_case_chr_format`).
+**Dimension order is (height, width)**: `MINATURE.CHR` (16, 32, 38 frames) renders as clean 32×16 vehicle miniatures and `LOGO.CHR` (96, 248) as the 248×96 Micro Machines logo; the opposite reading shears both. Frames are consecutive row-major 8-bpp blocks; palette `INTRO.PAL`. `CASE.CHR` (6400 B) is 100 8×8 tiles and `CASE.MAP` (674 B) a 32×21 tile map of them, the vehicle display case (`UNKNOWN_case_chr_format`, closed in `docs/engine.md` §9ay, `[PROVEN]` by render).
 
 | Member | w×h × frames | Arena offset | Content (looked at) |
 |---|---|---|---|
@@ -56,8 +56,8 @@ Verification: `npm run lz` decompresses all 41 packed files; the JS output is by
 | `THUMB.CHR` | 48×32 × 3 | `0x26D00` | fist, pointing hand, thumbs-up |
 | `MINATURE.CHR` | 32×16 × 38 | `0x27F00` | vehicle miniatures in 4 colour sets |
 | `BADGE.CHR` | 72×32 × 1 | `0x2CB00` | small winged badge |
-| `CASE.CHR` | raw 6400 B | `0x2D400` | ? |
-| `CASE.MAP` | raw 674 B | `0x2ED00` | ? |
+| `CASE.CHR` | 8×8 × 100 tiles | `0x2D400` | the vehicle display case's tiles |
+| `CASE.MAP` | 674 B: cols, rows, 32×21 tile indices | `0x2ED00` | the display case's tile map |
 | `CUP.CHR` | 96×8 × 10 | `0x2EFB0` | the trophy in 10 horizontal strips (stack them: 96×80) |
 | `INTRO.CHR` | 96×64 × 9 | `0x30D70` | nine vehicle-class vignettes |
 | `WORDS.CHR` | 96×16 × 3 | `0x3E570` | "MicroMachines", "Head to Head", "Challenge" |

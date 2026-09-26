@@ -74,7 +74,7 @@ function zeroMotion(car) {
  * fallback), no port bug. `UNKNOWN_rematch_fail_stale_2682` -- the fall branch has no "already 0xC"
  * re-entry guard, so a fall can force a new exchange to start while a previous one is still mid
  * blink/respawn, unconditionally overwriting that in-flight state (matches the bytes exactly); the
- * downstream consequence of that collision is not traced.
+ * outcomes are traced in docs/engine.md §9cm (unreachable in play).
  */
 export function resetCarsAfterKnockout(cars, raceState, ctx) {
   const m = raceState.twoCar

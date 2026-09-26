@@ -38,7 +38,7 @@ function strtPosView(container, { bytes }) {
   container.append(el('h3', {}, 'All slots'), pre)
 }
 
-const CHEAT_TYPE_NOTE = 'UNKNOWN_cheats_type: matched by round/race/position in FUN_1000_35f0 (1000:3601–3652), but what each numbered type actually does at that spot has not been decoded.'
+const CHEAT_TYPE_NOTE = 'Matched by round/race/position in CheckCheatSpotsThenPause (1000:3601–3652). Types: 0 lose a life, 1 instant win, 2/3/4 grip threshold/grip slew/accel, 5/9 disable the fire entry, 6 nothing (write-only flags), 7 hazard-immune, 8 max speed (docs/engine.md §6, §9cf).'
 
 function cheatsView(container, { bytes }) {
   const entries = parseCheats(bytes)

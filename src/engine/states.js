@@ -269,8 +269,8 @@ function stepRespawn(car, ctx, raceState) {
  * this branch could never fire. The id/step mapping is also corroborated by `docs/sound.md`'s
  * independent disassembly of the same two call sites. `animStep` is written only by this function and nothing zeroes it at state-1
  * entry (faithful -- the real entry handlers don't either, see `terrain.js`), which is self-consistent
- * only as long as no OTHER state shares the cursor; `UNKNOWN_state4_5_driftsteps_gate` (below) invites
- * exactly that kind of change, so this invariant would need re-checking if that item is ever worked.
+ * only as long as no OTHER state shares the cursor. States 4/5 do, and like state 1 each zeroes it at
+ * its own terminal transition (`UNKNOWN_state4_5_driftsteps_gate`, closed in docs/engine.md §9z, below).
  * The `-2` control word appearing mid-table (not just at the end, e.g. `STATE1_ANIM_DEFAULT.frames`
  * indices 7/13) is correctly NOT special-cased here: in the real tail `CX==-2` only skips the DRAW
  * call and still falls through to the same compare-and-increment every other non-terminal entry does,

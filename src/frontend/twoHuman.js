@@ -253,8 +253,7 @@
 // guarantee it cannot, so `2481`'s own masks stripping it is simply defensive). Draws
 // "RESULTS!!" (`DS:095C`, Y=0x3C) and, below it, "TOURNAMENT RACE"/"SINGLE RACE" (`DS:0975`/`0x93A`,
 // picked by `[0x8A5]`, Y=0x4C) -- both via `DrawStringCentred`, font `0xB54`. Fades the palette up
-// (`CALL 32CE`, the SAME "no derivable tick duration" `UNKNOWN_race_intro_prehold` class elsewhere
-// in this file -- not paced here either). Slides the SAME two round-indexed icons `2216` uses
+// (`CALL 32CE`: 17 ticks live, docs/engine.md §9co; `UNKNOWN_race_intro_prehold` is closed). Slides the SAME two round-indexed icons `2216` uses
 // (records 8/9, `DS:0x28BF`-indexed frame) into view a SECOND time, but with a FIXED step of 4 (NOT
 // `smoothness*4`) and an EXACT-equality exit (`JZ`, not `JLE`) -- so this slide always takes EXACTLY
 // 22 iterations, at every smoothness setting, landing on X=88/136 (no overshoot, unlike `2216`'s own
@@ -292,8 +291,8 @@
 // toggle-on-threshold idiom, with its own different (and undebounced) dismiss condition; do not
 // reuse `raceResultWaitStep` for either screen. `17FF` itself has 8 real call sites across 5
 // functions (`get_xrefs_to`, this session), not just `256E`/`ShowRaceOutcomeMessageTune8or6` --
-// see docs/engine.md §9bl for the full list; the other 6 sites are unread this session
-// (`UNKNOWN_17ff_other_callers`). `DS:0002` is
+// see docs/engine.md §9bl for the full list; the other 6 were read in §9br
+// (`UNKNOWN_17ff_other_callers`, closed). `DS:0002` is
 // therefore NOT a from-boot free-running
 // counter as GOAL-DOS-PARITY.md's own P4 item 1 assumes ("Reproduce `DS:0002` as a 70 Hz tick
 // counter that runs from boot") -- it is a GENERIC, shared "ticks since the last wait-for-input

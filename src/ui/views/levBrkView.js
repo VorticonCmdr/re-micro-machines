@@ -56,7 +56,7 @@ function brkView(container, ctx) {
   const { count, records } = parseBrk(bytes)
   container.append(el('p', { class: 'muted' },
     `Round ${rr?.round ?? '?'} race ${rr?.race ?? '?'}: ${count} bytes (${fmtBytes(toU8(bytes).length)}). `,
-    "AI brake/speed-limit-point stream, indexed by a car's track-progress value (from .MAP's second plane) — not a fixed per-tile table, so this is shown as a flat sequence in file order, the way the game itself walks it. High nibble = record type: 1 = speed limit vs current speed, 2 = speed limit vs target speed, anything else (0, 3-15) hits a shared default branch (1000:54AF) that just advances the target speed; low nibble = magnitude. UNKNOWN_brk_record_types: what each threshold means physically is not established."))
+    "AI brake/speed-limit-point stream, indexed by a car's track-progress value (from .MAP's second plane) — not a fixed per-tile table, so this is shown as a flat sequence in file order, the way the game itself walks it. High nibble = record type: 0 = advance the target speed; 1 = brake if the current speed is over 896+128n; 2 = raise the target speed to at least 1536+64n (never brakes); 3/4/15 = the type-1 check, but only while the drone is correcting its heading (1000:54AF). Low nibble = n (docs/track-layout.md)."))
 
   // A strip: one column per byte, height ~ magnitude, colour = type.
   const colW = Math.max(2, Math.min(8, Math.floor(600 / Math.max(1, count))))

@@ -144,10 +144,8 @@ export function classImmune(round, grade) {
  * ONCE, pre-bounce, and `bounceAndCommit` commits that same value -- on a tick a bounce doesn't fire,
  * this matches the real second (unconditional) integration exactly (same velocity either way); on a
  * tick a bounce DOES fire, the real game re-integrates from the POST-bounce velocity before
- * committing and this port doesn't, committing the stale pre-bounce position instead. Logged as
- * `UNKNOWN_commit_reintegrates_post_bounce` (docs/engine.md §9ae) rather than folded into this fix:
- * narrow (only a bounce-tick divergence), but reconciling it changes wall-bounce behaviour on every
- * such tick game-wide, a separately-verifiable change.
+ * committing. That was `UNKNOWN_commit_reintegrates_post_bounce`, since fixed in `bounceAndCommit`
+ * (docs/engine.md §9af).
  */
 export function updateCarTileCollision(car, world, ctx) {
   if (!car.active || car.state !== 0) {
