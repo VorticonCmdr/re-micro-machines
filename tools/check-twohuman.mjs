@@ -28,6 +28,7 @@
 //   node tools/check-twohuman.mjs
 import { twoHumanSessionState, twoHumanMatchState, twoHumanSetupState, raceResultScreenInitialState, raceResultScreenStep, singleRaceSelectInitialState, singleRaceSelectStep, twoHumanRosterBytes, commitTwoHumanPick, H2H_P1_START, H2H_P2_START, nextTrack, reportRace, skillLabel, selectSingleRaceTrack, raceInfoSlideTicks, RACE_RESULT_SLIDE_TICKS, RACE_RESULT_WAIT_TICKS, raceResultWaitInitialState, raceResultWaitStep, H2H_TRACK_TABLE, H2H_WINS_TO_CHAMPION, SINGLE_RACE_TRACK_TABLE } from '../src/frontend/twoHuman.js'
 import { handicapQuestionApplies } from '../src/frontend/charSelect.js'
+import { createRaceIndexRegister, initTournament } from '../src/frontend/tournament.js'
 import { CHARACTER_NAMES, H2H_SKILL_INDEX_TABLE, H2H_SKILL_LABELS, trackName } from '../src/data/frontend-tables.js'
 
 let bad = 0
@@ -407,6 +408,31 @@ check('H2H_SKILL_LABELS has 8 entries (DS:08CD)', H2H_SKILL_LABELS.length === 8)
   const m = twoHumanMatchState(session)
   reportRace(m, 0, 1, true, { tournament: false })
   check('single race does not touch [28C1] (no 207A), but the tally and lifetime stats still count', m.raceNumber === 1 && m.p1Wins === 1 && session.lifetimeWins[0] === 1)
+}
+
+// [0x28C1] in a two-human single race (docs/engine.md §9dr): 2329 never writes it, so the race
+// sees whatever the session's last tournament loop left; its one reader there is the respawn's
+// race-0x16 rule (7008). The port used to pass the match's own race number, reset to 1 at 1F09.
+{
+  const reg = createRaceIndexRegister()
+  check('[28C1] before any tournament: the static DS value 1', reg.value() === 1)
+  const t = initTournament({ format: 'challenge' })
+  reg.bindOnePlayer(t)
+  check('the one-player loop starts at 0 (10AF)', reg.value() === 0)
+  t.raceIndex = 0x16 // e.g. ESC out of race 0x16, or game over there
+  check('the one-player loop leaves its index (0x16) behind', reg.value() === 0x16)
+  initTournament({ format: 'challenge' }) // a new ONE PLAYER GAME pick, cancelled at the carousel: no 10A0
+  check('a tournament that never started its loop does not touch it', reg.value() === 0x16)
+  const session = twoHumanSessionState()
+  const single = twoHumanMatchState(session) // CHOOSE GAME (1F09) -- does not write [28C1]
+  check('CHOOSE GAME does not reset it: a single race still sees 0x16', reg.value() === 0x16 && single.raceNumber === 1)
+  const m = twoHumanMatchState(session)
+  reg.bindTwoHuman(m)
+  check('the two-human tournament starts at 1 (1FB9)', reg.value() === 1)
+  reportRace(m, 0, 1, true, { tournament: true })
+  check('and INCs after each race (207A)', reg.value() === 2)
+  reportRace(m, 0, 1, true, { tournament: false })
+  check('a single race does not INC it', reg.value() === 2)
 }
 
 console.log(bad ? `${bad} of ${asserted} executed check(s) failed` : `check-twohuman: ${distinct.size} distinct assertions (${asserted} executed) pass -- two-human H2H's own tournament state (track pick with no repeats, win tally, session-level lifetime per-character stats that survive a new match, first-to-4 champion detection, the skill label formula, single race's own track select, the race-info slide's own tick count, the race-result screen's own fixed slide, and its own bounded dismiss-wait) matches the disassembly (GOAL-DOS-PARITY.md P4, docs/engine.md §9bh/§9bi/§9bj/§9bl)`)

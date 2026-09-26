@@ -40,7 +40,7 @@ import { raceStart, updateEngines, createRaceJitter, raceOverStart, raceOverGate
 import { lapLineSegments, nearestPaletteIndex } from '../engine/lapLine.js'
 import { Si2Player } from '../audio/si2Player.js'
 import { RUFF_TRUCK_TIMES } from '../data/engine-tables.js'
-import { initTournament, isInQualifier, applyRaceSkip, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, raceIntroHoldTicks, raceIntroParticipants, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, resultsPassed, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, OUTCOME } from './tournament.js'
+import { initTournament, createRaceIndexRegister, isInQualifier, applyRaceSkip, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, raceIntroHoldTicks, raceIntroParticipants, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, resultsPassed, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, OUTCOME } from './tournament.js'
 import { CHARACTER_NAMES, OUTCOME_MESSAGES, resolveSmoothnessForPlay } from '../data/frontend-tables.js'
 import { ORDER_TABLE, TRACK_NAMES } from '../data/frontend-tables.js'
 import { layoutOptions, layoutJoyCal, layoutTitle, layoutSelectGame, layoutOnePlayerGame, layoutCharSelect, layoutPicker, layoutQualifierIntro, layoutRaceIntro, layoutResults, layoutOutcome, layoutBoard, layoutEliminated, layoutChampion } from './frontLayouts.js'
@@ -585,6 +585,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   // 1000:09e0, the real scrolling carousel. `[0x1080]=0x137b` (set by the CALLER, 0fbf/102b) means
   // this screen reads ONLY P1's own reader slot -- unlike SELECT_GAME/ONE_PLAYER_GAME's combined
   // both-players byte.
+  const raceIndexRegister = createRaceIndexRegister() // [0x28C1] for the session
   let charSelectState = null
   let carouselDirection = CAROUSEL_INITIAL_DIRECTION // [0x162]: session-wide, every carousel reads and writes the same word (§9dq)
   let charSelectReader = null
@@ -692,6 +693,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       if (!pickOpponentCharacter(tournament, character)) { enterCharSelect(character, 'opponent'); return } // defensive -- charSelectStep's own taken-guard should make this unreachable
       lastPick.opponent = character
     }
+    raceIndexRegister.bindOnePlayer(tournament) // RunTournamentLoop 10A0 starts here; 10AF: [28C1]=0
     enterPressAnyKey()
   }
 
@@ -1376,7 +1378,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       h2hFirstSeed = twoItemState.idleTicks // [0x2] at the confirm -- race 1's nextTrack v (rule 3)
       h2hSession.chooseGameSelection = selection // 1F84
       h2hMode = selection // 1F8E: [0x8A2]=CL, the altTuning fork
-      if (selection === 1) { h2hNextRace(h2hFirstSeed); return } // 1F97: CALL 1FAF (docs/engine.md §9bw)
+      if (selection === 1) { raceIndexRegister.bindTwoHuman(h2hMatch); h2hNextRace(h2hFirstSeed); return } // 1F97: CALL 1FAF (docs/engine.md §9bw); 1FB9: [28C1]=1
       enterSingleRace() // 1F9B: CALL 2329, then 1FA6: JMP 1EF1 (docs/engine.md §9by)
     })
   }
@@ -1507,10 +1509,9 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
   async function h2hRunSingleRace(track) {
     phase = 'LOADING'
-    // [28C1] is not set by 2329 (it keeps whatever the session last left there); the alternate
-    // tuning path never reads it (§9bg), so the race number passed here only feeds the few other
-    // [28C1] readers (UNKNOWN_single_race_28c1, docs/engine.md §9by).
-    const result = await runOneRace(track, { raceNumber: h2hMatch.raceNumber, rosterWords: h2hSetup.rosterWords })
+    // [28C1] is not set by 2329: it keeps whatever the session's last tournament loop left there.
+    // Its only reader in this race is the respawn's race-0x16 rule (7008, docs/engine.md §9dr).
+    const result = await runOneRace(track, { raceNumber: raceIndexRegister.value(), rosterWords: h2hSetup.rosterWords })
     if (result.aborted) { enterTitle(); return }
     const p1Won = result.finishPosition === 1
     reportRace(h2hMatch, h2hSetup.characters[0], h2hSetup.characters[1], p1Won, { tournament: false }) // 256E's increments; no 207A

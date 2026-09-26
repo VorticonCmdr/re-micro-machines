@@ -725,3 +725,21 @@ export function applyLivesCheat(state) {
   state.lives = 0
   if (state.lastOutcome === OUTCOME.ONE_LIFE_LOST) state.over = true
 }
+
+/**
+ * `[0x28C1]` across a session, for the one mode that reads it without writing it: two-human single
+ * race (`2329` never writes it, docs/engine.md §9dr). Its value is whatever the last tournament loop
+ * left: the one-player loop (`RunTournamentLoop 10A0`: 0 at `10AF`, INC on a pass at `10F9`, the
+ * cheat's skip at `13C3`; `effectiveRaceIndex` follows it) or the two-human tournament (1 at `1FB9`,
+ * INC at `207A`; `twoHuman.js`'s `raceNumber`). The static DS image holds 1. Bind at the point
+ * each loop starts; a menu or a pick cancelled before that leaves the old value, as in DOS.
+ */
+export const RACE_INDEX_STATIC = 1
+export function createRaceIndexRegister() {
+  let read = () => RACE_INDEX_STATIC
+  return {
+    bindOnePlayer(state) { read = () => effectiveRaceIndex(state) },
+    bindTwoHuman(match) { read = () => match.raceNumber },
+    value() { return read() },
+  }
+}
