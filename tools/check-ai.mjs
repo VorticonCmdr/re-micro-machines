@@ -26,7 +26,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { droneControlByte } from '../src/engine/ai.js'
 import { loadBrk, loadWorld, roundCtx } from '../src/engine/race.js'
-import { runStep } from '../src/engine/step.js'
+import { runStep, computeRanking } from '../src/engine/step.js'
 import { parseTrace, buildInitialCar, fieldsToCompare, TRACE_PATH, ROUND, RACE } from './check-trace.mjs'
 import { CAR_TYPE_INFO } from '../src/data/engine-tables.js'
 
@@ -175,6 +175,9 @@ async function stage2(rows, ctx) {
 async function fullLoop(rows, ctx, world) {
   const cars = rows[0].cars.map((c, i) => buildInitialCar(c, ROUND, i))
   const raceState = {}
+  // Rank row 0 first, as the drawn frame before it did (runStep reads that order since M3.99;
+  // docs/engine.md §9dh -- without it the seed order turns the rubber band on for every drone).
+  computeRanking(cars, { ...ctx, progressScale: world.map.maxPlane2, halfMaxProgress: world.map.maxPlane2 >> 1 }, raceState)
   const compareFields = fieldsToCompare()
   let firstDivergence = null
 

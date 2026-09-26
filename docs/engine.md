@@ -6048,6 +6048,29 @@ The breakpoint meant for `6054` was misplaced (0x6034), so the store itself was 
 
 **Port.** No change: `applySteerAndThrottle` adds `accel × 6` and clamps, `updateCarVelocityTowardHeading` takes floor ×1.5 of both grip values. `check-play` replays the live step: car 1 stays at 600, and a velocity far from its target moves by 84 (56 with car 0 not leading). The checks fail when their expectations are altered; they pin existing behaviour.
 
+## 9dh. Part L: the key-press leg, sfx 2 on a lap, and a 400-step driving trace, live (2026-09-26)
+
+`GOAL-DOS-PARITY.md` Part L, `UNKNOWN_live_verification`'s last three parts. The capture method is new: an execute breakpoint at `30B7` (`RunRaceMainLoop`, after the physics `4AEE`, the render `90C5` and the per-car pass `3098-30B5`, before the frame wait `30C7`), and a REST loop that reads the four car records, `[107C..1097]` and `DS:2600-29FF` at each stop and continues. One row per physics step, none torn. Input came from DOSBox's own keyboard: `input_sequence` chains run on emulated time, so they advance only while the emulator runs and land between steps.
+
+**The run** (`[PROVEN]`): a Challenge race, round 5 race 2, car 0 on KEYS 2 (`[1083]`=`2DFE`, `[2658]`=5). 400 steps from mid-countdown on, with UP held and LEFT, RIGHT, DOWN and S pressed in turn. Car 0 steered, braked (0x30), fired (0x28, speed and heading frozen, §9aq 3), fell off the table twice (state 1) and respawned (7, 2, 0).
+
+**1. The key leg.** Car 0's control byte `[137B]` equals the low byte of the key word `[107C]` as `2D5B` read it (`2DFE`: `AL=[107C]`) on all 399 steps. 395 match the `[107C]` read at the previous stop; 4 match the next one: the key changed during `30C7`'s frame wait, after that read and before `2D5B`. All five codes 0x20, 0x60, 0xA0, 0x30, 0x28 occur.
+
+**2. sfx 2 on a lap** (§9df's run): `601F` (`AH=5 AL=2`) was reached with BX=0 and car 0 drawn, once on its first crossing from the grid (laps 4 → 3) and once on a real lap (3 → 2).
+
+**3. The trace, replayed.** `tools/refs/trace-R52-drive.bin.gz` (38 KB; 400 rows of 1441 bytes: the four records, `[107C]`, `[2678..267F]`, `[261F]`, `[262F]`, `[26C6]`, `[26CC]`). `check-trace` replays it from row 0's full records with each row's control bytes. The replay has no render or camera, so it takes the drawn flags, `cameraFarFlag` and the order array from the previous row. It first matched 102 steps and stopped where car 0 fell off the table.
+
+**A port bug, fixed: the hazard entries into state 1.** `HandleTerrainHazardFallSnapStop 6456-64F4` and `HandleTerrainHazardFallKeepVel 64F5-657D` (`[STATIC]`, disassembled in full) do much more than the port did:
+- gate on `[12F9]`; state 1; animTimer 0;
+- snap the next position to its 16-px cell centre (`AND 0xFFF0; ADD 8`);
+- set a 4-step drift of a quarter of the distance to it, folded by one 0xC00 world wrap (`6480-64BE`);
+- zero `[1282]`, `[1284]`, `[1286]`, `[1288]`;
+- `6456` also zeroes all four velocity words.
+
+Neither writes `[1382]`, which the port zeroed. The port set only the state (and velocity), so a car falling off a hazard edge stopped dead where DOS drifts it into the cell centre (−4, −2 a step here, 4 steps). Now `terrain.js` `hazardFall`. With it, all 399 steps match on every compared field of all four cars, and `check-trace` fails otherwise.
+
+**4. A regression in the old checks, fixed.** Since M3.99 (`fa15911`, §9cr) `runStep` reads the order the previous drawn frame's ranking left instead of ranking at its own top. The idle-trace harnesses (`check-trace`, `check-ai`'s full loop) start from `raceState = {}`, so step 1 ran on the seed order [0,1,2,3] with every drone's drawn flag 0: car 0 "led", the rubber band boosted all three drones, and both fell to 0 of 20 (the documented baseline is 13). Nothing failed, since those numbers are printed, not asserted. Found by `git bisect`. Both now rank row 0 once before stepping and are back to 13 of 20.
+
 ## 10. Open items
 
 Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: `open`, `narrowed` (part answered; the rest is the open question), `closed`. **Section** is where the answer (or the question) is written up; the history, wrong turns included, stays in those sections and is not repeated here. **Address** is `MICROU.EXE`'s (`1000:` code, `DS:` data) unless another file is named. This table replaced a run-on paragraph of dated notes on 2026-09-26 (`GOAL-DOS-PARITY.md` D2, §9cx); each ID's status was re-read from its latest dated note. When an item opens or closes, change its row here in the same commit.
@@ -6066,7 +6089,6 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_codecard_pixel_diff` | open | §9at; GOAL Part F | - (FONT.BIN, mode 10h) | No byte-exact diff yet; needs mode 10h's 4 planes combined. Only a visual match to live screenshots so far. |
 | `UNKNOWN_dosbox_wait_frames_cadence` | open | §9f | - | What `dosbox.wait_frames(1)` measures (host tick vs retrace) was never pinned down; dedup made it immaterial for M3.4. |
 | `UNKNOWN_intro_loop_vs_total_gap` | open | `docs/intro-and-codecard.md` (§9as) | - (SM.EXE `CS:097F`, `CS:07C6`) | The ~0.23 s gap between the loop's 314 iterations (~4.49 s) and the 4.72 s live total is untimed; plausibly pre-loop setup. |
-| `UNKNOWN_live_verification` | narrowed | §9aa/§9ab/§9aq 3; GOAL Part L | - | Spawn-time car records are live-verified. Still open: car 0's key-press → control-byte leg, sfx 2 on a lap, and a longer driving/collision trace. |
 | `UNKNOWN_menu_default_persistence` | narrowed | §9aw | `0220`,`02CB`,`0360`,`[0x130]`,`[0x132]` | The asymmetric persistence is explained [PROVEN]; still open: why one fire once seemed to pass both menu levels. |
 | `UNKNOWN_menu_pixel_diff` | open | §9aw; GOAL Part F | - | No DOSBox pixel diff yet of SELECT GAME / ONE PLAYER GAME. |
 | `UNKNOWN_mouse_host_scale` | open | §9cu | - | Browser pointer pixels to INT 33h mickeys is taken as 1:1 per CSS pixel; the true scale is not established. |
@@ -6177,6 +6199,7 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_lev_format` | closed | `docs/track-layout.md` .LEV section | - | Superseded by the decoded `.LEV` section: bit 7 safe-respawn skip, bits 6-5 respawn heading, bits 4-2 spawn nudge [STATIC/PROVEN render]. |
 | `UNKNOWN_lev_low_bits` | closed | §9cf 1 | `DS:1B5B`,`[28B9]`,`5DE0`,`70C8` | No instruction reads .LEV bits 1–0; they are authoring data [STATIC]. |
 | `UNKNOWN_lev_round2_size` | closed | `docs/track-layout.md` ROUNDnBR.LEV | `3BBA-3BC7` | The loader reads a fixed 128-byte buffer; round 2's 3 extra bytes are never queried. A harmless authoring artifact. |
+| `UNKNOWN_live_verification` | closed | §9dh (§9aa/§9ab/§9aq 3) | `2D5B`/`2DFE`, `601F`, `6456`, `64F5` | Key leg and sfx 2 live [PROVEN]; a 400-step driving trace replays exactly in `check-trace` after fixing the hazard entries into state 1 (cell-centre snap and drift). |
 | `UNKNOWN_lua_hook_model` | closed | §9f | - | Lua hooks work for per-frame capture; the 64 KB output cap binds first (~100 rows), before the 5 s wall-clock cap. |
 | `UNKNOWN_lvl_reference` | closed | §7 | `SelectGameSetLvl 2BE8` | SelectGameSetLvl finds no GAME?.LVL (INT 21h AH=4Eh) and keeps the defaults. |
 | `UNKNOWN_map_attr_bits` | closed | §9cf 2 | `589C`/`58CD`, `[12DE]`, `DS:191B` | Bit 1 = the cell's flow field mirrored across the tile's LEV axis; bit 0 = rotated 180° [STATIC]. |

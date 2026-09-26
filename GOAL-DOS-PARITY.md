@@ -828,7 +828,7 @@ Commit each item on its own, including any capture file under `tools/refs/`.
 - [x] A whole race end: the countdown and the final order. The ROUND21 lead rule firing (§10,
   "Added 2026-09-23 (§9ah)"). **(§9da: the recount, the countdown and the final order are live-proven; §9df: the lead rule fired live.)**
 - [x] The rubber band boosting while car 0 genuinely leads mid-race, and the grip ×1.5 site (§9aq 4). **(§9dg: both live during a real lead; the boost clamped at the cap, the grip 56/71 → 84/106.)**
-- [ ] The key-press → control-byte leg for car 0 under real input (§10, `UNKNOWN_live_verification`).
+- [x] The key-press → control-byte leg for car 0 under real input (§10, `UNKNOWN_live_verification`). **(§9dh: live on 399 steps; sfx 2 on laps; a 400-step driving trace in `check-trace`, replayed exactly after a hazard-entry fix.)**
   Also sfx 2 on lap completion, and a longer driving/turning/collision trace. Add the trace to
   `tools/refs/` and extend `npm run trace` to use it.
 - [x] `UNKNOWN_race_4th_engine_delay` **(§9dd: `AH=3` never returned 0xFFFE in 21,115 ticks; a batch straddled a tick live; closed)** (`docs/sound.md` §8): a fresh race-start capture that logs

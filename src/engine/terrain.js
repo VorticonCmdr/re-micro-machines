@@ -154,15 +154,38 @@ function h641a(car, ctx) { // HandleTerrainAirborneZVelBoost
   if (car.terrainIdxPrev !== 6 && ctx.s >= 0xe) car.zVel = Math.floor(Math.max(ctx.s, 0x1c) / 10) + 5
 }
 
-// State 1's own glide-to-cell-centre animation (HandleCarState1HazardDeath, `880a`) is not ported
-// in M3.3 (states.js only covers 0/A/2/D/7) -- this handler only performs the documented
-// transition + immediate velocity effect.
-// Both real functions also zero [BX+0x12B0] (animTimer) a few bytes into their own body (`6466`,
-// `6505` -- docs/engine.md §9w) -- redundant in practice here (every state that reads animTimer
-// already zeroes it on its own terminal exit, and `InitRaceCarsFromTables` zeroes it at spawn, so
-// it's already 0 by the time either handler runs) but matched anyway for exact fidelity.
-function h6456(car) { if (car.hazardVulnerable) { car.state = 1; car.subState = 0; car.velX = 0; car.velY = 0; car.animTimer = 0 } } // HandleTerrainHazardFallSnapStop
-function h64f5(car) { if (car.hazardVulnerable) { car.state = 1; car.subState = 0; car.animTimer = 0 } } // HandleTerrainHazardFallKeepVel
+// The two hazard-tile entries into state 1, `6456-64F4` and `64F5-657D`, disassembled in full
+// (docs/engine.md §9dh -- found by the live drive trace, where the port left out everything after
+// the state write): gated on `[12F9]` (hazardVulnerable); state 1 and animTimer 0 (`6460`/`6466`);
+// the next position snapped to its 16-px cell centre, `& 0xFFF0 | 8`-style (`AND 0xFFF0; ADD 8`,
+// `646C-647B`); a 4-step drift of a quarter of the wrapped distance from the current position to
+// that centre (`6480-64BE`: the delta folded into (-0xBE0, 0xBE0) by one 0xC00 world wrap, then
+// `SAR 2` -- two `SAR 1` in `64F5`, the same result); skidding and `[1284]`/`[1286]`/`[1288]` zeroed.
+// `6456` also zeroes all four velocity words (`64DC-64EE`); `64F5` keeps them. Neither writes
+// `[1382]` (subState), which the port used to zero.
+function hazardFall(car, stop) {
+  if (!car.hazardVulnerable) return
+  car.state = 1
+  car.animTimer = 0
+  car.nextX = ((car.nextX & 0xfff0) + 8) & 0xffff
+  car.nextY = ((car.nextY & 0xfff0) + 8) & 0xffff
+  const quarter = (next, pos) => {
+    let d = toI16(next - pos)
+    if (d >= 0xbe0) d -= 0xc00
+    if (d <= -0xbe0) d += 0xc00
+    return d >> 2
+  }
+  car.driftDX = quarter(car.nextX, car.posX)
+  car.driftDY = quarter(car.nextY, car.posY)
+  car.driftSteps = 4
+  car.skidding = 0
+  car.lowGripTimerA = 0
+  car.lowGripTimerB = 0
+  car.puffSrcSkid = 0
+  if (stop) { car.targetVelX = 0; car.targetVelY = 0; car.velX = 0; car.velY = 0 }
+}
+function h6456(car) { hazardFall(car, true) } // HandleTerrainHazardFallSnapStop
+function h64f5(car) { hazardFall(car, false) } // HandleTerrainHazardFallKeepVel
 
 function h657e(car, ctx) { // HandleTerrainLeaveLevelHop
   if (car.terrainLevel !== 0) defaultHop(car, ctx.s)
