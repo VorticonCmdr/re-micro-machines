@@ -45,6 +45,9 @@ export class Si2Player {
   stopSfx(id) { this.command(8, id) }
   stopMusic() { this.command(7) }
   muteAll() { this.command(6) } // CmdRequestReset: silence list + free every slot
+  /** The banners' keep-alive idiom (`8684-8695`, `86A9-86BA`, `85EC-85FD`): `AH=0Ah` "is sfx `id`
+   * active?", then `AH=5` only if it isn't -- asked in the worklet, where the answer is synchronous. */
+  keepAliveSfx(id) { this.node?.port.postMessage({ type: 'keepalive', id }) }
   /**
    * Engine sound for car 0..3, as the game's per-step update does it (1000:7B46): the pitch byte (speed/10,
    * +0x30 airborne, 0x0A idle) goes into the driver's record and sfx 0x40+car is queued only if AH=0A says it

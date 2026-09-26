@@ -22,6 +22,7 @@ export function asDriver(seq) {
     stopMusic: () => seq.command(7),
     muteAll: () => seq.command(6),
     command: (ah, al) => seq.command(ah, al),
+    keepAliveSfx: (id) => { if (seq.command(10, id) !== 0) seq.command(5, id) }, // AH=0Ah, then AH=5 if it isn't playing
   }
 }
 

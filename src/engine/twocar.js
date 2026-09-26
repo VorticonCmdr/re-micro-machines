@@ -365,9 +365,8 @@ function spinBanner(cars, m, ctx, draws) {
  * beyond 7AF8. A deciding point ([26B4]+[26B6] is 15 or 1 during the blink) or a match already
  * decided by the finish block ([26C2]==0xC8) slides "Winner" down from centre-Y -24 by 8 per frame
  * to 124, hides the other car's body ([2621]) and records the result side ([2630]); any other point
- * shows a static "Bonus". The sfx-16 keep-alive (AH=0Ah "still playing?" then AH=5, every Winner
- * frame) is reduced to one play on the first Winner frame -- the port's driver has no synchronous
- * query (the same simplification as the RUFFTRUX banners, docs/engine.md §9ai).
+ * shows a static "Bonus". Every Winner frame keeps sfx 16 going (AH=0Ah "still playing?" then AH=5),
+ * the keep-alive the driver answers synchronously in its worklet (docs/engine.md §9cn).
  */
 function scorerBanner(carIndex, cars, m, ctx, draws) {
   stopEngineSounds(cars) // 855D
@@ -387,7 +386,7 @@ function scorerBanner(carIndex, cars, m, ctx, draws) {
   }
   m.bannerX = 0x80 // 85D3
   m.bannerY = Math.min(m.bannerY + 8, 0x7c) // 85D9-85E5
-  if (!m.winnerSfxQueued) { m.winnerSfxQueued = true; ctx.sound?.playSfx(0x10) } // 85EB-85FF
+  ctx.sound?.keepAliveSfx?.(0x10) // 85EB-85FF: AH=0Ah, then AH=5 if sfx 16 isn't playing (docs/engine.md §9cn)
   stopEngineSounds(cars) // 8603
   m.hiddenCar = carIndex === 0 ? 1 : 0 // 8606-861C
   m.winnerSide = carIndex === 0 ? 1 : 2 // 8620

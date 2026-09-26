@@ -791,7 +791,7 @@ docs, (6) commit.
   type-9 cheat and exactly F2+F3 the instant win, then a white flash and the pause restarts. With
   the flag on, the pause lasts at least 140 ticks. Verify live first (one attempt failed, likely
   timing), then port.
-- [ ] **The RUFFTRUX banner's looping sfx/tick idiom.** M3.8 simplified it to a one-shot (§9k
+- [x] **The RUFFTRUX banner's looping sfx/tick idiom.** **Done (§9cn, M3.94): the `AH=0Ah`/`AH=5` keep-alive runs in the worklet (`keepAliveSfx`), for both RUFFTRUX banners and the two-car Winner.** M3.8 simplified it to a one-shot (§9k
   "Deliberately not done").
 
 ### P6: input and sound (last)

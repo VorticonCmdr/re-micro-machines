@@ -35,6 +35,7 @@ class Si2Processor extends AudioWorkletProcessor {
         break
       }
       case 'cmd': if (this.seq) this.seq.command(m.ah, m.al ?? 0); break
+      case 'keepalive': if (this.seq && this.seq.command(10, m.id) !== 0) this.seq.command(5, m.id); break // AH=0Ah then AH=5
       case 'engine': if (this.seq) this.#engine(m); break
       case 'status': if (this.seq) this.port.postMessage({ type: 'status', opl: this.opl.status(), tune: this.seq.currentTune, tick: this.seq.tick, slots: this.seq.slots.map((s) => ({ state: s.state, channel: s.channel, note: s.note, inst: s.instNum, sfx: s.sfxId })) }); break
     }

@@ -418,23 +418,23 @@ function stepTwoCarIdle(car, ctx) {
   markDrawn(car, ctx)
 }
 
-/** State F (docs/engine.md §4, RUFFTRUX-only): fires once on entry (the real loop idiom re-queues
- * every tick via an `AH=0Ah` keep-alive this port doesn't model -- a one-shot sfx is a
- * simplification, not a re-derivation). Pins speed to 0; no documented exit transition. */
+/** State F ("1 Up!", `8683`, RUFFTRUX-only): every call keeps sfx 16 going -- `AH=0Ah` "is it
+ * active?", then `AH=5` if not (`8684-8695`), so it loops for as long as the car is in state F
+ * (docs/engine.md §9cn). Pins speed to 0; no documented exit transition. */
 function stepRuffTruxOneUp(car, ctx) {
   car.speed = 0
-  if (!car._ruffTruxOneUpFired) { ctx.sound?.playSfx(16); car._ruffTruxOneUpFired = true }
+  ctx.sound?.keepAliveSfx?.(16)
   markDrawn(car, ctx) // 86D3
   advanceBannerSlide(car)
 }
 
-/** State 0x10 (docs/engine.md §4, RUFFTRUX-only, car 0 only per the documented transition): the
- * countdown-expired "Failed" banner. Same one-shot simplification as state F; also the documented
- * `StopEngineSounds` (pitch 0) for car 0, the only car this state's own transition ever targets. */
+/** State 0x10 ("Failed", `86A8`, RUFFTRUX-only, car 0 only): every call keeps sfx 15 going the same
+ * way (`86A9-86BA`, docs/engine.md §9cn) -- the countdown's own one-shot (`7448`) is in `runStates`
+ * below -- then `StopEngineSounds` (`86CE`; pitch 0 for car 0, the only car this state targets). */
 function stepRuffTruxFailed(car, ctx) {
   car.speed = 0
+  ctx.sound?.keepAliveSfx?.(15)
   if (!car._ruffTruxFailedFired) {
-    ctx.sound?.playSfx(15)
     ctx.sound?.engine(0, { bend: 0 })
     car._ruffTruxFailedFired = true
   }
@@ -568,6 +568,8 @@ export function runStates(cars, raceState, ctx, { preRender = false } = {}) {
     for (let i = 0; i < 4 && !raceState.ruffTruxLatched; i++) {
       raceState.ruffTruxTimer -= 1
       if (raceState.ruffTruxTimer <= 0) {
+        // 743D-7448: the one-shot, gated on the drawn flag of the car this pass iteration is on.
+        if (cars[i]?.drawnThisFrame) ctx.sound?.playSfx(15)
         raceState.ruffTruxLatched = 1
         if (cars[0]) cars[0].state = 0x10
       }

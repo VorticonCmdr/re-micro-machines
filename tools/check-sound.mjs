@@ -303,5 +303,48 @@ function check(name, cond) {
   check('raceIntroMusic takes no second argument to select a different tune', raceIntroMusic.length === 1)
 }
 
+// The banners' keep-alive (docs/engine.md §9cn): states F/0x10 (`8684-8695`/`86A9-86BA`) ask AH=0Ah
+// every frame and replay the sfx with AH=5 when it has ended, so it loops for as long as the state
+// lasts -- driven here through runStates against the real driver model, ticked 2x per step.
+{
+  const { runStates } = await import('../src/engine/states.js')
+  const drv = new Driver(new Uint8Array(readFileSync(join(GAME, 'DRIVER1.BIN'))))
+  const loops = (state, id, steps) => {
+    const seq = new Sequencer(drv)
+    const base = asDriver(seq)
+    let plays = 0
+    const driver = { ...base, playSfx: (x) => { if (x === id) plays++; return base.playSfx(x) }, command: (ah, al) => { if (ah === 5 && al === id) plays++; return seq.command(ah, al) } }
+    driver.keepAliveSfx = (x) => { if (seq.command(10, x) !== 0) driver.command(5, x) }
+    const car = { state, active: 1, speed: 0, heading: 0, posX: 100, posY: 100 }
+    const rs = { ruffTruxLatched: 1 }
+    for (let i = 0; i < steps; i++) { runStates([car], rs, { round: 9, sound: driver }); seq.hostTick(); seq.hostTick() }
+    return plays
+  }
+  const f = loops(0xf, 16, 350) // 10 s at 35 Hz
+  check(`state F keeps sfx 16 looping: replayed each time it ends (${f} plays in 10 s, not 1)`, f >= 5)
+  const x = loops(0x10, 15, 350)
+  check(`state 0x10 keeps sfx 15 looping (${x} plays in 10 s, not 1)`, x >= 3)
+  const seq = new Sequencer(drv)
+  const d = asDriver(seq)
+  d.keepAliveSfx(16)
+  seq.hostTick() // AH=5 queues; the slot is taken on the next tick
+  const active = seq.slots.some((sl) => sl.sfxId === 16)
+  let n = 0
+  const orig = seq.command.bind(seq)
+  seq.command = (ah, al) => { if (ah === 5) n++; return orig(ah, al) }
+  d.keepAliveSfx(16)
+  check('keepAliveSfx: plays when idle, and does not restart a sfx that is still playing (CmdIsSfxActive 08F6)', active && n === 0)
+  // 7437-7448: the countdown's own one-shot, gated on the drawn flag of the car the pass is on when
+  // [26C8] reaches 0 (it counts down once per car slot).
+  const oneShot = (timer, drawn) => {
+    const calls = []
+    const cs = [0, 1, 2, 3].map((i) => ({ state: 0, active: i === 0 ? 1 : 0, drawnThisFrame: drawn[i] }))
+    runStates(cs, { ruffTruxTimer: timer }, { round: 9, sound: { playSfx: (x) => calls.push(x), keepAliveSfx: () => {}, engine: () => {} } })
+    return calls.filter((x) => x === 15).length
+  }
+  check('7448: the countdown hitting 0 on car 0\'s slot plays sfx 15 once if car 0 was drawn', oneShot(1, [1, 0, 0, 0]) === 1)
+  check('7448: hitting 0 on an undrawn slot (car 2) plays nothing there -- the state-0x10 loop takes over', oneShot(3, [1, 0, 0, 0]) === 0)
+}
+
 console.log(bad ? `${bad} check(s) failed` : 'check-sound: the race engine drives the sound driver model correctly (jitter checkpoint, race-start AH=7, per-step engine pitch, sfx wiring, race-over, synthetic sfx-site coverage, M3.27\'s six new wire-ups); front-end outcome music matches the real CX-parity rule, no exception for NO_BONUS; race-intro music never plays the unreachable tune 5 (M3.45)')
 process.exitCode = bad ? 1 : 0

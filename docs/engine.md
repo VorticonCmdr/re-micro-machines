@@ -12401,3 +12401,39 @@ Removing the call or the BL clear fails them.
 `twocar.js` already ported the branch exactly, so no code change was needed.
 
 **Tests** (`check-twocar` (g6)) pin both forced outcomes as characterisation tests.
+
+## 9cn. The banners' sfx keep-alive, and the pause's cheat key combos (2026-09-26)
+
+GOAL-DOS-PARITY.md P5, "The RUFFTRUX banner's looping sfx/tick idiom" and "The pause's cheat-gated key
+combos".
+
+### 1. The keep-alive (ported)
+
+`[STATIC]`, from `8683-86D1` (state F, "1 Up!"), `86A8-86D1` (state 0x10, "Failed"), `855A`'s
+`85EB-85FF` (the two-car "Winner") and `7429-744D`.
+
+**The idiom.** Every call of these handlers (once per render) sends `AH=0Ah` for the banner's sfx
+(16 or 15) and, when `AL` ≠ 0, `AH=5`. `AH=0Ah` is `CmdIsSfxActive` (`08F6`): it returns 0 while a
+slot holds that sfx and the id otherwise. So the sfx is replayed each time it ends, for as long as
+the state lasts.
+
+The other pieces:
+- "Failed" also zeroes `[291D]` and calls `7AF8` on every call; "1 Up!" sets `[291D]`=1.
+- The countdown's own one-shot (`7437-7448`) plays sfx 15 when `[26C8]` reaches 0. That happens in
+  the per-car pass, so it is gated on the drawn flag of the car whose slot the decrement is on.
+  Round 9's other trucks are inactive and never drawn, so it plays only when the count reaches 0 on
+  car 0's slot.
+
+**Port.**
+- The driver's answer to `AH=0Ah` is only synchronous inside the audio worklet, where the engine loops
+  already use it. So `Si2Player.keepAliveSfx(id)` posts one message that the worklet runs atomically
+  (`AH=0Ah`, then `AH=5` if nonzero). `asDriver` does the same on the headless `Sequencer`.
+- `stepRuffTruxOneUp`/`stepRuffTruxFailed` call it on every call, and `scorerBanner` on every Winner
+  frame. This replaces the one-play simplifications (`_ruffTruxOneUpFired`, `winnerSfxQueued`).
+- The countdown's one-shot moved into the round-9 timer loop, with the drawn gate of that loop's car.
+
+**Tests** (`check-sound`, against the real driver model ticked twice per step):
+- state F replays sfx 16 at least 5 times in 10 s, and state 0x10 replays sfx 15 at least 3 times;
+  the old code played each once;
+- `keepAliveSfx` plays an idle sfx and doesn't restart one that is still playing;
+- `7448`'s one-shot plays on car 0's slot when car 0 was drawn, and not on an undrawn slot.
