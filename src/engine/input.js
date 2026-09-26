@@ -188,6 +188,32 @@ export function createExtraKeysReader(codes, target = window) {
   }
 }
 
+/**
+ * The ISR's own 16-key word `[107C]` (`KeyboardIsr 2F70-2F8D`, docs/engine.md §9cf 4): slot i of
+ * SETTINGS.DAT's 16 scancodes (KEYS1 x5, F1-F3, KEYS2 x5, D/SPACE/V) is bit `0x8000 >> i`; a key sets
+ * or clears only the FIRST slot whose scancode matches. `scancodes`: the 16 bytes, in slot order.
+ */
+export function createIsrKeyWordReader(scancodes, target = window) {
+  const fkey = (sc) => (sc >= 0x3b && sc <= 0x44 ? `F${sc - 0x3a}` : sc === 0x57 ? 'F11' : sc === 0x58 ? 'F12' : null)
+  const codes = scancodes.map((sc) => SCANCODE_TO_KEY_CODE[sc] ?? fkey(sc))
+  let word = 0
+  const bitFor = (code) => { const i = codes.indexOf(code); return i < 0 ? 0 : 0x8000 >> i }
+  const onDown = (e) => { word |= bitFor(e.code) }
+  const onUp = (e) => { word &= ~bitFor(e.code) & 0xffff }
+  const onBlur = () => { word = 0 }
+  target.addEventListener('keydown', onDown)
+  target.addEventListener('keyup', onUp)
+  target.addEventListener('blur', onBlur)
+  return {
+    read: () => word,
+    dispose() {
+      target.removeEventListener('keydown', onDown)
+      target.removeEventListener('keyup', onUp)
+      target.removeEventListener('blur', onBlur)
+    },
+  }
+}
+
 /** A reader over a pre-recorded control-byte-per-step array (determinism check / tape replay). */
 export function createTapeReader(bytes) {
   let i = 0

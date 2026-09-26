@@ -5933,6 +5933,8 @@ TANKS/a cheat spot actually lets a shot fire. The release tick's own speed jump 
 
 ## 10. Open items
 
+**2026-09-26 (§9cn):** the banners' sfx keep-alive and the pause's cheat key combos are ported; the combos are live-proven.
+
 **2026-09-26 (§9cm):** `UNKNOWN_exit_hold_855a_pass` ported (the BX drift can pass all 100 iterations); `UNKNOWN_rematch_fail_stale_2682` closed (the forced outcomes traced, unreachable in play).
 
 **2026-09-26 (§9cl):** the pause minimum is fixed -- DOS has none without the `25011968` flag; the pause ends at the first key release through the ISR's gate (live-proven).
@@ -12437,3 +12439,50 @@ The other pieces:
   the old code played each once;
 - `keepAliveSfx` plays an idle sfx and doesn't restart one that is still playing;
 - `7448`'s one-shot plays on car 0's slot when car 0 was drawn, and not on an undrawn slot.
+
+### 2. The pause's cheat key combos (ported, live-proven)
+
+`[STATIC]` from `37B8-37F5`, `36A7-36EB`, `3722-3734`, and the ISR's word `2F70-2F8D`. `[PROVEN]` by
+live DOSBox reads of `[2633]`, `[2915]`/`[2919]`/`[291B]`, `[26C6]`/`[2635]`, `[107C]` and
+`[107E]`/`[107F]` in a ROUND21 race, with DS:0F69 poked to 1.
+
+**The combo window.**
+- It exists only with the `25011968` flag, outside round 9, after the pause-ending gated release
+  (`37B8`), and when the released key isn't F12.
+- It polls until `[261F]` ≥ 140 (§9cl).
+- `[107C]` exactly 0x0600 (F1+F2, no other mapped key held) jumps into cheat type 9's body (`3722`):
+  `[2915]=[2919]=1`, `[291B]=4`.
+- Exactly 0x0300 (F2+F3) jumps into type 1's instant win (`36A7`): `[26C6]=4`, `[2635]=1`, the fixed
+  order and scores 0x7D00.
+- Either one then runs the white fill (`3734`) and **restarts the pause** at `3753`: `[2633]=1`, the
+  banner, `[261F]`, `[107E]` and `[107F]` cleared, stage 1 again.
+
+**The word.** `[107C]`: slot i of the 16 SETTINGS.DAT keys is bit `0x8000 >> i`, the first slot
+matching the scancode. F1/F2/F3 are slots 5/6/7 (0x0400/0x0200/0x0100), and SPACE is slot 14 (0x0002).
+
+**Live:**
+- **F1+F2.** After a SPACE tap, X's release passed the gate. `[107C]` went 0x0400, then 0x0600, and
+  on the same sample `[2915]`/`[2919]` became 1, `[291B]` 4, `[2633]` 1 (restarted) and the latch
+  0. The restarted pause ended exactly 2.0 s later, so the cheat floor applies again.
+- **F2+F3.** 0x0200, then 0x0300, then `[26C6]=4` and `[2635]=1` with the pause restarted.
+  - F2 and F3 were pressed before the restart cleared the tracked key, so their releases didn't pass
+    the gate.
+  - Stage 1 ended on its 140-tick timeout, and stage 2 then waited for another key.
+  - This also explains why §9cf's single live attempt failed: in that attempt F2's own release was
+    the gated one, and by then F3 was no longer held.
+
+**Port.**
+- `input.js`'s `createIsrKeyWordReader(scancodes)` mirrors `[107C]` from the 16 scancodes, with the
+  first-slot rule. `flow.js` builds it per race from `keys1`, `f1f3`, `keys2` and `dSpaceV`.
+- `updatePause` takes `keyWord`. In the cheat window it applies the combo through `applyCheatEffect`
+  (types 9 and 1, the same bodies), flashes, and restarts the pause.
+- `state.latchClearPending` now asks the caller to clear the ISR latch, on entry and on each restart.
+
+**Tests.**
+- `check-play`:
+  - both combos, including the restart;
+  - an extra key held means no match;
+  - without the flag, in round 9, and before the gated release, there is no combo.
+
+  Disabling the combo code fails two of them.
+- `check-escquit`: the word's slot bits, and the first-slot rule.

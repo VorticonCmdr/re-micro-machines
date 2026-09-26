@@ -786,7 +786,7 @@ docs, (6) commit.
   four passes.
 - [x] **The projectile tail icon** **Done (§9cj, M3.90): icon 0 for two frames (two count-ups per frame), then 1.** (§9cf 6f, `871F-872D`): `projFrame >> 2`, read before a
   saturating increment to 5, reset at fire.
-- [ ] **The pause's cheat-gated key combos** (§9cf 4, `37B8-37F5`): with the `25011968` flag, in
+- [x] **The pause's cheat-gated key combos** **Done (§9cn 2, M3.95): live-proven, ported; the pause restarts after either combo.** (§9cf 4, `37B8-37F5`): with the `25011968` flag, in
   rounds other than 9, after the pause-ending release, until tick 140: exactly F1+F2 applies the
   type-9 cheat and exactly F2+F3 the instant win, then a white flash and the pause restarts. With
   the flag on, the pause lasts at least 140 ticks. Verify live first (one attempt failed, likely

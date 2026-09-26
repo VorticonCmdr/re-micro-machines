@@ -58,6 +58,29 @@ const key = (type, code) => Object.assign(new Event(type), { code })
   t.dispose()
 }
 
+// --- [107C], the ISR's 16-key word (KeyboardIsr 2F70-2F8D, docs/engine.md §9cn): slot i -> 0x8000>>i,
+// the first slot a scancode matches; the order is KEYS1 x5, F1-F3, KEYS2 x5, D/SPACE/V.
+{
+  const { createIsrKeyWordReader } = await import('../src/engine/input.js')
+  const target = new EventTarget()
+  const sc = [0x24, 0x26, 0x17, 0x32, 0x25, 0x3b, 0x3c, 0x3d, 0x4b, 0x4d, 0x48, 0x50, 0x1f, 0x20, 0x39, 0x2f] // this copy's SETTINGS.DAT
+  const w = createIsrKeyWordReader(sc, target)
+  const down = (c) => target.dispatchEvent(key('keydown', c))
+  const up = (c) => target.dispatchEvent(key('keyup', c))
+  down('F1'); down('F2')
+  check('[107C]: F1+F2 is 0x0600 (slots 5/6)', w.read() === 0x0600)
+  up('F1'); down('F3')
+  check('[107C]: F2+F3 is 0x0300', w.read() === 0x0300)
+  down('Space')
+  check('[107C]: SPACE (slot 14) is bit 0x0002', w.read() === 0x0302)
+  up('F2'); up('F3'); up('Space')
+  check('[107C]: all released -> 0', w.read() === 0)
+  const dup = createIsrKeyWordReader([0x1f, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x1f, 0, 0, 0], target)
+  down('KeyS')
+  check('[107C]: a scancode in two slots sets only the first (2F70 stops at the first match)', dup.read() === 0x8000)
+  up('KeyS'); w.dispose(); dup.dispose()
+}
+
 // --- the exits
 function run(state, maxMs = 10000) {
   const calls = []

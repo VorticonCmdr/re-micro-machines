@@ -28,7 +28,7 @@ import { createBrkBuffer } from '../formats/levbrk.js'
 import { runStep, runPreLoopRender } from '../engine/step.js'
 import { droneControlByte } from '../engine/ai.js'
 import { initCameraState } from '../engine/camera.js'
-import { createKeyboardReader, createExtraKeysReader, createPauseKeyReader, createMenuReleaseTracker, recordingReader, SCANCODE_TO_KEY_CODE } from '../engine/input.js'
+import { createKeyboardReader, createExtraKeysReader, createPauseKeyReader, createMenuReleaseTracker, createIsrKeyWordReader, recordingReader, SCANCODE_TO_KEY_CODE } from '../engine/input.js'
 import { createPauseState, updatePause } from '../engine/pause.js'
 import { createRaceEndState, updateRaceEnd } from '../engine/raceEnd.js'
 import { createFadeState, updateFade, applyFade } from '../engine/fade.js'
@@ -884,6 +884,8 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     // carry a stray SPACE "pressed" edge in from leaving the RACE_INTRO screen (any key, on its
     // release, docs/engine.md §9bp) straight into the race's first frame, instantly pausing it.
     const pauseKey = createPauseKeyReader(window)
+    // [107C], the ISR's 16-key word, for the pause's cheat combos (docs/engine.md §9cn).
+    const keyWord = createIsrKeyWordReader([...settings.keys1, ...settings.f1f3, ...keys2, ...settings.dSpaceV], window)
     // [0x1096] (docs/engine.md §9ca), cleared at race setup (3CB6): from here on an ESC release that
     // gets through the ISR's gate (menuReleaseTracker's mirrored [0x107E]/[0x107F], carried over from
     // the screen before -- race setup does not clear them) quits the race to the title, at the next
@@ -921,6 +923,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
         humanReader.dispose()
         p2Reader?.dispose()
         pauseKey.dispose()
+        keyWord.dispose()
       }
       let escGraceSteps = 0 // the rest of the iteration an ESC-ended pause returns into
       let raceEnd = null // the post-race hold + fade-out (engine/raceEnd.js), once the race is over
@@ -959,9 +962,10 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
         // its step and draw, and the next loop head quits.
         const wasPaused = pauseState.paused
         const { pressed, held } = pauseKey.read() // a press since the last frame counts as held: 3074 samples at 35 Hz, a frame can miss a short tap
-        const paused = updatePause(pauseState, dtMs, { spaceHeld: held || pressed, released: menuReleaseTracker.isrState().latch, cheatFlag: cheatActive }, cars[0], cheats, round, race, globalState, sound)
+        const paused = updatePause(pauseState, dtMs, { spaceHeld: held || pressed, released: menuReleaseTracker.isrState().latch, cheatFlag: cheatActive, keyWord: keyWord.read() }, cars[0], cheats, round, race, globalState, sound)
         if (wasPaused && !paused && escLatched()) escGraceSteps = 1
-        if (paused && !wasPaused) {
+        if (pauseState.latchClearPending) { // the entry and each combo restart
+          pauseState.latchClearPending = false
           menuReleaseTracker.clearIsrLatch() // 377F/3784: [0x107E]=0, [0x107F]=0
           smoothGate.forceNextDraw() // 37A0: [2638]=1, so the iteration the pause returns into draws
         }

@@ -182,10 +182,9 @@ export async function bootRace({ canvas, statusEl, pickButton, dropZone, oplStri
     }
     updateFade(fadeState, dtMs)
 
-    const wasPaused = pauseState.paused
     const { pressed, held } = pauseKey.read() // a press since the last frame counts as held: 3074 samples at 35 Hz, a frame can miss a short tap
     const paused = updatePause(pauseState, dtMs, { spaceHeld: held || pressed, released: releaseTracker.isrState().latch }, cars[0], cheats, ROUND, RACE, globalState, sound)
-    if (paused && !wasPaused) releaseTracker.clearIsrLatch() // 377F/3784
+    if (pauseState.latchClearPending) { pauseState.latchClearPending = false; releaseTracker.clearIsrLatch() } // 377F/3784
 
     let shouldRender = paused
     if (!paused) {

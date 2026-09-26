@@ -2088,6 +2088,33 @@ async function checkPause() {
     check('updatePause: cheat flag, F12 released -> no minimum (37CE)', updatePause(f12, 100, I(false, 'F12', true), car(), [], 1, 1, {}) === false)
   }
 
+  // (d2) the cheat window's combos (37D7-37EA, docs/engine.md §9cn, live-proven): the ISR's word
+  // exactly 0x0600 (F1+F2) applies cheat type 9, exactly 0x0300 (F2+F3) type 1's instant win; either
+  // flashes and restarts the pause (3753: the latch cleared again, stage 1, the timer from 0).
+  {
+    const enter = (flag = true, round = 1) => { const s = createPauseState(); updatePause(s, 16, I(true, null, flag), car(), [], round, 1, {}); s.latchClearPending = false; return s }
+    const g9 = {}
+    const s9 = enter()
+    const still = updatePause(s9, 300, { spaceHeld: false, released: 'KeyX', cheatFlag: true, keyWord: 0x0600 }, car(), [], 1, 1, g9)
+    check('combo F1+F2 (0x0600): cheat type 9 (3722), and the pause restarts (3753)', still === true && g9.cheat5 === 1 && g9.projectilesForAll === true && g9.projectileLimit === 4 && s9.elapsedMs === 0 && s9.stage1 && s9.latchClearPending && s9.cheatFlashMs > 0)
+    const g1 = {}
+    updatePause(enter(), 300, { spaceHeld: false, released: 'KeyX', cheatFlag: true, keyWord: 0x0300 }, car(), [], 1, 1, g1)
+    check('combo F2+F3 (0x0300): the instant win (36A7)', g1.raceOverCount === 4 && g1.fixedOrder === true)
+    const gx = {}
+    updatePause(enter(), 300, { spaceHeld: false, released: 'KeyX', cheatFlag: true, keyWord: 0x0302 }, car(), [], 1, 1, gx)
+    check('combo: another mapped key also held (SPACE, 0x0302) -> no match (the compare is exact)', gx.raceOverCount === undefined)
+    const gn = {}
+    const sn = enter(false)
+    check('combo: without the 25011968 flag the release just ends the pause, no combo', updatePause(sn, 300, { spaceHeld: false, released: 'KeyX', cheatFlag: false, keyWord: 0x0300 }, car(), [], 1, 1, gn) === false && gn.raceOverCount === undefined)
+    const g9r = {}
+    updatePause(enter(true, 9), 300, { spaceHeld: false, released: 'KeyX', cheatFlag: true, keyWord: 0x0300 }, car(), [], 9, 1, g9r)
+    check('combo: not in round 9 (37C7)', g9r.raceOverCount === undefined)
+    const gb = {}
+    const sb = enter()
+    updatePause(sb, 300, { spaceHeld: false, released: null, cheatFlag: true, keyWord: 0x0300 }, car(), [], 1, 1, gb)
+    check('combo: only after the gated release (the poll starts at 37D7, after 37B8)', gb.raceOverCount === undefined)
+  }
+
   // (e) cheatFlashMs counts down to 0 over real time and never goes negative.
   {
     const s = createPauseState()

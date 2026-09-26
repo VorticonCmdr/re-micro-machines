@@ -25,7 +25,10 @@
 //   isn't F12 (`37CE`, the SCRE0.RAW dump -- cut in this port): poll until `[261F]` >= 140 (`37ED`),
 //   i.e. a 140-tick (exactly 2.000 s at the ISR's 70 Hz, §9v) minimum. Without the flag there is no
 //   minimum at all: the pause ends at the first gated release.
-// Not ported here: that poll's F1+F2 / F2+F3 combos (`37D7-37EA`, GOAL-DOS-PARITY.md P5).
+// - that poll's two combos (`37D7-37EA`, docs/engine.md §9cn, live-proven): the ISR's 16-key word
+//   `[107C]` exactly 0x0600 (F1+F2, nothing else held) jumps into cheat type 9's body (`3722`), exactly
+//   0x0300 (F2+F3) into type 1's instant win (`36A7`); either then runs the white flash (`3734`) and
+//   restarts the pause from `3753` -- [261F], the latch and the tracked key cleared, stage 1 again.
 
 import { findCheatSpot, applyCheatEffect } from './cheats.js'
 
@@ -33,19 +36,20 @@ const CHEAT_MIN_PAUSE_MS = 2000 // 140 ticks of [261F] at 70 Hz (37ED), only wit
 const CHEAT_FLASH_MS = 100 // the real "near-instantaneous" white flash on a cheat-spot match, given a floor a human can actually perceive
 
 export function createPauseState() {
-  return { paused: false, elapsedMs: 0, stage1: false, cheatFlashMs: 0 }
+  return { paused: false, elapsedMs: 0, stage1: false, cheatFlashMs: 0, latchClearPending: false }
 }
 
 /**
  * Call once per rendered frame (physics is frozen while paused). `dtMs`: real elapsed time since the
- * last call. `input`: `{ spaceHeld, released, cheatFlag }` -- SPACE's level (the entry test), the key
- * code whose release got through the ISR's gate since the caller's last `clearIsrLatch` (the mirrored
- * `[107E]`, null if none), and DS:0F69. `sound`: optional `{stopSfx(id), muteAll()}` -- `35F0`'s own
+ * last call. `input`: `{ spaceHeld, released, cheatFlag, keyWord }` -- SPACE's level (the entry test),
+ * the key code whose release got through the ISR's gate since the caller's last `clearIsrLatch` (the
+ * mirrored `[107E]`, null if none), DS:0F69, and the ISR's 16-key word `[107C]` (the combos). The
+ * caller clears the ISR latch whenever `state.latchClearPending` is set (the entry, and each restart). `sound`: optional `{stopSfx(id), muteAll()}` -- `35F0`'s own
  * opening AH=8/AH=6 on entry, and `37AA`/`37B3`'s again at the end of stage 1. Mutates `state`;
- * returns `state.paused`. The caller clears the ISR latch on the entry edge (377F/3784).
+ * returns `state.paused`.
  */
 export function updatePause(state, dtMs, input, car, cheats, round, race, globalState, sound) {
-  const { spaceHeld = false, released = null, cheatFlag = false } = input ?? {}
+  const { spaceHeld = false, released = null, cheatFlag = false, keyWord = 0 } = input ?? {}
   if (state.cheatFlashMs > 0) state.cheatFlashMs = Math.max(0, state.cheatFlashMs - dtMs)
 
   if (!state.paused) {
@@ -53,6 +57,7 @@ export function updatePause(state, dtMs, input, car, cheats, round, race, global
       state.paused = true
       state.elapsedMs = 0
       state.stage1 = true
+      state.latchClearPending = true // 377F/3784
       sound?.stopSfx(0)
       sound?.muteAll()
       const spot = findCheatSpot(cheats ?? [], car, round, race)
@@ -71,7 +76,17 @@ export function updatePause(state, dtMs, input, car, cheats, round, race, global
     sound?.muteAll() // 37B3
   }
   if (released == null) return true // 37B8: no timeout
-  if (cheatFlag && round !== 9 && released !== 'F12' && state.elapsedMs < CHEAT_MIN_PAUSE_MS) return true // 37BF-37F3
+  if (cheatFlag && round !== 9 && released !== 'F12' && state.elapsedMs < CHEAT_MIN_PAUSE_MS) { // 37BF-37F3
+    const combo = keyWord === 0x0600 ? 9 : keyWord === 0x0300 ? 1 : null // 37D7 / 37E2
+    if (combo != null) {
+      applyCheatEffect(car, { type: combo }, globalState) // 3722 / 36A7
+      state.cheatFlashMs = CHEAT_FLASH_MS // 3734: the white fill
+      state.elapsedMs = 0 // 3753-3784: the pause again from the top
+      state.stage1 = true
+      state.latchClearPending = true
+    }
+    return true
+  }
   state.paused = false // 37F5
   return false
 }
