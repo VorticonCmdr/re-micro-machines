@@ -6013,6 +6013,27 @@ So assumption (a) (`CS:[4ADE]` bumped only by the timer ISR here, 5 ticks an ite
 
 **Port.** No change: `outcomeWait.js`'s LIVES path polls first at tick 156, which `check-outcomewait` already asserts.
 
+## 9df. Part L: the ROUND21 lead rule firing, live (2026-09-26)
+
+The rest of `GOAL-DOS-PARITY.md` Part L's race-end item (§9da had the recount, the countdown and the order). The rule (`6024-6054`, `[STATIC]`, re-read): after car record 0's lap decrement, with `[28BF]==2` and `[28C0]==1` (round 2, race 1), car 0's laps ≤ 2 and each other car's laps (`[1451]`, `[15B5]`, `[1719]`) strictly greater, `6054` stores `[26C6]`=2.
+
+**Getting car 0 ahead.** An idle car 0 never leads, and driving blind through ~1 s of input lag was not reliable. So car 0 was put under the game's own AI and the drones were slowed, at the race start (`39F0`, after race setup's `2D00` had built the readers):
+- car 0's reader `[1083]` = `2DED`, the CPU reader (it calls the AI `5429` with BX=car 0);
+- car 0's `[12EB]` (isDrone) = 1. Without it the AI's fire bit froze car 0 through the keyboard fire preempt (`4D6B`, §9aq 3): its control byte read 0x28 and its speed stayed 0 (seen live in a first attempt);
+- the three drones' `maxSpeedCur`/`maxSpeedBase` (`[129C]`/`[129E]`) = 600 (they were 1014/1146/1080; car 0's is 1662). The AI only copies base into cur, so one poke holds.
+
+None of these is read by `6024-6054`. (A first attempt without the drone poke left car 0 a lap behind: at `6039` it had laps 2 and car 1 also 2, so the rule did not fire, as it should not.)
+
+**Live** (`[PROVEN]`, execute breakpoints; ROUND21, Challenge qualifier):
+- tick 2071: `601F` with BX=0 (sfx 2), car 0 crossing from the grid, laps [3,4,3,3];
+- tick 3452: `601F` with BX=0 again, a real lap: laps [2,3,3,3], order [0,…], car 0 drawn, the drones not;
+- `6039` with BX=0: `[28BF]`/`[28C0]` passed, laps 2 ≤ 2;
+- afterwards `[26C6]`=2 and `[26CC]` ran to 0 with laps still [2,3,3,3], `[2635]`=0, and the game went on to the opponent picker (the qualifier passed).
+
+The breakpoint meant for `6054` was misplaced (0x6034), so the store itself was not seen. It is the only writer that fits: `[26C6]`=2 otherwise comes from the recount (`4B85`, which needs a finished and stopped car; none had finished), the instant-win cheat (`[2635]` was 0), the round-9 banner (`8702`) or the two-car commits (`76F2`/`772A`/`7742`).
+
+**Port.** No change; `check-play`'s lead-rule tests (with their negative twins) already pin it.
+
 ## 10. Open items
 
 Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: `open`, `narrowed` (part answered; the rest is the open question), `closed`. **Section** is where the answer (or the question) is written up; the history, wrong turns included, stays in those sections and is not repeated here. **Address** is `MICROU.EXE`'s (`1000:` code, `DS:` data) unless another file is named. This table replaced a run-on paragraph of dated notes on 2026-09-26 (`GOAL-DOS-PARITY.md` D2, §9cx); each ID's status was re-read from its latest dated note. When an item opens or closes, change its row here in the same commit.
@@ -6049,7 +6070,6 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 
 | Item | Status | Section | Address | Open question |
 |---|---|---|---|---|
-| A whole four-car race end, live | narrowed | §9da (logic §9ah); GOAL Part L | `6024-6054`, `[26CC]`, `[26C6]` | The recount, the same-step countdown start, the coast and the final order are live-proven (§9da). Still open: the ROUND21 lead rule firing, which needs car 0 ahead on laps. |
 | The rubber band while car 0 really leads | open | §9aq 4; GOAL Part L | `4B1C-4B41`, `[262F]` | The ×6 boost is live-proven only with the race-start seed order; the grip ×1.5 site was never seen reached. |
 | A "drawn but invisible" car | open | §9ap; GOAL Part L | `[1250]`, `7D73` | Is a car whose drawn flag is set really absent from the screen? Tried, not obtained. |
 | Front-end pixel parity | open | GOAL Part F | `0400` | No byte-exact diff of most front-end screens (the options/F7 header, the carousel's look, the H2H vs CPU race-intro sprite panel); §9bz's four H2H screens and §9cu's options body are the exceptions. |
