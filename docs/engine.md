@@ -6211,6 +6211,11 @@ With every checkbox of `GOAL-DOS-PARITY.md` ticked, §10.1 still held items that
 
 5. **`UNKNOWN_26cf_prompt_blink`, closed `[STATIC]`, fixed.** `0C96` (called every tick by `09E0`) clears the prompt row, then redraws the prompt `[0x19A]` only while the ISR's 32-tick toggle `[0x26CF]` has bit 0 set (`0CBB`), and draws none when `[0x19A]`=0. Every caller passes a prompt: `0FBF` 0x20F/0x227, `102B` 0x20F, `1A4A` 0x227, and both two-human picks 0x20F (`1E96`/`1EDD`). §9dn had ported the blink only in the Challenge's own layouts; the Head-to-Head vs CPU picks and the two-human picks, drawn by `screens.js`'s older `drawCharacterSelect`, showed the prompt steadily. It now takes `promptOn`, and `flow.js` computes the toggle once for every carousel. `check-screens` checks that the prompt rows are blank with it off and nothing else changes (fails without the fix).
 
+6. **Three items closed as category (c): the answer is not in the binary or the data files.**
+   - `UNKNOWN_dosbox_wait_frames_cadence` asks what the DOSBox bridge's `wait_frames(1)` counts, which is a property of the emulator and its bridge, not of the game. The trace it affected is replayed after deduplicating identical rows (§9f), so no result depends on it, and every later capture used the game's own tick counters (`DS:0002`, `[261F]`, §9v) for timing.
+   - `UNKNOWN_mouse_host_scale` asks how many INT 33h mickeys one browser pixel is worth. On DOS that ratio is the physical mouse's resolution and the driver's settings, not a value the game holds; the game only reads the driver's counts (`2EB3`, §9cu), with the driver's own defaults (`3A44` is never called). The port's 1 mickey per CSS pixel is a choice, recorded as one in `pointerMouse.js`.
+   - `UNKNOWN_waveform_target` asks which chip a DOS player had: a YM3812, where waveform select works only once the test register enables it, or an OPL3/emulator that honours it. That is the player's hardware. Both are implemented (the default and the dev-only strict OPL2 toggle), only tunes 6 and 7 use a waveform, and §9dj could not tell them apart in DOSBox's audio.
+
 ## 10. Open items
 
 Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: `open`, `narrowed` (part answered; the rest is the open question), `closed`. **Section** is where the answer (or the question) is written up; the history, wrong turns included, stays in those sections and is not repeated here. **Address** is `MICROU.EXE`'s (`1000:` code, `DS:` data) unless another file is named. This table replaced a run-on paragraph of dated notes on 2026-09-26 (`GOAL-DOS-PARITY.md` D2, §9cx); each ID's status was re-read from its latest dated note. When an item opens or closes, change its row here in the same commit.
@@ -6219,13 +6224,10 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 
 | ID | Status | Section | Address | Answer or open question |
 |---|---|---|---|---|
-| `UNKNOWN_dosbox_wait_frames_cadence` | open | §9f | - | What `dosbox.wait_frames(1)` measures (host tick vs retrace) was never pinned down; dedup made it immaterial for M3.4. |
 | `UNKNOWN_intro_loop_vs_total_gap` | open | `docs/intro-and-codecard.md` (§9as) | - (SM.EXE `CS:097F`, `CS:07C6`) | The ~0.23 s gap between the loop's 314 iterations (~4.49 s) and the 4.72 s live total is untimed; plausibly pre-loop setup. |
 | `UNKNOWN_menu_default_persistence` | narrowed | §9aw | `0220`,`02CB`,`0360`,`[0x130]`,`[0x132]` | The asymmetric persistence is explained [PROVEN]; still open: why one fire once seemed to pass both menu levels. |
-| `UNKNOWN_mouse_host_scale` | open | §9cu | - | Browser pointer pixels to INT 33h mickeys is taken as 1:1 per CSS pixel; the true scale is not established. |
 | `UNKNOWN_overlay_tile_191` | open | `docs/track-graphics.md` overlay tiles; §9d | `9214-9237` | Round 2 overlay index 191's +12 variant differs from its base; how it looks with a car under it is unverified. |
 | `UNKNOWN_replay_determinism` | open | PLAN-ENGINE.md §4 | - | Is a replay deterministic across DOSBox sessions? Matters only for human-tape replays; never investigated. |
-| `UNKNOWN_waveform_target` | open | §9dj; `docs/sound.md` §8 | - | YM3812 sines vs OPL3/DOSBox waveforms: both are implemented. DOSBox's audio was compared (§9dj), but only tunes 6/7 use a waveform and the spectral metric cannot tell the modes apart; which chip a DOS player had is not in the binary. |
 
 ### 10.2 Open, without an ID
 
@@ -6302,6 +6304,7 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_ct_tile_pixel_layout` | closed | `docs/track-layout.md` .CT section | `448C-4575` | .CT is not pixels: 6×6 little-endian tile-index words per meta-tile [PROVEN] by the live diff. |
 | `UNKNOWN_dir_bucket_source` | closed | §3 / §9 | `5DE6`, `[12E0]`, `5454` | The .DIR remap row is LEV bits 6-5 of the car's current tile, written every committed step for every car [STATIC]. |
 | `UNKNOWN_dir_values` | closed | `docs/track-layout.md` .DIR section | `DS:18FB` | Each byte = a terrain grade/ramp nibble + a direction nibble, resolved through two tables to a 16-point compass [PROVEN] (by render). |
+| `UNKNOWN_dosbox_wait_frames_cadence` | closed | §9dr 6 (raised §9f) | - | (c): a property of the emulator bridge, not the game; the dedup makes the trace independent of it, and later captures time with the game's own counters. |
 | `UNKNOWN_drawn_flag_onscreen` | closed | §9ao | `[1250]`,`7D73`,`7D7D`,`7E54`,`4F3C` | `[1250]` is a sticky, clip-tested "on screen at the last draw" flag; the `4F3C` fire gate is ported [PROVEN]. |
 | `UNKNOWN_driver1_device` | closed | PLAN.md §9 | - (DRIVER1.BIN) | DRIVER1.BIN is an OPL2/AdLib driver (Sound Images Gen 2). |
 | `UNKNOWN_drv2_live_fidelity` | closed | `docs/sound.md` §4; §9cq | DRIVER2.BIN `0459` | The DRIVER2 memory model replays two live captures byte for byte; sfx 16-18 are dropped. Speaker audio is rendered, not captured. |
@@ -6340,6 +6343,7 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_menu_pixel_diff` | closed | §9dm (§9aw) | `0220`, `02E0`, `0382` | SELECT GAME and ONE PLAYER GAME are pixel-exact (SELGAM, WORDS, THUMB) [PROVEN]; `npm run front`. |
 | `UNKNOWN_microu_runs_standalone` | closed | §9cf 8 | - | Yes: MICROU.EXE alone runs through the code card and options into a race [PROVEN]. |
 | `UNKNOWN_modex` | closed | `docs/track-graphics.md` Video pipeline | - | No sequencer, graphics-controller or CRTC start-address writes: plain mode 13h, no Mode-X, no page flipping [STATIC]. |
+| `UNKNOWN_mouse_host_scale` | closed | §9dr 6 (raised §9cu) | `2EB3`, `3A44` | (c): mickeys per pixel is the host mouse and driver's, not the game's; the port's 1:1 is a recorded choice. |
 | `UNKNOWN_opl_sample_fidelity` | closed | §9dj (`docs/sound.md` §6-§8) | - | The JS core's audio matches DOSBox's spectrally (tune 4 0.84, tune 6 0.76 against ≤0.63 for any other tune) [PROVEN]; sample-exactness is not a goal; `npm run oplaudio`. |
 | `UNKNOWN_options_pixel_diff` | closed | §9dm (§9cu) | `0400`, `2770` | OPTIONS, its F7 line and both calibration frames are pixel-exact over the whole screen with `0400`'s header [PROVEN]; `npm run front`. |
 | `UNKNOWN_outcome_screen_timeout` | closed | §9bq (M3.71) | `1C1B`, `17FF`, `[261F]` | SIMPLE path: 17FF CX=15 windows, timeout at tick 704. LIVES path: 30-step slide, poll every 6 ticks, timeout 702. Both ported [STATIC]. |
@@ -6388,6 +6392,7 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_twocar_race_end` | closed | §9am | `4AEE-4D10`, `7429`, `5019-51B2`, `76F2`/`772A`/`7742` | The whole two-car match is ported: camera-separation points, 8/0 or bar-leader-at-finish end, Play Off, `[2630]` fix-up [STATIC]. |
 | `UNKNOWN_unp_version` | closed | §9cf | - | UNP.EXE is UNP 4.11 (SHA-1 e034d6fe…), DIET-packed with its tag stripped. |
 | `UNKNOWN_vh0_bank2` | closed | §4 / §9; `docs/track-graphics.md` Vehicles | `DrawSprite24FromSecondBank`, `4676-468F` | Bank 2 = the state 1/4/5 animation frames; round 8 also reuses the buffer for the chopper rotor. |
+| `UNKNOWN_waveform_target` | closed | §9dr 6 (raised §9dj; `docs/sound.md` §8) | - | (c): which chip a player had is their hardware; both modes are implemented and §9dj cannot tell them apart. |
 
 ### 10.4 Other spellings
 

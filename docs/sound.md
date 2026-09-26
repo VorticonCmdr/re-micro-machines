@@ -184,7 +184,7 @@ What is `[PROVEN]` is scoped to what was replayed; the tags below say which part
 
 ## 8. Open items
 
-**Open as of 2026-09-26** (`docs/engine.md` §10 is the registry): `UNKNOWN_waveform_target`. Everything else below is closed; the paragraphs record how.
+**Open as of 2026-09-26** (`docs/engine.md` §10 is the registry): nothing. `UNKNOWN_waveform_target` was the last, closed as category (c) in `docs/engine.md` §9dr 6 (which chip a player had is not in the files). The paragraphs below record how each item closed.
 
 Closed by §3b: `UNKNOWN_6210_dispatch_path` and `UNKNOWN_666e_dispatch_path` (both resolved to the `DS:26D7` per-round dispatch-table mechanism). **Closed in `docs/engine.md` §9cf: `UNKNOWN_sfx_semantics`, consistent by measurement (renders in `tools/out/sfx/`, not yet listened to); ids 2 and 15 are byte-identical, ids 11–13 are unissued engine-loop-shaped records.** (Before that it was only downgraded: the per-site triggers were `[STATIC]` for all 36 sites, the audible meaning rendered, not heard.) `UNKNOWN_26B8_polarity`, reopened here once by an adversarial pass, is **closed** (`docs/engine.md` §9u, §9x, §9ag): one shared slot re-armed by the knockout reset and the finish block, read by the match result as the scorer/winner.
 
