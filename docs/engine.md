@@ -6230,6 +6230,26 @@ With every checkbox of `GOAL-DOS-PARITY.md` ticked, §10.1 still held items that
    - **`UNKNOWN_overlay_tile_191`, closed `[PROVEN]`.** Tile 191 sits at meta-tile 51's cell (1,1); in ROUND21 that meta-tile is on map row 1 (e.g. cell (20,1), world 1944,120). Car 0 was poked there at the 500th step (`DS:125C`/`1268`), 121 more steps run, then `A000`, the four car records and the camera (`[264A]`/`[264C]` = 1816,20) read. The port's `composeRaceView` with that state (no HUD): 0 px differ outside the HUD column; without the cars, 22 px differ -- the few car pixels the rack's overlay leaves visible, drawn identically. The car passes under the rack, as the overlay pass (`9214-9237`) implies.
    - **`UNKNOWN_replay_determinism`, closed `[PROVEN]`.** Two fresh DOSBox sessions (different menu histories), the Challenge qualifier with car 0 idle, stopped at the 500th hit of the per-step `30B7`: the four car records (`DS:124A`, 0x590 bytes) are byte-identical; of `DS:2600-28FF`, only the ISR tick counters (`[261F]`, `[26D0]`, `[28F7]`) and two words at `2612`/`2614` differ. The race step does not depend on wall-clock time, so a tape of per-step inputs replays exactly (what `npm run trace` already relies on for its own tapes).
 
+## 9ds. The DOS-parity pass, summarised (2026-09-27)
+
+`GOAL-DOS-PARITY.md` (written 2026-09-24, baseline commit `5ad2bb2`) set the goal: `game.html` runs the same sequence as typing `MICRO` in DOSBox, and every `UNKNOWN_*` ends as a parity fix with a failing-first test, a live capture, or a reasoned closure. All 78 checkboxes are ticked, every `npm run` check passes, and §10 lists only category-(b) items, each with a written-up live attempt.
+
+**What the pass did, by part.**
+- **P1-P2, the boot chain and menus:** SM.EXE's logo intro, FONT.BIN's code card, GAME OPTIONS (F1-F7, the cheat, SETTINGS.DAT byte-exact), the title's attract loop, both two-item menus and the character carousel, each from its own disassembly, most proven live.
+- **P3, the tournament screens and rules:** the board, the opponent picker and the elimination rule, the results/outcome/champion screens with their real waits (`179B`, `17FF`, `1C1B`, `0C15`, `1AAD`), the lives and bonus-race rules, the cheat's race skip.
+- **P4, two-human Head to Head:** both picks, the handicap question, CHOOSE GAME, the tournament and single race, the WINNER!/LOSER! screens, pixel-checked (§9bz).
+- **P5-P7:** in-race differences (pause combos, fades, the race-start hold, sfx keep-alive and more), the input devices and the speaker driver, and the `?dev`-gated page chrome.
+- **L, R, D:** the live-capture and static RE items, and the documentation debt (§10 rebuilt as a table, §9cx).
+- **F:** the front-end captures and `npm run front`, now 22 screens and the code card at 0 px, and a side-by-side session (§9dq) that found and fixed two differences (the carousel's entry-skip direction, the cheat code's settings write).
+- **Closing §10 (§9dr):** three items answered from the bytes, two static fixes (a single race's `[0x28C1]`, the Head-to-Head pickers' prompt blink), three category-(c) closures, and two DOSBox sessions that closed two items `[PROVEN]`, fixed PRESS ANY KEY and the redefine-keys screen, and wrote up the rest.
+
+**What stays open, and why** (§10.1/§10.2):
+- `UNKNOWN_intro_loop_vs_total_gap`: the logo loop loses 17 frames in DOSBox because some passes overrun a retrace. That depends on the emulated CPU speed. The port runs 314 iterations at 70 Hz (4.49 s against DOSBox's 4.72 s); matching one particular DOSBox setting would need per-iteration timing that isn't in the file.
+- `UNKNOWN_menu_default_persistence`: one fire tap passing both menu levels was reproduced live once, but the read that lets it through `0382` is not pinned.
+- Front-end pixel parity: the screens not yet captured (Head-to-Head vs CPU's carousel and intro, the round-9 intro, EXTRA LIFE / NO BONUS, the credits).
+
+**Lessons for the next live session** (added to the tooling notes by practice): the bridge's `screen_capture` can return frames seconds old, so read `A000` over REST (`/api/v1/memory/40960/0/64000`) and check the call stack before trusting a screen; each tool round trip took 25-30 s here, close to the menus' 28.6 s idle cancel, so send a menu path as one `input_sequence`; and a key held past the typematic delay auto-repeats into the game's release latch.
+
 ## 10. Open items
 
 Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: `open`, `narrowed` (part answered; the rest is the open question), `closed`. **Section** is where the answer (or the question) is written up; the history, wrong turns included, stays in those sections and is not repeated here. **Address** is `MICROU.EXE`'s (`1000:` code, `DS:` data) unless another file is named. This table replaced a run-on paragraph of dated notes on 2026-09-26 (`GOAL-DOS-PARITY.md` D2, §9cx); each ID's status was re-read from its latest dated note. When an item opens or closes, change its row here in the same commit.
