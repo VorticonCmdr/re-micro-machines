@@ -2149,7 +2149,8 @@ async function checkPause() {
  * capture (docs/engine.md §9co, closing UNKNOWN_countdown_hud_digit): THE BREAKFAST BENDS (ROUND51,
  * Challenge race 1), car 0 left idle. Live: 3 for all four cars through state 0xA and the first
  * state-0 tick (947); two ticks later (949) cars 0 and 1 (the back row) read 4 and cars 2/3 stay 3; car 1 went back to 3 29
- * ticks (14 steps) later, and car 0 stayed at 4. The port already did this; this pins it.
+ * ticks (~14.5 steps, a change-only sampler, different drone picks) later, and car 0 stayed at 4.
+ * The port already did this; this pins it (the 14-step figure is the port's own).
  */
 async function checkCountdownHudDigit() {
   const strt = parseStrtPos(await read('GAME1/STRT_POS.BIN'))
@@ -2168,7 +2169,7 @@ async function checkCountdownHudDigit() {
     if (first >= 0 && step > first + 1 && car1Back < 0 && cars[1].lapsRemaining === 3) car1Back = step
   }
   check('HUD digit: 3 on every car through the whole start countdown (state 0xA), as live', countdownOk && first > 0)
-  check(`HUD digit: car 1 back to 3 fourteen steps after reading 4, as live's 29 ticks (got ${car1Back - first - 1})`, car1Back - first - 1 === 14)
+  check(`HUD digit: car 1 back to 3 fourteen steps after reading 4 (port-pinned; live was 29 ticks, ~14.5 steps, with other drone picks) (got ${car1Back - first - 1})`, car1Back - first - 1 === 14)
   check('HUD digit: idle car 0 stays at 4, as live', cars[0].lapsRemaining === 4)
 }
 
@@ -2208,6 +2209,29 @@ async function checkFade() {
     check('updateFade: the fade-out is still running just before tick 16', s.active)
     updateFade(s, 0.2 * TICK)
     check('applyFade: fade-out fully black at tick 16 (327A took 16 ticks live)', !s.active && applyFade(dac6, s).every((v) => v === 0))
+  }
+
+  // (b2) the hold drains the pause key's press edge (3074 tests SPACE's level at the first loop head):
+  // a tap over before the hold ends must not pause the first frame; a SPACE still held does.
+  {
+    const { raceStartHold } = await import('../src/engine/fade.js')
+    const { createPauseKeyReader } = await import('../src/engine/input.js')
+    const ls = {}
+    const target = { addEventListener: (t, f) => { ls[t] = f }, removeEventListener() {} }
+    const key = createPauseKeyReader(target)
+    const s = createFadeState('in')
+    ls.keydown({ code: 'Space', preventDefault() {} })
+    ls.keyup({ code: 'Space' })
+    let frames = 0
+    while (raceStartHold(s, 16, key)) frames++
+    const after = key.read()
+    check(`raceStartHold: holds ${frames} frames of 16ms (17 ticks), then lets the loop run`, frames === 16 && !s.active)
+    check('raceStartHold: a SPACE tap during the hold leaves no press edge for the first frame', !after.pressed && !after.held)
+    const s2 = createFadeState('in')
+    ls.keydown({ code: 'Space', preventDefault() {} })
+    while (raceStartHold(s2, 16, key)) {}
+    check('raceStartHold: a SPACE still held at the first frame still reads as held', key.read().held)
+    check('raceStartHold: never holds for a fade-out', !raceStartHold(createFadeState('out'), 16, key))
   }
 
   // (c) an inactive/absent state is a safe no-op (identity), so a caller can call applyFade unconditionally.

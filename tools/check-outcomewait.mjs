@@ -10,7 +10,8 @@
 //    lives cheat, checked before the generic release; timeout at tick 702;
 //  - raceResultWaitStep's new `cx` parameter: default unchanged (20), 15 gives a 16-tick window.
 // The exact tick numbers hold under outcomeWait.js's own assumptions (a)-(c): only the timer ISR
-// advances CS:[0x4ADE], the port has no entry draw/fade time, and each draw group fits in a tick.
+// advances CS:[0x4ADE], the port has no entry draw/fade time (the `32CE` fade-up there is 17 ticks when `[26CE]==1`,
+// docs/engine.md §9co; unported), and each draw group fits in a tick.
 //   node tools/check-outcomewait.mjs
 import { outcomeWaitInitialState, outcomeWaitStep, OUTCOME_TIMEOUT_TICKS, OUTCOME_17FF_CX, OUTCOME_CHEAT_KEY } from '../src/frontend/outcomeWait.js'
 import { raceResultWaitInitialState, raceResultWaitStep, RACE_RESULT_WAIT_TICKS } from '../src/frontend/twoHuman.js'

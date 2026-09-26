@@ -39,6 +39,18 @@ export function updateFade(state, dtMs) {
 }
 
 /**
+ * The race start's black hold, for the page loops: while the fade-up runs, advance it and drain the
+ * pause key's press edge. `3074` tests SPACE's level at the first loop head, so a tap that is over by
+ * then must not pause; a SPACE still held does, through `held`. Returns true while holding.
+ */
+export function raceStartHold(state, dtMs, pauseKey) {
+  if (!state?.active || state.direction !== 'in') return false
+  updateFade(state, dtMs)
+  pauseKey?.read()
+  return true
+}
+
+/**
  * `dac6`: the raw 768-byte 6-bit-per-channel palette -- a `.PAL` file's own bytes (`ArrayBuffer` or
  * `Uint8Array`, normalised via `toU8`), NOT `decodePalette(...).rgb`. Returns the 6-bit buffer to pass
  * through `decodePalette`: identity (the normalised `dac6` itself) when there is no fade, or once the

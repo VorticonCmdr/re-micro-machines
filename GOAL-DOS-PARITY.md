@@ -566,7 +566,7 @@ docs, (6) commit.
   also runs a one-shot draw (`01DE`, its own 18 instructions show no loop, though its callees
   weren't read instruction-by-instruction) and a palette fade-up (`32CE`) BEFORE the slide loop
   starts, and that fade has NO derivable tick duration at all (already established elsewhere as
-  CPU-speed-bound, not tick-paced) -- new open item `UNKNOWN_race_intro_prehold`, this port's own
+  CPU-speed-bound, not tick-paced; **measured 2026-09-26, `docs/engine.md` §9co: 17 ticks under DOSBox when it runs, and it runs only when `[26CE]==1`, i.e. after the race exit's `327A`; live, the race intro after the opponent picker skipped it**) -- new open item `UNKNOWN_race_intro_prehold`, this port's own
   hold understates the real delay by that amount. Scoped per an explicit user decision, presented
   with the full-sprite-panel alternative (a full port would duplicate §9az's own declined scope for
   the identical `19F2` function, and would need a DOSBox live capture to verify layout/flip/asset):
@@ -750,6 +750,12 @@ docs, (6) commit.
 - [x] **`UNKNOWN_fade_duration`.** **Done (§9co, M3.96): `327A` took 16 ticks live, `32CE` 17 (CPU-bound; DOSBox's numbers); the port uses them.** The exit fade is unpaced. Measure it live (Part L) and pace it.
 - [x] **`UNKNOWN_countdown_hud_digit`.** **Done (§9co, M3.96): DOS also shows 3, then 4 at the first progress write; the port already matched, now tested.** The HUD digit reads 3 during the start countdown and 4
   once racing. Capture the original's value live (Part L) and match it.
+- [ ] **The front-end screens' own fades.** `32CE` is also called by the title (`01A9`), the race
+  intro (`12B7`/`12DF`), the results (`1546`), the champion (`1BCF`), the outcome message
+  (`1D82`/`1E01`) and the two-human winner screen (`2641`). It fades up (17 ticks, §9co) only when
+  `[26CE]==1`, which only the race exit's `327A` (`315A`) and race setup's (`395A`) set, so in
+  practice it is the first screen after a race. The port has no front-end fades, and does not port
+  race setup's own `395A` fade-out of the screen before the race (16 ticks) either. Port both.
 - [x] **`UNKNOWN_round3_bridge_path`.** **Done (§9cc, M3.83): `5740-57F7` is round 3's whole collision path; ported with the CX=12 quirk.** `1000:5740-57f7` is unported, including the `683c` ramp path
   that stores progress 12. This is round 3 physics. Port it and add a `check-step`/`check-rounds` test.
 - [x] **`DrawRound8ExtraAnim32 1000:843d`** (`DS:5EE3`) **Done (§9cb, M3.82): already ported in §9aj; the re-read fixed the counter (advances only when the body passed its clip) and the rotor's own fold.**: the CHOPPERS-only 32×32 extra animation

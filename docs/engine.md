@@ -12542,12 +12542,28 @@ is closed as "already matching".
   (no step, no pause poll, no render), as the main loop has not started in DOS. The first frame then
   appears at full palette on the first drawn step.
 - Not ported: `395D`'s fade-out of the screen before the race (the port's front-end screens have
-  no palette fades at all).
+  no palette fades at all). A new GOAL P5 item covers both.
+- `play.js`/`flow.js` call `raceStartHold`, which also drains the pause key's press edge: `3074`
+  tests SPACE's level at the first loop head, so a tap over before then must not pause.
+
+**Every race start has the hold** (`[STATIC]`): `327A` has only two callers, the race exit `315A`
+and race setup `395A`, and every path through `LoadRaceStartPosCheatsMapAndBanks` to `39F0` passes
+`395A` (its three branches before it go to the `39FC` load-failure exit). A byte scan for disp16
+`0x26CE` finds only the four writes/tests inside the two routines. So `[26CE]` is 1 at `39F0` in
+every format: either `327A` just set it, or it was already 1 and `327A` skipped. The qualifier, an
+H2H re-run and the two-human races are the same.
+
+**The same routine, other callers.** The 16 ticks are from the `395D` call site. The race exit's
+`315A` call runs the same fixed work, and §9ca's sampler on the ESC exit gave the same ~0.23 s.
+`32CE`'s front-end callers take its 17 ticks only when `[26CE]==1`: live, the race intro right after
+the opponent picker reached `32CE` with `[26CE]=0` and did no fade.
 
 **Tests.** `check-play`:
 - the black hold is still all zero just before tick 17 and the full palette at 17;
 - the fade-out is k=32 at tick 8 and fully black at 16, and still running just before 16;
-- the HUD digit sequence above on ROUND51 at tournament index 1.
+- the black hold drains a SPACE tap's press edge but keeps a held SPACE (removing the drain fails it);
+- the HUD digit sequence above on ROUND51 at tournament index 1 (the 14-step figure is the port's
+  own; live was 29 ticks from a change-only sampler, ~14.5 steps, with other drone picks).
 
 On the old `fade.js` four of the fade checks fail. The HUD digit checks pass on both (no fix).
 The loop change (black, no steps) was not browser-checked: the Chrome window was hidden, so

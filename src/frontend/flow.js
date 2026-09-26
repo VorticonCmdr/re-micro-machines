@@ -31,7 +31,7 @@ import { initCameraState } from '../engine/camera.js'
 import { createKeyboardReader, createExtraKeysReader, createPauseKeyReader, createMenuReleaseTracker, createIsrKeyWordReader, recordingReader, SCANCODE_TO_KEY_CODE } from '../engine/input.js'
 import { createPauseState, updatePause } from '../engine/pause.js'
 import { createRaceEndState, updateRaceEnd } from '../engine/raceEnd.js'
-import { createFadeState, updateFade, applyFade } from '../engine/fade.js'
+import { createFadeState, applyFade, raceStartHold } from '../engine/fade.js'
 import { raceStart, updateEngines, createRaceJitter, raceOverStart, raceOverGateCar, titleMusic, subMenuMusic, raceIntroMusic, raceResultMusic, raceOutcomeMusic, championMusic, eliminatedMusic } from '../engine/sound.js'
 import { lapLineSegments, nearestPaletteIndex } from '../engine/lapLine.js'
 import { Si2Player } from '../audio/si2Player.js'
@@ -955,9 +955,8 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
           requestAnimationFrame(frame)
           return
         }
-        if (fadeState.active) {
+        if (raceStartHold(fadeState, dtMs, pauseKey)) {
           // 39F0 -> 32CE: the fade-up over zeroed VRAM, before the main loop -- black, nothing steps.
-          updateFade(fadeState, dtMs)
           const c2d = canvas.getContext('2d')
           c2d.fillStyle = '#000'
           c2d.fillRect(0, 0, canvas.width, canvas.height)

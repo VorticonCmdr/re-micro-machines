@@ -557,8 +557,8 @@ function freshAtLastRace() {
 // race-intro variant" item): the tick count for JUST that loop, during which a press is discarded
 // (179B's own entry clears the release latch, not merely "the loop doesn't poll" -- see
 // raceIntroHoldTicks' own header for why that distinction matters). NOT the whole real hold: `12BD`
-// also runs a one-shot draw (`01DE`, ~0 ticks) and a palette fade-up (`32CE`) with NO derivable
-// tick duration at all (already established elsewhere as CPU-speed-bound, not tick-paced) BEFORE
+// also runs a one-shot draw (`01DE`, ~0 ticks) and a palette fade-up (`32CE`) -- CPU-bound, 17 ticks
+// under DOSBox when `[26CE]==1` (after a race exit's fade) and skipped otherwise (docs/engine.md §9co) -- BEFORE
 // this loop even starts -- `UNKNOWN_race_intro_prehold`. H2H: car 0 slides `-32->84` at +2/tick
 // (59 ticks). Challenge: all 4 icons slide `256->16` at -2/tick (121 ticks). Zero for the qualifier
 // (raceIndex 0) and a bonus race (pendingBonusRace set) -- meaning THIS PORT'S hold is unchanged

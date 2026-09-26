@@ -23,7 +23,7 @@ import { droneControlByte } from './engine/ai.js'
 import { initCameraState } from './engine/camera.js'
 import { createKeyboardReader, createPauseKeyReader, createMenuReleaseTracker, recordingReader } from './engine/input.js'
 import { createPauseState, updatePause } from './engine/pause.js'
-import { createFadeState, updateFade, applyFade } from './engine/fade.js'
+import { createFadeState, applyFade, raceStartHold } from './engine/fade.js'
 import { raceStart, updateEngines, createRaceJitter, raceOverStart } from './engine/sound.js'
 import { createRaceEndState, updateRaceEnd } from './engine/raceEnd.js'
 import { lapLineSegments, nearestPaletteIndex } from './engine/lapLine.js'
@@ -180,9 +180,8 @@ export async function bootRace({ canvas, statusEl, pickButton, dropZone, oplStri
       requestAnimationFrame(frame)
       return
     }
-    if (fadeState.active) {
+    if (raceStartHold(fadeState, dtMs, pauseKey)) {
       // 39F0 -> 32CE: the fade-up over zeroed VRAM, before the main loop -- black, nothing steps.
-      updateFade(fadeState, dtMs)
       ctx2d.fillStyle = '#000'
       ctx2d.fillRect(0, 0, canvas.width, canvas.height)
       requestAnimationFrame(frame)
