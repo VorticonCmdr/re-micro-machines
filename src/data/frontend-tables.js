@@ -174,12 +174,12 @@ export const SOUND_LABELS = ['NONE', 'BLASTER', 'SPEAKER']
 export const CREDITS_LINES_ADDR = 0xf75
 export const CREDITS_LINES = [
   '   CODE BY   LYNDON HOMEWOOD',
-  '                GARY RANSON',
-  '                JON CARTWRIGHT',
+  '             GARY RANSON',
+  '             JON CARTWRIGHT',
   '   MUSIC     GEZ GOURLEY',
   '   GRAFIX    BRIAN HARTLEY',
-  '                MARK NEESAM',
-  '                PETE RANSON',
+  '             MARK NEESAM',
+  '             PETE RANSON',
   '',
   '  PRODUCED BY BIG RED SOFTWARE',
   '   COPYRIGHT CODEMASTERS 1994',

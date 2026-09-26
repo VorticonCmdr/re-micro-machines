@@ -7,7 +7,7 @@ import { drawOptionsScreen, drawJoystickCalibrationScreen, redefineKeyChar } fro
 import { caseImage } from '../formats/chr.js'
 import { blitTransparent } from '../render/blit.js'
 import { MENU_VIEW } from '../render/menuView.js'
-import { ORDER_TABLE, BOARD_ICON_POSITIONS, REDEFINE_GROUP_LABELS, REDEFINE_SLOT_LABELS } from '../data/frontend-tables.js'
+import { ORDER_TABLE, BOARD_ICON_POSITIONS, REDEFINE_GROUP_LABELS, REDEFINE_SLOT_LABELS, CREDITS_LINES } from '../data/frontend-tables.js'
 
 /** GAME OPTIONS (`2770`): the `0400` header (`[0x156]`=0), then the body `drawOptionsScreen` draws
  * (exact below row 30 since §9cu). */
@@ -18,6 +18,12 @@ export function layoutOptions({ settings, joystick = false }) {
 /** F7's joystick calibration (`2AB5`) on the same `0400` header. */
 export function layoutJoyCal({ columns, prompt }) {
   return [...header({ words: 0 }), { op: 'call', fn: (buf, arena) => drawJoystickCalibrationScreen(buf, arena, { columns, prompt }) }]
+}
+
+/** F6's credits (`ShowCredits 2A82`): the `0400` header, then the ten lines of `DS:0F75` (`08F0`,
+ * FONT2, x 0 -- the indent is the strings' own spaces) from y 0x2D, 0x10 apart. */
+export function layoutCredits() {
+  return [...header({ words: 0 }), ...CREDITS_LINES.map((text, i) => ({ op: 'text', font: 'FONT2.CHR', text, x: 0, y: 0x2d + 0x10 * i }))]
 }
 
 /** F5's redefine keys (`RunRedefineKeysScreen 92F0`): the `0400` header, then a y cursor from 0x28.
@@ -104,10 +110,12 @@ const faceFrameOf = (v) => (v & 0x20 ? 12 : v & 0x40 ? 13 : v & 0x1f)
 /** `19F2`: the four-slot panel -- per slot at X 8+0x40i, Y 0x24: the portrait (`0DB0`, opaque; the
  * slot's frame field masked with 0x4F), a 0xD border (`06CC`), and the name at (X, 0x55) (`0F3C`) --
  * or, for an unpicked slot (`v&0xF` >= 0xB), a black 48x8 rect there instead. */
-function panel4(slots) {
+// `19F2`: the face panel -- four slots from x 8 in Challenge, two from x 0x47 in Head to Head vs CPU
+// (`[0x3F8]`!=0, `19FE-1A08`), 0x40 apart, at y 0x24.
+function panel4(slots, x0 = 8) {
   const ops = []
   slots.forEach((v, i) => {
-    const x = 8 + 0x40 * i, y = 0x24
+    const x = x0 + 0x40 * i, y = 0x24
     ops.push({ op: 'sprite', chr: 'FCNORMAL.CHR', frame: faceFrameOf(v & 0x4f), x, y, opaque: true })
     ops.push({ op: 'border', x: x - 1, y: y - 1, w: 50, h: 50, color: 0x0d })
     if ((v & 0xf) >= 0xb) ops.push({ op: 'rect', x, y: y + 0x31, w: 0x30, h: 8, color: 0 })
@@ -177,6 +185,28 @@ export function layoutPicker({ slots, scroll, roster, promptOn = true, blinkOn =
   return [...header({ words: 2 }), ...panel4(slots), ...carousel(scroll, roster, blinkOn), ...prompt(promptText, promptOn)]
 }
 
+/** Head to Head vs CPU's two picks (`0FBF` -> `19F2` -> `09E0`): header "Head to Head", the
+ * two-slot panel at x 0x47 (the player, then the opponent; 0xB = not picked), the carousel, the
+ * prompt ("WHO DO YOU WANT TO BE ?" `DS:020F`, then "WHO DO YOU WANT TO RACE ?" `DS:0227`), and
+ * PRESS ANY KEY (`0C15`) in the same row after the second pick. */
+export function layoutH2hCpuPick({ slots, scroll, roster, promptText, promptOn = true, blinkOn = false }) {
+  return [...header({ words: 1 }), ...panel4(slots, 0x47), ...carousel(scroll, roster, blinkOn), ...prompt(promptText, promptOn)]
+}
+
+/** The round-9 bonus race's intro (`11F8`, `[0x28BF]`==9, `1219-126A`): header, "TRIPLE WIN !!!",
+ * "BONUS RACE", "BEAT THE CLOCK" (`DS:03BF`/`03CE`/`03D9`, FONT2 centred at y 0x28/0x38/0x48), the
+ * RUFFTRUX picture (`[0BC5]`=8, y 0x5A) and "TIMETRIALS" (`DS:03E8`, FONT1 centred, y 0xA2). */
+export function layoutBonusIntro() {
+  return [
+    ...header({ words: 2 }),
+    { op: 'text', font: 'FONT2.CHR', text: 'TRIPLE WIN !!!', centre: true, y: 0x28 },
+    { op: 'text', font: 'FONT2.CHR', text: 'BONUS RACE', centre: true, y: 0x38 },
+    { op: 'text', font: 'FONT2.CHR', text: 'BEAT THE CLOCK', centre: true, y: 0x48 },
+    ...classPicture(9, 0x5a),
+    { op: 'text', font: 'FONT1.CHR', text: 'TIMETRIALS', centre: true, y: 0xa2 },
+  ]
+}
+
 /** `01DE` with `[0BB6]` = y: INTRO frame (opaque) at (0x50,y), the 8 rows under it cleared, the
  * class name FONT1 centred there. */
 function classPicture(vehicleClass, y) {
@@ -202,17 +232,23 @@ export function layoutQualifierIntro({ vehicleClass }) {
  * (`1867`: the track name at X = ((0xFF-((len+1)*8+0x40))>>1)+0x40, FONT2, y 0x6C, and "RACE nn"
  * -- `1A34`'s two digits, a space for a zero tens -- at X-0x40), the class picture at y 0x80, and
  * the four MINATURE icons (frame round-1+8k, mirrored, transparent) at rest at X 0x10+0x40k, Y 0x5A. */
-export function layoutRaceIntro({ slots, raceNumber, trackName, round, vehicleClass = round, last = false }) {
+export function layoutRaceIntro({ slots, raceNumber, trackName, round, vehicleClass = round, last = false, h2h = false }) {
   const x = ((0xff - ((trackName.length + 1) * 8 + 0x40)) >> 1) + 0x40
   const digits = `${raceNumber >= 10 ? Math.floor(raceNumber / 10) : ' '}${raceNumber % 10}`
-  const ops = [...header({ words: 2 }), ...panel4(slots)]
+  const x0 = h2h ? 0x47 : 8
+  const ops = [...header({ words: h2h ? 1 : 2 }), ...panel4(slots, x0)]
   if (last) ops.push({ op: 'text', font: 'FONT2.CHR', text: trackName, centre: true, y: 0x6c }) // 1888: [28C1]==[439], the slot's own string centred
   else {
     ops.push({ op: 'text', font: 'FONT2.CHR', text: trackName, x, y: 0x6c })
     ops.push({ op: 'text', font: 'FONT2.CHR', text: `RACE ${digits}`, x: x - 0x40, y: 0x6c })
   }
   ops.push(...classPicture(vehicleClass, 0x80))
-  for (let k = 0; k < 4; k++) ops.push({ op: 'sprite', chr: 'MINATURE.CHR', frame: round - 1 + 8 * k, x: 0x10 + 0x40 * k, y: 0x5a, flip: true })
+  // The icons slide in (131F-1393). Four-car: all four from the right to 0x10+0x40k. Head to Head vs
+  // CPU (130E-1314, 135B-1375): the first from -0x20 by +2 until it reaches 0x54, the second from
+  // 0x100 by -2 over the same 58 steps, so they rest at 0x54 and 0x8C; the first is not mirrored
+  // (131A clears its flip byte, [0xCE5]), so it faces the way it slid in.
+  const iconX = h2h ? [0x54, 0x8c] : [0x10, 0x50, 0x90, 0xd0]
+  for (let k = 0; k < slots.length; k++) ops.push({ op: 'sprite', chr: 'MINATURE.CHR', frame: round - 1 + 8 * k, x: iconX[k], y: 0x5a, flip: !(h2h && k === 0) })
   return ops
 }
 
@@ -342,6 +378,14 @@ export const FRONT_SCREENS = {
   options: (ctx) => layoutOptions({ settings: ctx.settings }),
   options_f7: (ctx) => layoutOptions({ settings: ctx.settings, joystick: true }),
   redefine: () => layoutRedefineKeys({ slots: [0x3f], slotIndex: 1 }), // F5's auto-repeat was taken as LEFT, live (§9dr 8)
+  credits: () => layoutCredits(),
+  outcome_nobonus: () => layoutOutcome({ code: 4, message: 'NO BONUS', character: 10, lives: 10, b: 1 }),
+  bonus_raceintro: () => layoutBonusIntro(),
+  // Head to Head vs CPU (§9dr 10): SPIDER, then BONNIE (the static [0x3F6]=9 start)
+  h2hcpu_pick: () => layoutH2hCpuPick({ slots: [0xb, 0xb], scroll: settledScroll(10), roster: FREE_ROSTER, promptText: 'WHO DO YOU WANT TO BE ?' }),
+  h2hcpu_opponent: () => layoutH2hCpuPick({ slots: [10, 0xb], scroll: settledScroll(9), roster: FREE_ROSTER.map((v) => (v === 10 ? 0x4a : v)), promptText: 'WHO DO YOU WANT TO RACE ?', promptOn: false }),
+  h2hcpu_pressanykey: () => layoutH2hCpuPick({ slots: [10, 9], scroll: settledScroll(9), roster: FREE_ROSTER.map((v) => (v === 10 ? 0x4a : v === 9 ? 0x49 : v)), promptText: 'PRESS ANY KEY TO START' }),
+  h2hcpu_raceintro: () => layoutRaceIntro({ slots: [10, 9], raceNumber: 1, trackName: 'THE BREAKFAST BENDS', round: 5, h2h: true }),
   joycal_centre: () => layoutJoyCal({ columns: [['CENTRE'], null], prompt: true }),
   joycal_right: () => layoutJoyCal({ columns: [['CENTRE', 'LEFT', 'RIGHT'], null], prompt: true }),
 }
