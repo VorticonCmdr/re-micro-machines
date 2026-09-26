@@ -6140,6 +6140,18 @@ The screens were reached with breakpoints on each screen's own wait (`179B`, `17
 
 `game.html` now draws these four screens from the layouts. `UNKNOWN_thumb_frame1_invisible` is answered: at selection 1 THUMB frame 1 (the pointing finger) is drawn at (0x68,0x80), and it matches the capture.
 
+## 9dn. Part F2: the character carousel, the opponent picker and the race intros (2026-09-26)
+
+From a read-only disassembly (`[STATIC]`), each checked at 0 px against its capture (`[PROVEN]`, §9dm). All are Challenge screens, so the `0400` header carries WORDS frame 2 ("Challenge") and the divider (`[0x156]`=2, written at `0364` from the ONE PLAYER GAME pick).
+- **The carousel** (`0D1F` + `0E02`, shared by the player's pick and the picker): rows 0x77-0x7D colour 0x0E, 0x7E 0x12, 0x7F-0xAE 0, 0xAF 0x12, 0xB0-0xB7 0x0E. Face i (roster byte `DS:0164+i`) at X = DX-0xD8, Y 0x7F (the slot's static Y), DX from `[0x192]` stepping 0x40 modulo 0x2C0 -- settled on character c, `[0x192]` = ((5-c) mod 11)*0x40, the same formula as `DS:016F`'s table. A face the clipper drops gets no text; a drawn one gets its name (`DS:0258`) at y 0xB0 and its skill label (`DS:02B1`, 8-byte padded slots, " ACE! ") at y 0x77, FONT1, with `0929`'s own clip (a glyph starting left of 0 is skipped whole; drawing stops at X ≥ 0xFF). A taken face (0x40) is frame 13, all colour 0, but keeps its name and label. Then rows 0x76 and 0xB7 in 0x12, and FRAME.CHR's 8x8 pieces round the centred face (corners frames 1/2, edges 3/0, mirrored on the right and top).
+- **The prompt** (`0C96`): rows 0x62-0x69 cleared, then "WHO DO YOU WANT TO BE ?" (`DS:020F`) or "... RACE ?" (`DS:0227`), FONT1 centred at y 0x62, only while `[0x26CF]`&1 -- the ISR's 32-tick toggle (`48DC-48EC`), so the prompt blinks; both captures caught it on.
+- **The player's pick** (`102B`): the single panel at (0x68,0x27), FCNORMAL frame 11 (the red "?"), with a 0xD border; no name on first entry.
+- **The picker and the race panel** (`19F2`): four slots at X 8/0x48/0x88/0xC8, Y 0x24, each with its border and its name at y 0x55, or for an unpicked slot (0xB) a black 48x8 rect.
+- **The qualifier's intro** (`127E-12BA`, `[28C1]`=0): "QUALIFYING" (0x58,0x32) and "RACE" (0x70,0x46), FONT2, then `01DE`'s class picture at y 0x5A (INTRO frame, the 8 rows under it cleared, the class name centred). `[BC5]` is just the class frame (round-1). This closes `UNKNOWN_challenge_qualifier_intro_banner`.
+- **A race intro** (`12BD`...): the panel; `1867`'s race line, the track name at X = ((0xFF-((len+1)*8+0x40))>>1)+0x40 (the length counts the NUL) and "RACE nn" (`1A34`: a space for a zero tens digit) at X-0x40, FONT2, y 0x6C (the last race draws only the slot's own string, centred, `1888`); the class picture at y 0x80; the four MINATURE icons (frame round-1+8k, mirrored, transparent) at rest at X 0x10+0x40k, Y 0x5A.
+
+`game.html` draws the Challenge carousel, picker and race intros from these layouts; the Head-to-Head variants (not captured) keep the older renderers, as does the round-9 bonus race's intro (`1219-126A`, not specified). Not ported: the intro icons' slide into place (they are drawn at rest).
+
 ## 10. Open items
 
 Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: `open`, `narrowed` (part answered; the rest is the open question), `closed`. **Section** is where the answer (or the question) is written up; the history, wrong turns included, stays in those sections and is not repeated here. **Address** is `MICROU.EXE`'s (`1000:` code, `DS:` data) unless another file is named. This table replaced a run-on paragraph of dated notes on 2026-09-26 (`GOAL-DOS-PARITY.md` D2, §9cx); each ID's status was re-read from its latest dated note. When an item opens or closes, change its row here in the same commit.
@@ -6151,10 +6163,8 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_0db0_ch1_frown_trigger` | open | §9bl | `0DB0`, `[BX+0x13]` high byte (CH=1) | What writes CH=1 so that `0DB0` draws the FCFROWN bank; neither `256E` nor `09E0`'s commit-blink writes it (low priority). |
 | `UNKNOWN_0eba_0400_menu_calls` | narrowed | §9aw (callees read §9az/§9bj/§9bz) | `0369`, `0EBA`, `0400` | 0EBA is ResetTournamentState and 0400 is the header draw. [0x160]/[0x192] remain UNKNOWN_0160_0192_meaning. |
 | `UNKNOWN_162_stale_direction` | open | §9ax | `DS:0162` | The carousel entry-skip scroll direction is whatever a prior screen left there; the port defaults to LEFT/+1 (charSelect.js:61). |
-| `UNKNOWN_26cf_prompt_blink` | narrowed | §9ax (PRESS ANY KEY blink ported §9bt) | `0C96`,`[0x26CF]` | The `0C96` blink is ported for PRESS ANY KEY; the character-select IDLE prompt still has no blink. |
+| `UNKNOWN_26cf_prompt_blink` | narrowed | §9dn (§9ax; PRESS ANY KEY §9bt) | `0C96`,`[0x26CF]` | The Challenge carousel's prompt now blinks with the 32-tick `[0x26CF]` toggle; the Head-to-Head carousels (older renderer) still do not. |
 | `UNKNOWN_989_98b_meaning` | open | §9bj (still open §9bl) | `1EF1` zeroing at `1F09-1F18`, `DS:0989`/`DS:098B` | No live reader; only the dead ShowHeadToHeadResultUnreferenced `2099-216B` uses them, as extra tally counters. |
-| `UNKNOWN_carousel_pixel_diff` | open | §9ax; GOAL Part F | - | No pixel diff yet of the character-select carousel against a DOSBox capture. |
-| `UNKNOWN_challenge_qualifier_intro_banner` | open | §9be | `127E-12BA` | What does the Challenge qualifier's separate intro banner (SI=0x35C/0x367, a [BC5]-keyed reveal) do? It is not disassembled or ported. |
 | `UNKNOWN_codecard_pixel_diff` | open | §9at; GOAL Part F | - (FONT.BIN, mode 10h) | No byte-exact diff yet; needs mode 10h's 4 planes combined. Only a visual match to live screenshots so far. |
 | `UNKNOWN_dosbox_wait_frames_cadence` | open | §9f | - | What `dosbox.wait_frames(1)` measures (host tick vs retrace) was never pinned down; dedup made it immaterial for M3.4. |
 | `UNKNOWN_intro_loop_vs_total_gap` | open | `docs/intro-and-codecard.md` (§9as) | - (SM.EXE `CS:097F`, `CS:07C6`) | The ~0.23 s gap between the loop's 314 iterations (~4.49 s) and the 4.72 s live total is untimed; plausibly pre-loop setup. |
@@ -6216,7 +6226,9 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_car_camera_2p` | closed | §3 / §9c | `5019-51B0`, `DS:27B7`, `[27B5]` | CAR_CAMERA_TABLE[[27B5]]: index 0 = sentinel for the two-car branch, 1-4 = car record offsets; table read live. |
 | `UNKNOWN_car_draw_anchor` | closed | §9d (M3.32) | `7D73`, `7CE0`, `7E5C` | The sprite is centred: body at dx-half-z, shadow at dx-half+z from (posX-camX, posY-camY) [STATIC]. |
 | `UNKNOWN_car_draw_wrap_asymmetry` | closed | §9d (M3.44) | `7D73`, `7E5C` | The real one-sided `+0xC00` seam fold (not a symmetric wrapDelta) is ported; the disagreement window was an 11px sliver plus a round-9 case. |
+| `UNKNOWN_carousel_pixel_diff` | closed | §9dn (§9ax) | `0D1F`, `0E02`, `0C96` | The Challenge carousel and the opponent picker are pixel-exact [PROVEN]; `npm run front`. |
 | `UNKNOWN_case_chr_format` | closed | §9ay (+ `src/formats/chr.js` caseImage) | `0710` (BlitTileMap8x8) | CASE.CHR = 100 8x8 tiles; CASE.MAP = [cols=32][rows=21] + tile indices; the vehicle display case [PROVEN by render]. |
+| `UNKNOWN_challenge_qualifier_intro_banner` | closed | §9dn (§9be) | `127E-12BA` | It is the QUALIFYING RACE screen: two FONT2 lines and the class picture; `[BC5]` is the class frame. Pixel-exact [PROVEN]. |
 | `UNKNOWN_champion_slide_duration` | closed | §9db (§9bs) | `1AAD`, `1BF4` | 148 ticks from entry to the end of iteration 108 in DOSBox [PROVEN]; the port uses it (first poll on tick 149). |
 | `UNKNOWN_channel_exhaustion` | closed | `docs/sound.md` §10 (M3.28) | DRIVER1.BIN `07BE-0803` | All 9 channels busy plus a state-2 slot with id≤7 gives phantom success on channel 0xFF; ported in Sequencer.startSfx. |
 | `UNKNOWN_cheats_type` | closed | §9cf 3 | `[2917]`, `[291B]`, CHEATS.BIN | All 10 effects decoded (§6); `[2917]`/`[291B]` are write-only, so type 6 does nothing [STATIC]. |

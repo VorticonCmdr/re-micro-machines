@@ -42,7 +42,8 @@ import { Si2Player } from '../audio/si2Player.js'
 import { RUFF_TRUCK_TIMES } from '../data/engine-tables.js'
 import { initTournament, isInQualifier, applyRaceSkip, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, raceIntroHoldTicks, raceIntroParticipants, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, resultsPassed, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, OUTCOME } from './tournament.js'
 import { CHARACTER_NAMES, OUTCOME_MESSAGES, resolveSmoothnessForPlay } from '../data/frontend-tables.js'
-import { layoutOptions, layoutJoyCal, layoutTitle, layoutSelectGame, layoutOnePlayerGame } from './frontLayouts.js'
+import { ORDER_TABLE, TRACK_NAMES } from '../data/frontend-tables.js'
+import { layoutOptions, layoutJoyCal, layoutTitle, layoutSelectGame, layoutOnePlayerGame, layoutCharSelect, layoutPicker, layoutQualifierIntro, layoutRaceIntro } from './frontLayouts.js'
 import { paintOps, layoutChooseGame, layoutTwoPlayerRaceInfo, layoutTwoPlayerResult, layoutSingleRaceSelect, slideIconX } from './h2hScreens.js'
 import { drawTwoPlayerPickLabels, drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawOpponentPanel, drawEliminatedScreen, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawJoystickCalibrationScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
 import { createSmoothnessGate } from '../engine/smoothness.js'
@@ -609,6 +610,20 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     // port instead redraws it fresh from the CURRENT tournament.opponents on every repaint, which
     // shows the identical end state (each pick reflected as soon as it's confirmed) without needing
     // a separate "drawn once, persists" buffer-layering mechanism (docs/engine.md §9az/§9ba).
+    // The Challenge's own pick and its opponent picker are pixel-exact layouts (docs/engine.md §9dm);
+    // the Head-to-Head variants keep the older renderer (no capture of those states yet).
+    const challenge = tournament?.format === 'challenge' && (charWho === 'player' || charWho === 'challenge-opponent')
+    if (challenge) {
+      const roster = rosterBytes()
+      const promptOn = ((performance.now() * 70 / 1000 / 32) | 0) % 2 === 0 // 0C96: [0x26CF]&1, the ISR's 32-tick toggle
+      const layout = charWho === 'player'
+        ? layoutCharSelect({ scroll: charSelectState.scroll, roster, promptOn, blinkOn: charSelectState.blinkOn })
+        : layoutPicker({ slots: [tournament.playerCharacter, ...tournament.opponents.map((o) => (o == null ? 0xb : o))], scroll: charSelectState.scroll, roster, promptOn, blinkOn: charSelectState.blinkOn })
+      paintOps(menuBuf, arena, layout)
+      paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
+      statusEl.textContent = 'CHAR_SELECT'
+      return
+    }
     if (charWho === 'challenge-opponent') drawOpponentPanel(menuBuf, arena, { slots: [tournament.playerCharacter, ...tournament.opponents], header: false })
     const h2h = charWho.startsWith('h2h')
     drawCharacterSelect(menuBuf, arena, { scroll: charSelectState.scroll, cursor: charSelectState.cursor, roster: rosterBytes(), blinkOn: charSelectState.blinkOn, prompt: charWho !== 'player' && !h2h ? 'WHO DO YOU WANT TO RACE ?' : 'WHO DO YOU WANT TO BE ?' })
@@ -886,7 +901,15 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     if (phase === 'LOADING') return
     menuBuf.fill(0)
     if (phase === 'PRESS_ANY_KEY') drawPressAnyKey(menuBuf, arena)
-    else if (phase === 'RACE_INTRO') drawRaceIntro(menuBuf, arena, { ...currentRace(tournament), participants: raceIntroParticipants(tournament) })
+    else if (phase === 'RACE_INTRO' && tournament.format === 'challenge' && currentRace(tournament).round !== 9) {
+      // The Challenge race intros are pixel-exact layouts (docs/engine.md §9dm): the qualifier's
+      // QUALIFYING RACE (127E-12BA), and a normal race's panel/race line/class picture/icons at rest.
+      const { round, race } = currentRace(tournament)
+      const index = effectiveRaceIndex(tournament)
+      paintOps(menuBuf, arena, index === 0
+        ? layoutQualifierIntro({ vehicleClass: round })
+        : layoutRaceIntro({ slots: raceIntroParticipants(tournament), raceNumber: index, trackName: TRACK_NAMES[(round - 1) * 4 + (race - 1)], round, last: index === ORDER_TABLE.length - 1 }))
+    } else if (phase === 'RACE_INTRO') drawRaceIntro(menuBuf, arena, { ...currentRace(tournament), participants: raceIntroParticipants(tournament) })
     else if (phase === 'RESULTS') drawResults(menuBuf, arena, { standings: lastStandings, passed: lastPassed })
     else if (phase === 'OUTCOME') drawOutcome(menuBuf, arena, { message: OUTCOME_MESSAGES[tournament.lastOutcome] })
     else if (phase === 'CHAMPION') drawChampion(menuBuf, arena, { playerName: CHARACTER_NAMES[championCharacter ?? tournament.playerCharacter] })

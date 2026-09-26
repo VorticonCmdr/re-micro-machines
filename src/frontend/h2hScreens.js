@@ -212,11 +212,22 @@ export function paintOps(buf, arena, ops) {
       for (let y = o.y; y < o.y + o.h; y++) { put(o.x, y); put(o.x + o.w - 1, y) }
     } else if (o.op === 'sprite') {
       blitTransparent(buf, w, h, o.x, o.y, chrFrame(arena, rec(o.chr), o.frame), { colorKey: o.opaque ? -1 : 0, flip: !!o.flip })
+    } else if (o.op === 'rect') {
+      for (let y = o.y; y < Math.min(h, o.y + o.h); y++) buf.fill(o.color, y * w + Math.max(0, o.x), y * w + Math.min(w, o.x + o.w)) // 0823
     } else if (o.op === 'call') {
       o.fn(buf, arena) // a renderer that is already exact on its own (e.g. drawOptionsScreen's body)
     } else if (o.op === 'text') {
       const x = o.centre ? 0x7f - 4 * o.text.length : o.x
-      drawString(buf, arena, rec(o.font), o.text, x, o.y)
+      if (!o.glyphClip) drawString(buf, arena, rec(o.font), o.text, x, o.y)
+      else {
+        // 0929's own clip: a glyph starting left of 0 is skipped whole, and drawing stops once a
+        // glyph would start at X >= 0xFF (docs/engine.md §9dm).
+        for (let k = 0; k < o.text.length; k++) {
+          const cx = x + 8 * k
+          if (cx >= 0xff) break
+          if (cx >= 0) drawString(buf, arena, rec(o.font), o.text[k], cx, o.y)
+        }
+      }
     }
   }
 }
