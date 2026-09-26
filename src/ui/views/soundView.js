@@ -1,6 +1,7 @@
 // DRIVER1.BIN view: the embedded music/sfx/instrument banks with a player (AudioWorklet + OPL2 core),
 // per-tune track listings, instrument register dumps, and a live channel readout.
-// DRIVER2.BIN gets the bank listing only (its beeper playback is not ported yet); DRIVER0.BIN is the null stub.
+// DRIVER2.BIN: the same banks played through the ported PC-speaker driver (BeeperDriver, a band-limited
+// square wave, docs/sound.md §4), with its two engine voices; DRIVER0.BIN is the null stub.
 
 import { Driver, decodeTrack, trackStats, HOST_HZ } from '../../formats/si2.js'
 import { el, fmtBytes } from '../dom.js'
@@ -14,6 +15,7 @@ const TUNE_USE = { 1: 'title / main menu', 2: 'sub-menus (select game, character
 const SFX_USE = { 1: 'hard hit (WARRIORS collision / checkpoint re-line-up / ramp launch / projectile hit)', 2: 'wrong way', 3: 'collision (routine)', 4: 'landing thud / POWERBOATS tile lookahead (2 unrelated uses)', 5: 'skid', 6: 'rough surface', 7: 'POWERBOATS splash / state-1 script cue (2 unrelated uses)', 8: 'crash animation', 9: 'drop-in / respawn', 10: 're-line-up', 11: 'unused (dead asset)', 12: 'unused (dead asset)', 13: 'unused (dead asset)', 14: 'tank shot', 15: 'RUFFTRUX banner', 16: 'banner / race over / H2H decided', 17: 'class-specific (TURBO WHEELS / RUFFTRUX / POWERBOATS)', 18: 'low-grip terrain (not class-gated)' }
 
 let player = null // one AudioContext for the page
+let loaded = null // which driver file the player holds (`kind` + name), so switching views reloads it
 
 export async function soundView(container, ctx) {
   const { bytes, entry, zoom } = ctx
@@ -23,31 +25,42 @@ export async function soundView(container, ctx) {
     return probeView(container, ctx)
   }
   let drv
-  try { drv = new Driver(bytes) } catch (err) { container.append(el('p', { class: 'error' }, `bank parse: ${err.message}`)); return probeView(container, ctx) }
+  // DRIVER2.BIN keeps its bank-offset words at 0x749 (docs/sound.md §4b), not where DRIVER1.BIN does.
+  try { drv = new Driver(bytes, name === 'DRIVER2.BIN' ? { bankPointers: 0x749 } : {}) } catch (err) { container.append(el('p', { class: 'error' }, `bank parse: ${err.message}`)); return probeView(container, ctx) }
   const tunes = drv.tunes(), sfx = drv.sfxList()
   const isOpl = name === 'DRIVER1.BIN'
+  const isSpeaker = name === 'DRIVER2.BIN'
+  const kind = isSpeaker ? 'speaker' : 'opl'
 
   container.append(el('p', { class: 'muted' },
-    `Sound Images Generation 2 driver. Banks: music @0x${drv.musicBank.toString(16)} (${tunes.length} tunes), sfx @0x${drv.sfxBank.toString(16)} (${sfx.length}), instruments @0x${drv.instBank.toString(16)} (${drv.instrumentCount()} × 16 B). ` +
+    `Sound Images Generation 2 driver. Banks: music @0x${drv.musicBank.toString(16)} (${tunes.length} tunes), sfx @0x${drv.sfxBank.toString(16)} (${sfx.length}), instruments @0x${drv.instBank.toString(16)}${name === 'DRIVER1.BIN' ? ` (${drv.instrumentCount()} × 16 B)` : ''}. ` +
     `Sequence streams are MIDI-style VLQ byte-code; music runs at division×tempo/60 = ${(tunes[0]?.division * tunes[0]?.tempo) / 60} ticks/s, quantised to the game's ${HOST_HZ.toFixed(2)} Hz timer tick. ` +
-    (isOpl ? 'The JS model reproduces the real driver\'s OPL register stream write-for-write (npm run si2).' : 'PC-speaker arrangement of the same tunes (2–3 channels, round-robin polyphony); playback not ported yet — listing only.')))
+    (isOpl ? 'The JS model reproduces the real driver\'s OPL register stream write-for-write (npm run si2).' : 'PC-speaker arrangement of the same tunes: one square wave, chords arpeggiated one note per 70 Hz tick; sfx 16–18 are past its 15-entry bank and dropped. The JS driver reproduces two live captures of its memory tick for tick (npm run beeper).')))
 
   // ---- player ----
-  const readout = el('div', { class: 'readout mono' }, isOpl ? 'not started' : '')
+  const readout = el('div', { class: 'readout mono' }, 'not started')
   const chanBox = el('div', { class: 'opl-channels' })
+  const strict = el('input', { type: 'checkbox' })
   let timer = null
   const ensurePlayer = async () => {
     // Loaded on first use: the player module carries Vite's `?worker&url` import, which only a bundler
     // resolves (the headless smoke test imports this view under plain Node).
     if (!player) { const { Si2Player } = await import('../../audio/si2Player.js'); player = new Si2Player() }
-    await player.start(bytes)
+    const want = `${kind}:${name}:${strict.checked}`
+    if (!loaded) await player.start(bytes, { kind, strictOpl2: strict.checked })
+    else if (loaded !== want) await player.load(bytes, { kind, strictOpl2: strict.checked })
+    loaded = want
     await player.resume()
     if (!timer) timer = setInterval(async () => {
+      if (!container.isConnected) { clearInterval(timer); timer = null; return } // the view was left
       const st = await player.status()
+      if (st.kind === 'speaker') { readout.textContent = `tick ${st.tick}  speaker ${st.frequency ? st.frequency.toFixed(1) + ' Hz' : 'off'}`; return }
+      if (!st.slots) return
       readout.textContent = `tick ${st.tick}  tune ${st.tune || '-'}  slots: ` + st.slots.filter((s) => s.state).map((s) => `${s.state === 1 ? 'M' : 'S'}${s.sfx ? s.sfx.toString(16) : ''}→ch${s.channel}`).join(' ')
       chanBox.replaceChildren(...st.opl.map((c) => el('div', { class: `opl-ch${c.key ? ' on' : ''}` }, `ch${c.ch} ${c.key ? c.hz.toFixed(1) + ' Hz' : '—'}`, el('div', { class: 'env', style: { width: `${Math.round(100 - (Math.min(...c.env) / 511) * 100)}%` } }))))
     }, 100)
   }
+  strict.addEventListener('change', async () => { if (loaded) { await ensurePlayer() } })
   if (isOpl) {
     const tuneButtons = tunes.map((t) => el('button', { type: 'button', onclick: async () => { await ensurePlayer(); player.muteAll(); player.playTune(t.index) } }, `▶ tune ${t.index}`, el('small', {}, ` ${TUNE_USE[t.index] || ''}`)))
     const sfxButtons = sfx.map((s) => el('button', { type: 'button', onclick: async () => { await ensurePlayer(); player.playSfx(s.index) } }, `sfx ${s.index}`, el('small', {}, SFX_USE[s.index] ? ` ${SFX_USE[s.index]}` : '')))
@@ -57,7 +70,22 @@ export async function soundView(container, ctx) {
       el('div', { class: 'toolbar wrap' }, ...tuneButtons, el('button', { type: 'button', onclick: async () => { await ensurePlayer(); player.stopMusic() } }, '■ stop music'), el('button', { type: 'button', onclick: async () => { await ensurePlayer(); player.muteAll() } }, '■ mute all')),
       el('div', { class: 'toolbar wrap' }, ...sfxButtons),
       el('div', { class: 'toolbar' }, el('label', {}, 'engine sound car 0 (pitch byte the game writes from speed/10) ', engine), el('button', { type: 'button', onclick: () => player?.engineOff(0) }, 'engine off')),
+      el('div', { class: 'toolbar' }, el('label', {}, strict, ' strict YM3812 (sine waves only; the default plays the instruments\' waveforms, as DOSBox\'s OPL3 core does)')),
       readout, chanBox,
+    )
+  }
+  if (isSpeaker) {
+    // The beeper plays one voice at a time: a tune, an sfx, or an engine voice (AH=0Eh on / 10h off,
+    // CX = the PIT period; 7C4E sends 0x2000 - 2*min(|speed|,0x7FF) per step, docs/engine.md §9cq).
+    const tuneButtons = tunes.map((t) => el('button', { type: 'button', onclick: async () => { await ensurePlayer(); player.muteAll(); player.playTune(t.index) } }, `▶ tune ${t.index}`, el('small', {}, ` ${TUNE_USE[t.index] || ''}`)))
+    const sfxButtons = sfx.map((s) => el('button', { type: 'button', onclick: async () => { await ensurePlayer(); player.playSfx(s.index) } }, `sfx ${s.index}`, el('small', {}, SFX_USE[s.index] ? ` ${SFX_USE[s.index]}` : '')))
+    const speed = el('input', { type: 'range', min: 0, max: 0x7ff, value: 0x200, oninput: async (e) => { await ensurePlayer(); player.command(0x0e, 0, (0x2000 - 2 * Number(e.target.value)) & 0xffff) } })
+    container.append(
+      el('h3', {}, 'Play (PC speaker)'),
+      el('div', { class: 'toolbar wrap' }, ...tuneButtons, el('button', { type: 'button', onclick: async () => { await ensurePlayer(); player.stopMusic() } }, '■ stop music'), el('button', { type: 'button', onclick: async () => { await ensurePlayer(); player.muteAll(); player.command(0x10, 0); player.command(0x10, 1) } }, '■ mute all')),
+      el('div', { class: 'toolbar wrap' }, ...sfxButtons),
+      el('div', { class: 'toolbar' }, el('label', {}, 'engine voice 0 (car speed 0–2047 → PIT period 0x2000−2·speed) ', speed), el('button', { type: 'button', onclick: () => player?.command(0x10, 0) }, 'engine off')),
+      readout,
     )
   }
 

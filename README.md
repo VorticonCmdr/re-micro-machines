@@ -35,7 +35,10 @@ Open the URL Vite prints. Three pages:
   race setup never resets (a shot still reloading, the last knockout point, and so on) and the
   engine-sound randomness carry over for the whole session (`docs/engine.md` §9cs).
 - **`viewer.html`** — a developer asset viewer: every decoded format (tracks, sprites, sound,
-  palettes…) browsable directly, useful for seeing what a file *is* independent of the game.
+  palettes…) browsable directly, useful for seeing what a file *is* independent of the game. Both
+  sound drivers play there: `DRIVER1.BIN` (every tune and sfx through the OPL2 core, an engine
+  slider, live channel readout, a strict-YM3812 toggle) and `DRIVER2.BIN` (the same through the
+  PC-speaker driver, with its engine voice).
 
 In dev, Vite serves a local `game/` folder (see below) over HTTP automatically. A **production
 build** (`npm run build && npm run preview`, or any static host) has no `game/` to serve — every

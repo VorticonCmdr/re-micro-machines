@@ -66,15 +66,16 @@ export const EVENT_ARGC = { 0x90: 1, 0x91: 0, 0x92: 1, 0x93: 1, 0x94: 0, 0x95: 1
 
 /** Static tables and bank parsing for one driver image. Nothing here mutates. */
 export class Driver {
-  constructor(data) {
+  /** `bankPointers`: where the three bank-offset words live; DRIVER2.BIN (the beeper) keeps them at 0x749. */
+  constructor(data, { bankPointers = OFF.P_MUSIC } = {}) {
     const d = (this.d = toU8(data))
     this.fnum = Array.from({ length: 768 }, (_, i) => u16le(d, OFF.FNUM_TABLE + 2 * i))
     this.opOffsets = Array.from({ length: 9 }, (_, i) => [d[OFF.OP_OFFSETS + 2 * i], d[OFF.OP_OFFSETS + 2 * i + 1]])
     this.initRegs = []
     for (let a = OFF.INIT_REGS; !(d[a] === 0 && d[a + 1] === 0); a += 2) this.initRegs.push([d[a], d[a + 1]])
-    this.musicBank = u16le(d, OFF.P_MUSIC)
-    this.sfxBank = u16le(d, OFF.P_SFX)
-    this.instBank = u16le(d, OFF.P_INST)
+    this.musicBank = u16le(d, bankPointers)
+    this.sfxBank = u16le(d, bankPointers + 2)
+    this.instBank = u16le(d, bankPointers + 4)
     this.masterVol = u16le(d, OFF.MASTER_VOL)
   }
 

@@ -8,6 +8,7 @@
 //   4. the game's own [0F64]!=1 branches (src/engine/sound.js): the beeper engine period (7C4E),
 //      StopEngineSounds' two branches (7AF8), InitEngineSounds (7A97), the OPL-only sfx 4/5/7
 //      (53F7/750A/7571), and the pause's two 7AF8 calls (3759/37A7).
+//   5. Si2Player.load's ordering; 6. the asset viewer's DRIVER2 bank listing (pointer words at 0x749).
 //   node tools/check-beeper.mjs
 import { readFileSync } from 'node:fs'
 import { register } from 'node:module'
@@ -15,7 +16,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { BeeperDriver, NullDriver } from '../src/formats/beeper.js'
 import { asDriver, raceStart, stopEngineSounds, updateBeeperEngines, isOplDriver } from '../src/engine/sound.js'
-import { createEngineJitter } from '../src/formats/si2.js'
+import { createEngineJitter, Driver } from '../src/formats/si2.js'
 import { createPauseState, updatePause } from '../src/engine/pause.js'
 import { updateCarAirborneLanding } from '../src/engine/airborne.js'
 import { parseStrtPos } from '../src/formats/globaldata.js'
@@ -230,6 +231,17 @@ const logDriver = (kind) => { const log = []; return { log, drv: asDriver({ comm
   const kindNow = p.kind
   p.playTune(1)
   check(`Si2Player.load posts the driver before the next command, synchronously (${posted.join(',')}; kind ${kindNow})`, posted.join(',') === 'load,cmd4' && kindNow === 'speaker')
+}
+
+{ // 6. the asset viewer's bank listing (si2.js Driver with DRIVER2's pointer words at 0x749): the same
+  // tune/sfx counts and starts the beeper's own 0398/0446 read. Driver's default (DRIVER1's 0x13F0)
+  // listed 0 tunes for DRIVER2.
+  const drv = new Driver(DRIVER2, { bankPointers: 0x749 })
+  const w = (a) => DRIVER2[a] | (DRIVER2[a + 1] << 8)
+  const sb = w(0x74b)
+  const sfxOk = drv.sfxList().every((s) => s.start === ((w(sb + 1 + 2 * (s.index - 1)) + sb) & 0xffff))
+  check(`the viewer lists DRIVER2's banks (${drv.tunes().length} tunes, ${drv.sfxList().length} sfx; default pointers give ${new Driver(DRIVER2).tunes().length})`,
+    drv.tunes().length === 8 && drv.sfxList().length === 15 && sfxOk && drv.musicBank === w(0x749) && drv.tunes().every((t) => t.tracks.length >= 1))
 }
 
 console.log(bad ? `${bad} check(s) failed` : 'check-beeper: the DRIVER2 model reproduces the live driver\'s memory tick for tick (tune 1, sfx 1-15, engine mode), drops sfx 16-18 as the live driver does, DRIVER0 answers 0, and the game\'s [0F64]!=1 branches (beeper engines, StopEngineSounds, the OPL-only sfx, the pause) follow 7A97/7AF8/7C4E/53F7/750A')
