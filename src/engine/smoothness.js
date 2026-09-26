@@ -23,5 +23,10 @@ export function createSmoothnessGate(initialN = 1) {
       if (counter >= n) { counter = 0; return true }
       return false
     },
+    /** `[2638]` as the next loop iteration will find it: `n` right after a present (3064/30DA),
+     * counting down to 1 on the step that draws (90C5 draws only at 1, 30B7 decrements after it). */
+    get countdown() { return n - counter },
+    /** The pause's `MOV [2638],1` (37A0): the step after a pause always draws (docs/engine.md §9ck). */
+    forceNextDraw() { counter = n - 1 },
   }
 }

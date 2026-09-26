@@ -12022,7 +12022,7 @@ GOAL-DOS-PARITY.md P5, `UNKNOWN_stale_animtimer_port` (found in §9ce). `[STATIC
 - State 0 never bumps. State A (the start countdown) does, and `84E5-84F7` (A → 0) does not zero it.
 - **Live `[PROVEN]`:** `[26D5]` and car 0's `[12B0]` climb together, and at `[26D5]=0x60` the car
   enters state 0 with `[12B0]=95`. `[263A]` was 1 throughout. The earlier §9ce runs read 94. The
-  likely cause is one iteration with `[263A]=2`, which advances `[26D5]` twice; that is not proven.
+  likely cause is one iteration with `[263A]=2`, which advances `[26D5]` twice; that is not proven. **(CORRECTED, §9ck: `[263A]` is the constant smoothness; 94 is every race after the first since boot, from race setup's pre-loop render at `39E8`.)**
 - The zeroing writers (disp16 scan) are `42D2`, `6468`, `6507`, `6D06`, `6F6A`, `7282`, `76A6`,
   `76BE`, `7F57`, `7FC5`, `8310` and `8924`. None is on the 0→1 plughole entry `62E3`, or on any 0→D
   entry (`5852`, `5842`, `5B52`/`5B83`, `5CA6`, `5FAC`, `6169`, `74C0`, `7A57`).
@@ -12183,3 +12183,65 @@ itself shows on that exact frame (the state-7 handler's own draw) was not checke
 Doc corrections from this item: §9w's "identical to the real increment" claim and §9an's
 `skipAnimBump` are marked, and the `stepHazardDeath` docstring no longer says the port reads
 `driftSteps` a tick late (it is the real order).
+
+## 9ck. Why some live races read 94: race setup's pre-loop render (2026-09-26)
+
+Resolves §9cg's open question: some live runs entered state 0 with `[12B0]=94`, others with 95.
+§9cg had guessed "one iteration with `[263A]=2`", and that guess is wrong. `[263A]` is the smoothness
+setting (`SETTINGS.DAT` word 2), constant for the whole race.
+
+**`[PROVEN]` live** (ROUND21 qualifiers, smoothness 1):
+- **The first race after a fresh boot gives 95.** `[26D5]` = 1 at the first handler call, and car 0's
+  timer reaches 1 before `[26D5]` reaches 2.
+- **Every later race in the same session gives 94** (three consecutive races, all four cars).
+  - `[26D5]` reaches 1, then about 0.3 s later 2, while every timer stays 0. `[26D5]` stays one step
+    ahead to the end: 96 against 94.
+  - An execute breakpoint at `84B8` (`[26D5] +=`) fired **before** the loop entry `3055`, with
+    return addresses into `7CE0` (`7D47`) and the render (`920B`).
+
+**`[STATIC]`, the mechanism.**
+- **The pre-loop render.** `LoadRaceStartPosCheatsMapAndBanks` calls the render once before the
+  loop (`39E8 CALL 90C5`), followed by `4758` and `32CE` and the driver's `AH=7`.
+- **The render's gate.** `90C5` returns at once unless `[2638]==1` (`90C5-90CC`).
+  - `[2638]` is the loop's steps-to-present counter. `3064` sets it to `[263A]` at loop entry,
+    `30B7` decrements it after the per-car pass, `30DA` resets it at each present, and the pause
+    sets it to 1 (`37A0`).
+  - Those are its only writers; `90C7` is its only reader. The boot image holds 0.
+- **So the pre-loop render sees the previous race's leftover.**
+  - Before the first race after boot it is 0, so the render doesn't run.
+  - After a race it is the value at that race's loop exit: always 1 at smoothness 1, and the phase at
+    exit at smoothness N. Both exits (`3081` → `30DF`, and ESC `3067` → `3115`) leave from the loop
+    head, before `30B7`.
+- **What the extra render does.** When it runs, it is a full render: the car layer's handlers run
+  once with no per-car pass after them.
+  - Car 0's state-A handler does `[26D5] += [263A]` (`84B8`), so the countdown ends one pass early:
+    94 instead of 95.
+  - Round 2's `89E0` does `INC [26D1]` (the water animation counter, zeroed at race init `3C68`).
+  - The drawn flags and the drop-in sfx are written by that call.
+  - The per-car pass, `7429`, and the ISR's `[26CF]` blink don't run.
+
+**Port.**
+- `step.js`'s `runPreLoopRender` runs the projectile draw count-up, the state handlers
+  (`runStates(..., { preRender: true })`, which skips the port's blink tick and round-9 countdown)
+  and one `tileAnimCounter` tick.
+- The smoothness gate exposes `[2638]` as `countdown`, and `forceNextDraw()` for the pause's
+  `[2638]=1`.
+- `flow.js` keeps the leftover across races for the page session (0 at page load, which is the boot):
+  - it records it at both loop exits;
+  - it calls `forceNextDraw` on pause entry;
+  - it runs the pre-loop render at race setup when the leftover is 1.
+
+  `index.html` runs one race per page load, like a fresh boot, so it never runs the pre-loop render.
+
+**Tests.**
+- `check-step`: the pre-loop render advances `[26D5]` and the water counter but not the blink, and
+  every car then enters state 0 with 94.
+- `check-smoothness`: `countdown` runs 3,2,1,… at n=3 and is always 1 at n=1; `forceNextDraw` makes
+  the next step draw.
+- Five mutations are caught.
+- The `flow.js` wiring (the session value and the exits) is not exercised by a headless check and
+  was not driven in the browser.
+
+**Not modelled.** The pre-loop render also runs `8083`'s puff cooldown re-arm (`[12B2]=3`), which
+the port does in the per-car pass instead, and the HUD ranking pass. Both are without visible effect
+at the start line.

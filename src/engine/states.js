@@ -458,7 +458,7 @@ function advanceBannerSlide(car) {
  * `raceState`: a small object the caller keeps across steps (just `{dropInTimer}` here).
  * `ctx.round`, `ctx.stepIncrement` ([263A], defaults 1), `ctx.world` (for state 7's respawn).
  */
-export function runStates(cars, raceState, ctx) {
+export function runStates(cars, raceState, ctx, { preRender = false } = {}) {
   let anyStateA = false
   // docs/sound.md §3b id9 "84de": the state-0xA drop-in handler, restricted to the camera-target
   // car ([0x2660], car 0 in this port's one-player scope). Fired once, the first tick any car is
@@ -468,8 +468,12 @@ export function runStates(cars, raceState, ctx) {
   // The `[26CF]` blink (state A's own draw gate, above): free-running, so it ticks every physics
   // step regardless of whether any car is actually in state A this tick.
   raceState.blinkOn ??= true
-  raceState.blinkTick = (raceState.blinkTick ?? 0) + 1
-  if (raceState.blinkTick >= 16) { raceState.blinkTick = 0; raceState.blinkOn = !raceState.blinkOn }
+  // `preRender` (docs/engine.md §9ck): race setup's own render before the loop (39E8) -- the handlers
+  // only; the [26CF] blink is the ISR's and the round-9 countdown below is 7429's, neither runs there.
+  if (!preRender) {
+    raceState.blinkTick = (raceState.blinkTick ?? 0) + 1
+    if (raceState.blinkTick >= 16) { raceState.blinkTick = 0; raceState.blinkOn = !raceState.blinkOn }
+  }
   // stepPartnerWait (dropin.js) needs the full car list to find a two-car partner; stepRespawn
   // needs it to tell whether the respawning car is the camera-target car (docs/engine.md §9v).
   const ctxWithCars = { ...ctx, cars }
@@ -559,7 +563,7 @@ export function runStates(cars, raceState, ctx) {
   // and sets car 0 to state 0x10 ONCE. The old code had no latch: the countdown kept running after
   // a finish and forced car 0 to "Failed" every step once it hit 0 -- a finished bonus race could
   // be lost.
-  if (ctx.round === 9) {
+  if (ctx.round === 9 && !preRender) {
     if (raceState.ruffTruxTimer === undefined) raceState.ruffTruxTimer = ctx.ruffTruxTime ?? 0
     for (let i = 0; i < 4 && !raceState.ruffTruxLatched; i++) {
       raceState.ruffTruxTimer -= 1

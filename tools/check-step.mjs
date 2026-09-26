@@ -898,6 +898,19 @@ function newCar(fields) {
   let n = 0
   while (cars[0].state !== 0 && n < 200) { runStep(world, cars, [0, 0, 0, 0], rs, ctx); n++ }
   check('73E7: the start countdown (state A) bumps the timer, and entering state 0 keeps it', cars.every((c) => c.animTimer === 95))
+  // Race setup's pre-loop render (39E8 -> 90C5, docs/engine.md §9ck), run when the last race's loop
+  // left [2638]=1: car 0's state-A handler advances [26D5] once with no per-car pass after it, so the
+  // countdown ends one pass earlier -- 94, live in every race after the first since boot.
+  {
+    const { runPreLoopRender } = await import('../src/engine/step.js')
+    const cs = spawnCars(strt, 2, 2, { tournamentIndex: 8 })
+    const r2 = {}
+    runPreLoopRender(world, cs, r2, ctx)
+    check('pre-loop render: [26D5] one step ahead, the water counter [26D1] too, no blink tick (the ISR\'s)', r2.dropInTimer === 1 && r2.tileAnimCounter === 1 && !r2.blinkTick)
+    let k = 0
+    while (cs[0].state !== 0 && k < 200) { runStep(world, cs, [0, 0, 0, 0], r2, ctx); k++ }
+    check('pre-loop render: every car then enters state 0 with 94 (live, a race after the first), not 95', cs.every((c) => c.animTimer === 94))
+  }
   const fall = (car) => {
     Object.assign(car, { posX: 0x648, posY: 0xb6c, nextX: 0x648, nextY: 0xb6c, velX: 0, velY: 0 })
     let k = 0

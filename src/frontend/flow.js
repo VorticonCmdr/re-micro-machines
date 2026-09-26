@@ -25,7 +25,7 @@ import { createMenuBuffer, MENU_VIEW } from '../render/menuView.js'
 import { loadWorld, loadBrk, roundCtx, spawnCars } from '../engine/race.js'
 import { createColDirBuffers } from '../engine/collide.js'
 import { createBrkBuffer } from '../formats/levbrk.js'
-import { runStep } from '../engine/step.js'
+import { runStep, runPreLoopRender } from '../engine/step.js'
 import { droneControlByte } from '../engine/ai.js'
 import { initCameraState } from '../engine/camera.js'
 import { createKeyboardReader, createExtraKeysReader, createPauseKeyReader, createMenuReleaseTracker, recordingReader, SCANCODE_TO_KEY_CODE } from '../engine/input.js'
@@ -176,6 +176,11 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   // <select id="smoothness"> is gone (P1, GOAL-DOS-PARITY.md): F4 on the real OPTIONS screen is
   // the one control now, including AUTO (5), which resolveSmoothnessForPlay resolves at RETURN.
   let smoothnessN = resolveSmoothnessForPlay(settings.smoothness)
+  // [2638] across races (docs/engine.md §9ck): the race loop's steps-to-present counter as the last
+  // race's loop left it -- 0 at boot. Race setup's pre-loop render (39E8 -> 90C5) draws, and runs
+  // the state handlers once, only when it is 1: never before the first race, always after one at
+  // smoothness 1.
+  let presentCountdown = 0
 
   canvas.width = MENU_VIEW.w
   canvas.height = MENU_VIEW.h
@@ -868,6 +873,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     currentRaceState = raceState
     const jitter = createRaceJitter()
     const smoothGate = createSmoothnessGate(smoothnessN) // fresh per race -- see the comment above
+    if (presentCountdown === 1) runPreLoopRender(world, cars, raceState, raceCtx) // 39E8, before 3064 resets [2638]
     raceStart(sound)
     // KEYS1(4) or KEYS2(5) -- the only two devices reachable yet (P6 adds JOY1/JOY2/MOUSE).
     const humanReader = recordingReader(createKeyboardReader(settings.p1Control === 4 ? settings.keys1 : keys2, window))
@@ -954,7 +960,10 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
         const wasPaused = pauseState.paused
         const { pressed, held } = pauseKey.read()
         const paused = updatePause(pauseState, dtMs, pressed, held, cars[0], cheats, round, race, globalState, sound)
-        if (paused && !wasPaused) menuReleaseTracker.clearIsrLatch() // 377F/3784: [0x107E]=0, [0x107F]=0
+        if (paused && !wasPaused) {
+          menuReleaseTracker.clearIsrLatch() // 377F/3784: [0x107E]=0, [0x107F]=0
+          smoothGate.forceNextDraw() // 37A0: [2638]=1, so the iteration the pause returns into draws
+        }
 
         let shouldRender = paused
         let over = false
@@ -962,17 +971,18 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
         if (!paused) {
           acc += dtMs / 1000
           while (acc >= STEP_DT) {
-            if (escLatched() && escGraceSteps-- <= 0) { escQuit = true; break } // 3067: CMP [0x1096],1 -> JMP 3115
+            if (escLatched() && escGraceSteps-- <= 0) { escQuit = true; presentCountdown = smoothGate.countdown; break } // 3067: CMP [0x1096],1 -> JMP 3115
             acc -= STEP_DT
             applyCheatGlobals(globalState, raceState, raceCtx)
             // `raceCtx.drawnTick`: read BEFORE the physics/state pass (was after, below) so
             // `markDrawn` (drawn.js) can gate the drawn-flag write on the same smoothness cadence
             // that already gates rendering (docs/engine.md §9ao 8) -- called once, not twice, since
             // `shouldDraw()` mutates its own counter.
+            const countdownAtHead = smoothGate.countdown // [2638] as this iteration starts
             raceCtx.drawnTick = smoothGate.shouldDraw()
             const controls = cars.map((car, i) => (i === 0 ? humanReader.read() : i === 1 && p2Reader ? p2Reader.read() : droneControlByte(car, raceCtx)))
             runStep(world, cars, controls, raceState, raceCtx)
-            if (isOver()) { over = true; break } // the exiting step never renders (3081 jumps past 90C5)
+            if (isOver()) { over = true; presentCountdown = countdownAtHead; break } // the exiting step never renders (3081 jumps past 90C5, and 30B7's DEC)
             if (raceCtx.drawnTick) { shouldRender = true; raceState.tileAnimCounter = (raceState.tileAnimCounter ?? 0) + 1 }
             updateEngines(sound, cars, raceCtx, jitter)
           }

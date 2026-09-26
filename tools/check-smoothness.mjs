@@ -44,5 +44,22 @@ function check(name, cond) {
   check('a fresh per-race gate is unaffected by a previous race ending mid-period', JSON.stringify(draws) === JSON.stringify([false, false, false, true]))
 }
 
+// [2638] (docs/engine.md §9ck): `countdown` is the value the next loop iteration finds -- n after a
+// present (3064/30DA), 1 on the iteration that draws (90C5) -- and the pause's `[2638]=1` (37A0)
+// makes the next step draw.
+{
+  const g = createSmoothnessGate(3)
+  const seen = []
+  for (let i = 0; i < 6; i++) { seen.push(g.countdown); g.shouldDraw() }
+  check('[2638]: 3,2,1,3,2,1 at n=3, drawing on the 1s', seen.join() === '3,2,1,3,2,1')
+  const one = createSmoothnessGate(1)
+  one.shouldDraw()
+  check('[2638]: always 1 at n=1 (so every race after the first gets the pre-loop render)', one.countdown === 1)
+  const p = createSmoothnessGate(4)
+  p.shouldDraw()
+  p.forceNextDraw()
+  check('[2638]: after the pause (37A0) the countdown is 1 and the next step draws', p.countdown === 1 && p.shouldDraw() === true && p.countdown === 4)
+}
+
 console.log(bad ? `${bad} check(s) failed` : 'check-smoothness: draw gate matches the documented n=1..4 (smoothest..chunkiest) semantics')
 process.exitCode = bad ? 1 : 0

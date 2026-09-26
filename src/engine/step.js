@@ -395,3 +395,16 @@ export function runStep(world, cars, controls, raceState, ctx) {
 export function animTimerPass(car, bx, ctx) {
   if (car.state !== 0 && !(ctx.round === 9 && bx !== 0)) car.animTimer = ((car.animTimer ?? 0) + 1) & 0xffff
 }
+
+/** Race setup's own render before the main loop (`LoadRaceStartPosCheatsMapAndBanks 39E8 -> 90C5`,
+ * docs/engine.md §9ck). `90C5` draws only when `[2638]==1` -- a value left over from the previous
+ * race's loop (0 at boot, so never before the first race; always 1 at smoothness 1 after one), and
+ * `3064` resets it only after this call. When it draws, it runs everything a render runs: the
+ * projectile draw's count-up (8712), every state handler (car 0's state-A handler advances
+ * `[26D5]` with no per-car pass after it, so every timer ends the countdown one lower: 94, not 95)
+ * and the round-2/8 tile animation counter (89E0 `INC [26D1]`). The caller decides whether it runs. */
+export function runPreLoopRender(world, cars, raceState, ctx) {
+  for (const car of cars) projectileDrawTick(car)
+  runStates(cars, raceState, { ...ctx, world }, { preRender: true })
+  raceState.tileAnimCounter = (raceState.tileAnimCounter ?? 0) + 1
+}
