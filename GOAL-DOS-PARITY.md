@@ -836,7 +836,7 @@ Commit each item on its own, including any capture file under `tools/refs/`.
 - [ ] `UNKNOWN_race_live_reverify` (`docs/sound.md` §8).
 - [x] `UNKNOWN_champion_slide_duration` **(§9db: 148 ticks in DOSBox, entry to `1BF4`; the port now uses it)** (docs/engine.md §9bs): how long `1AAD`'s 108 wait-free
   slide iterations take on DOS (for example, `[0x2]` read at `1BF8` minus its value at entry).
-- [ ] The outcome screen's LIVES-path timing (docs/engine.md §9bq assumptions a-c): a breakpoint at
+- [x] The outcome screen's LIVES-path timing **(§9de: `[261F]`=156 at `1DCD` live, as predicted)** (docs/engine.md §9bq assumptions a-c): a breakpoint at
   `1000:1DCD` on a real ONE LIFE LOST screen, reading `[0x261F]` at the first poll. The port's
   model predicts 156.
 - [ ] `UNKNOWN_opl_sample_fidelity`/`UNKNOWN_waveform_target`: an audio-level comparison of the JS

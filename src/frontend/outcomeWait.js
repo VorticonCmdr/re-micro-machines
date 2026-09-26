@@ -28,7 +28,9 @@
 // during the silent slide is still latched at the first poll and acted on then. First poll at tick
 // 156, then every 6 ticks; the first iteration start at or past 700 is at 702.
 //
-// Two assumptions, both `[STATIC]`-open: (a) `CS:[0x4ADE]` is also incremented by the INT 0Ah
+// Live (docs/engine.md §9de, `[PROVEN]`): a real ONE LIFE LOST screen, with no fade (the results
+// screen before it took it), read `[0x261F]`=156 at `1DCD`, the first poll -- so (a) and (c) held
+// there. The assumptions as first written, `[STATIC]`: (a) `CS:[0x4ADE]` is also incremented by the INT 0Ah
 // (vertical retrace) handler (`4AC5`); a slide iteration is 5 ticks only if that handler is not
 // installed during this screen. (b) Both budgets include the first iteration's palette fade-up
 // (`32CE`: 17 ticks when it runs, i.e. when this is the first screen after a race, docs/engine.md

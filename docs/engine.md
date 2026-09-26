@@ -6003,6 +6003,16 @@ So the four commands are not atomic with respect to the 70 Hz tick. `UpdateEngin
 
 **Port.** No change: `sound.js` issues the four commands in the same tick, the undelayed case. `check-si2-race` still tolerates the old capture's placement (`docs/sound.md` §8).
 
+## 9de. Part L: the LIVES outcome screen's first poll, live (2026-09-26)
+
+`GOAL-DOS-PARITY.md` Part L, from §9bq (assumptions a-c). `1DCD` is `CMP byte [0x107E],0x1B`, the first test after `1DC8 CALL 2D5B`; the silent slide before it is BX 0x8C..0xC8 in steps of 2 (`1D0D-1DAD`), each iteration five `3165` ticks, then `1DBF-1DC6` waits one more (`[STATIC]`, re-read in Ghidra). The port's model puts the first poll at `[261F]`=156.
+
+**Live** (`[PROVEN]`): the Challenge race after the §9da qualifier (THE BREAKFAST BENDS), car 0 idle, lost. The results screen took the post-race fade and timed out; then ONE LIFE LOST, with an execute breakpoint at `1DCD`: **`[261F]`=156**, the screen showing ONE LIFE LOST / LIVES 2.
+
+So assumption (a) (`CS:[4ADE]` bumped only by the timer ISR here, 5 ticks an iteration) and (c) (each iteration's draw fits in its tick) held in DOSBox. (b), the fade inside the budget, was not in play: the results screen had cleared `[26CE]`.
+
+**Port.** No change: `outcomeWait.js`'s LIVES path polls first at tick 156, which `check-outcomewait` already asserts.
+
 ## 10. Open items
 
 Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: `open`, `narrowed` (part answered; the rest is the open question), `closed`. **Section** is where the answer (or the question) is written up; the history, wrong turns included, stays in those sections and is not repeated here. **Address** is `MICROU.EXE`'s (`1000:` code, `DS:` data) unless another file is named. This table replaced a run-on paragraph of dated notes on 2026-09-26 (`GOAL-DOS-PARITY.md` D2, §9cx); each ID's status was re-read from its latest dated note. When an item opens or closes, change its row here in the same commit.
@@ -6042,7 +6052,6 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | A whole four-car race end, live | narrowed | §9da (logic §9ah); GOAL Part L | `6024-6054`, `[26CC]`, `[26C6]` | The recount, the same-step countdown start, the coast and the final order are live-proven (§9da). Still open: the ROUND21 lead rule firing, which needs car 0 ahead on laps. |
 | The rubber band while car 0 really leads | open | §9aq 4; GOAL Part L | `4B1C-4B41`, `[262F]` | The ×6 boost is live-proven only with the race-start seed order; the grip ×1.5 site was never seen reached. |
 | A "drawn but invisible" car | open | §9ap; GOAL Part L | `[1250]`, `7D73` | Is a car whose drawn flag is set really absent from the screen? Tried, not obtained. |
-| The LIVES outcome screen's first poll | open | §9bq (assumptions a-c); GOAL Part L | `1DCD`, `[261F]` | The port's model predicts `[261F]`=156 at the first poll; not read live. |
 | Front-end pixel parity | open | GOAL Part F | `0400` | No byte-exact diff of most front-end screens (the options/F7 header, the carousel's look, the H2H vs CPU race-intro sprite panel); §9bz's four H2H screens and §9cu's options body are the exceptions. |
 
 ### 10.3 Closed
