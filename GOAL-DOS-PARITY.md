@@ -819,7 +819,7 @@ Each one gets a live capture tagged `[PROVEN]`, or a write-up of the failed atte
 approach, see §9f (a Lua script on the emulation thread, `dosbox.mem_read` once per frame).
 Commit each item on its own, including any capture file under `tools/refs/`.
 
-- [ ] `UNKNOWN_twocar_live_cycle`: a full two-car knockout exchange (§9am).
+- [x] `UNKNOWN_twocar_live_cycle` **(§9cz: four live exchanges, replayed step by step in `check-twocar`; the port already matched)**: a full two-car knockout exchange (§9am).
 - [x] `UNKNOWN_0f64_speed_zero` **(§9cq: live at the pause entry -- all four speed words 0 under BLASTER, kept under SPEAKER; the OPL pitch was not captured, it follows speed through the §9i engine update)**: `car.speed` and the OPL pitch reaching 0 at a real `7AF8` call
   (pause entry, race exit, an exchange) (§9ar a).
 - [ ] `UNKNOWN_exit_banner_live`: ES at `30DF` (§9an 8).

@@ -1,6 +1,6 @@
 // The two-car match (raceFormat 2, one-player Head-to-Head vs CPU): the tug-of-war light bar, the
 // knockout exchange, the finish/"Play Off" branch and the race end -- docs/engine.md §9am, all
-// [STATIC] (disassembly only; no live two-car capture exists yet). P1 = [2660] = car 0 and P2 =
+// [STATIC], and the exchange itself is [PROVEN] step by step live (§9cz). P1 = [2660] = car 0 and P2 =
 // [2662] = car 1 in every format (4152 is the only writer of [2660]/[2662]). The match globals live
 // on `raceState.twoCar`; the three request/latch globals the other modules also touch live on
 // `raceState` itself: `knockoutRequest` [2911] (0 idle, 1 requested, 2 processing), `bothDown`

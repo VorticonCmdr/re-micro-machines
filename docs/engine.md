@@ -5933,6 +5933,20 @@ TANKS/a cheat spot actually lets a shot fire. The release tick's own speed jump 
   in §9ap 6 itself rather than asserted here, since that capture's own specific sequence of pokes
   wasn't re-examined against this explanation.)
 
+## 9cz. Part L: a two-car knockout exchange, live (2026-09-26)
+
+`GOAL-DOS-PARITY.md` Part L, `UNKNOWN_twocar_live_cycle`. §9am's exchange was `[STATIC]`. One live DOSBox run: a fresh boot, Head to Head vs CPU, its qualifier (`ROUND21`), car 0 left idle so the CPU car scored every point. A REST sampler read `[2911]`, `[27B5]`, `[26B8]`, `[26BA]`, `[26B4]`, `[26B6]`, `[26C2]`, `[26C4]`, `[26C6]`, `[2682]`, `[2913]`, both cars' state, laps and drawn flag, and `[261F]`, logging each change (~3 ms a read, so every 2-tick step was seen). It caught four whole exchanges, the bar going 4 → 3 → 2 → 1 → 0. `[PROVEN]`:
+
+- **The trigger** (`5089`/`50D1`, `7759`): `[2911]` 0 → 1 → 2 within a tick, then `[27B5]`=2 (P2's playerSlot, the camera on the scorer), `[26B8]`=0x164, car 1 in state 0xB and car 0 in 0xC.
+- **The arm** (`75E5-762D`): once car 1 is grounded, `[26BA]`=0x40, both cars 0xC, `[26B6]` = bar − 1.
+- **The blink** (`763A-7650`): 64 steps. Before each decrement at `[26BA]&7==0` the bar and its shadow swap, so the bar shows the new value for steps 0x3F..0x38, the old one for 0x37..0x30, and so on; it ends on the old value at 1.
+- **The commit** (`7662-771F`): both cars 0xD, `[27B5]`=0, `[26B8]`=1 (none), `[2911]`=2, `[26C2]`=1 (P1 still had laps), the bar decremented. The last one reached 0: `[26C4]`=0x164 and `[26C6]`=2, and the race exit followed (§9dc).
+- **Back to racing**: car 1 leaves 0xD for 7 one step before car 0 (the `770A` BX=P2 lag, §9an), then 2, then 0; `[2911]` goes back to 0 at the end of car 1's state 2 (`8321`).
+
+The step rate was 2 ticks a step for exchanges 2-4 and ~4.6 for exchange 1, a DOSBox CPU-speed effect (the exchange is counted in steps, not ticks).
+
+**Port.** No change: `stepExchange` already does all of this. `tools/refs/twocar_exchanges.json` (3.8 KB) keeps the four exchanges' 64 per-step (`[26BA]`, `[26B4]`, `[26B6]`) triples, the globals right after each commit and the state lifecycle. `check-twocar` replays each exchange through `stepExchange` from the arm and compares every step and the commit; a third check reads the one-step lag of car 0 from the capture. These pin existing behaviour, so there is no failing-first test.
+
 ## 10. Open items
 
 Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: `open`, `narrowed` (part answered; the rest is the open question), `closed`. **Section** is where the answer (or the question) is written up; the history, wrong turns included, stays in those sections and is not repeated here. **Address** is `MICROU.EXE`'s (`1000:` code, `DS:` data) unless another file is named. This table replaced a run-on paragraph of dated notes on 2026-09-26 (`GOAL-DOS-PARITY.md` D2, §9cx); each ID's status was re-read from its latest dated note. When an item opens or closes, change its row here in the same commit.
@@ -5966,7 +5980,6 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_single_race_28c1` | open | §9by | `2329`, `DS:28C1` | 2329 never writes [28C1], so a two-human single race runs on a stale value. Effect via its non-tuning readers untraced (port passes 1). |
 | `UNKNOWN_thumb_frame1_invisible` | open | §9av (from §9ao 7) | `0382`, `[130]` | Why SELECT GAME's THUMB frame 1 renders no visible highlight live while frame 2 does (a sprite-art question). |
 | `UNKNOWN_title_pixel_diff` | open | §9av; GOAL Part F | - | LOGO's exact y position on the title screen was never re-read live, and no title pixel diff exists. |
-| `UNKNOWN_twocar_live_cycle` | open | §9am; GOAL Part L | `[2911]`,`[27B5]`,`[26B8]`,`[26BA]`,`[26B4]` | No live capture of a full two-car knockout exchange exists; the exchange logic is still [STATIC]. |
 | `UNKNOWN_waveform_target` | open | `docs/sound.md` §8; GOAL Part L | - | YM3812 sines vs OPL3/DOSBox waveforms: both are implemented, but there is no audio-level diff of the JS OPL2 core against DOSBox. |
 
 ### 10.2 Open, without an ID
@@ -6111,6 +6124,7 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_trace_posY_terrain_stop` | closed | §9ab | - | Not an engine bug: a torn Lua capture sample; with that row removed, the replay has zero mismatches [PROVEN]. |
 | `UNKNOWN_track_name_table` | closed | §7 (`src/data/frontend-tables.js`) | `DS:0460` | 36 NUL-walked names indexed (round-1)*4+(race-1); round 2's empty slot is the first (the qualifier). |
 | `UNKNOWN_tune7_unused` | closed | `docs/sound.md` §8 (M3.45) | 15 `AH=4` driver call sites | Tune 7 is never requested (exhaustive search of the driver far-calls). Tune 5 is also unreachable. |
+| `UNKNOWN_twocar_live_cycle` | closed | §9cz (logic §9am) | `[2911]`,`[27B5]`,`[26B8]`,`[26BA]`,`[26B4]` | Four live exchanges match the port step for step (arm, 64-step blink with the 8-step swap, commit, 0xD→7→2→0) [PROVEN]; replayed in `check-twocar` from `tools/refs/twocar_exchanges.json`. |
 | `UNKNOWN_twocar_race_end` | closed | §9am | `4AEE-4D10`, `7429`, `5019-51B2`, `76F2`/`772A`/`7742` | The whole two-car match is ported: camera-separation points, 8/0 or bar-leader-at-finish end, Play Off, `[2630]` fix-up [STATIC]. |
 | `UNKNOWN_unp_version` | closed | §9cf | - | UNP.EXE is UNP 4.11 (SHA-1 e034d6fe…), DIET-packed with its tag stripped. |
 | `UNKNOWN_vh0_bank2` | closed | §4 / §9; `docs/track-graphics.md` Vehicles | `DrawSprite24FromSecondBank`, `4676-468F` | Bank 2 = the state 1/4/5 animation frames; round 8 also reuses the buffer for the chopper rotor. |

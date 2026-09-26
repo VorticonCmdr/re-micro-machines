@@ -498,6 +498,36 @@ async function settled(round, race) {
   check('BX: after the P1 commit (76D2, in car 0\'s own iteration) both cars are bumped once and nobody lags', commitPass(0).join() === '1,1')
 }
 {
+  // UNKNOWN_twocar_live_cycle (docs/engine.md §9cz): four real exchanges from a live H2H qualifier
+  // (car 0 idle, P2 scored each point, bar 4 -> 0), [26BA]/[26B4]/[26B6] read at every one of the 64
+  // steps, then the globals right after the commit. Replayed through stepExchange from the arm.
+  const live = JSON.parse(readFileSync(join(ROOT, 'tools', 'refs', 'twocar_exchanges.json'), 'utf8')).exchanges
+  live.forEach((e, n) => {
+    const cars = pair({ state: 0xc }, { state: 0xb })
+    const rs = fresh()
+    rs.twoCar.score = e.beforeArm['26B4']
+    rs.twoCar.spotlight = e.beforeArm['26B8'] === 0x164 ? 1 : 0
+    const seen = []
+    for (let i = 0; i < 64; i++) { stepExchange(1, cars, rs, { round: 2 }); seen.push([rs.twoCar.blink, rs.twoCar.score, rs.twoCar.shadow]) }
+    check(`live exchange ${n + 1}: the 64 steps' [26BA]/[26B4]/[26B6] match the capture`, JSON.stringify(seen) === JSON.stringify(e.steps))
+    stepExchange(1, cars, rs, { round: 2 })
+    const a = e.afterCommit
+    const m = rs.twoCar
+    check(`live exchange ${n + 1}: the commit leaves bar ${a['26B4']}, shadow, [26B8]=1, [27B5]=0, [2911]=2, [26C2]=${a['26C2']}, [26C4]/[26C6], both cars 0xD`,
+      m.score === a['26B4'] && m.shadow === a['26B6'] && m.spotlight === null && rs.cameraIndex === a['27B5'] && rs.knockoutRequest === a['2911'] &&
+      m.bannerMode === a['26C2'] && m.matchOpen === (a['26C4'] === 1) && (rs.raceOverCount ?? 0) === a['26C6'] && cars[0].state === a.states[0] && cars[1].state === a.states[1])
+  })
+  // The capture's lifecycle: P2 (car 1) reaches state 7 one step before car 0 -- the P2-commit lag
+  // checked above (commitPass(1)). Measured in that exchange's own ticks per blink step (the emulator
+  // ran exchange 1 at ~4.6 ticks a step, the others at 2).
+  check('live exchanges 1-3: car 1 leaves 0xD one step before car 0', live.slice(0, 3).every((e) => {
+    const l = e.lifecycle_tick_st0_st1_2911
+    const perStep = (e.commitTick - e.armTick) / 64
+    const lag = (l.find((r) => r[1] === 7)[0] - l.find((r) => r[2] === 7)[0]) / perStep
+    return lag > 0.5 && lag < 1.5
+  }))
+}
+{
   // The swap-tick pass on BX = k, byte-exact on car 0's record (73E7 + 51B2 transcription).
   const c0 = pair({ state: 0xc, animTimer: 4, puffCooldown: 0, hitLeft: 1, driftDY: 7, driftSteps: 3, nextX: 100, nextY: 200 })[0]
   applyScoreSlotGarbage(c0, 2, { round: 1 })
