@@ -1,7 +1,7 @@
 // Minimal PNG writer (RGBA8) on Node's zlib. No dependencies.
 // Exists so decoders can be verified by looking at their output.
-import { deflateSync } from 'node:zlib'
-import { writeFileSync } from 'node:fs'
+import { deflateSync, inflateSync } from 'node:zlib'
+import { writeFileSync, readFileSync } from 'node:fs'
 
 const CRC_TABLE = (() => {
   const t = new Int32Array(256)
@@ -62,4 +62,32 @@ export function scale(rgba, width, height, zoom) {
     }
   }
   return out
+}
+
+/** Reads an 8-bit RGB, non-interlaced PNG (what the DOSBox bridge's frame endpoint writes) into
+ * `{ width, height, rgb }`, undoing the five scanline filters. */
+export function readPngRgb(path) {
+  const b = readFileSync(path)
+  let o = 8, width = 0, height = 0
+  const idat = []
+  while (o < b.length) {
+    const n = b.readUInt32BE(o), t = b.toString('ascii', o + 4, o + 8)
+    if (t === 'IHDR') { width = b.readUInt32BE(o + 8); height = b.readUInt32BE(o + 12) }
+    if (t === 'IDAT') idat.push(b.subarray(o + 8, o + 8 + n))
+    o += 12 + n
+  }
+  const raw = inflateSync(Buffer.concat(idat)), bpp = 3, stride = width * bpp, rgb = new Uint8Array(width * height * 3)
+  for (let y = 0; y < height; y++) {
+    const f = raw[y * (stride + 1)], line = raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1))
+    for (let x = 0; x < stride; x++) {
+      const a = x >= bpp ? rgb[y * stride + x - bpp] : 0, up = y ? rgb[(y - 1) * stride + x] : 0, c = x >= bpp && y ? rgb[(y - 1) * stride + x - bpp] : 0
+      let v = line[x]
+      if (f === 1) v += a
+      else if (f === 2) v += up
+      else if (f === 3) v += (a + up) >> 1
+      else if (f === 4) { const p = a + up - c, pa = Math.abs(p - a), pb = Math.abs(p - up), pc = Math.abs(p - c); v += pa <= pb && pa <= pc ? a : pb <= pc ? up : c }
+      rgb[y * stride + x] = v & 0xff
+    }
+  }
+  return { width, height, rgb }
 }

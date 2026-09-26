@@ -175,7 +175,7 @@ target address (`DI=0x380B` linear = row 179, col 216). That copy only moves 25 
 bytes/row (`rep movsb` with `CX=0x19`): **200 of the real 208 pixel columns reach the screen**.
 Checked against the actual decoded strip this session (not assumed): columns 200-207 hold 648
 non-zero (real ink) pixels, so this crop is a genuine, reproducible original-game effect, not a
-safe truncation to skip -- the port crops its own render to the same 200px width.
+safe truncation to skip -- the port crops its own render to the same 200px width. **CORRECTED 2026-09-26 (`docs/engine.md` §9dp):** a pixel-exact live capture shows strip columns **8-207** (not 0-199) at X 216-415, the strip's colour 0 transparent over the off-screen background (colour 10), only 161 of its 162 rows, and the cursor sprite also 8 px left of its nominal X. With these the screen is 0 px off the capture (`npm run front`). The mechanism inside `0x4D4`'s shifted blit is not traced.
 
 **The target column/row (`1000:0190`).** `AL = [0040:006C]` (the BIOS tick counter's own low
 byte, free-running, not `INT 1Ah`); `column = AL & 0xF` (0-15, shown as `'A'+column`), `row =

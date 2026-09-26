@@ -33,9 +33,10 @@ export const CARD_SIZE = 16
  * cellX/cellY are the strip-relative origin of cell (0,0), MEASURED from the decoded bitmap
  * (ink column centres 30,50,…,170 and row centres 12,30,…,138 → cells start at (20,3)).
  * The module blits the strip at screen (216,179) and starts the cursor at (226,181), which
- * would put cell (0,0) at strip (10,2) — 10 px left of where the symbols actually are; how the
- * cursor frame lines up on screen was UNKNOWN_codecard_cursor_origin: a live capture shows it framing
- * cell (0,0) correctly (docs/intro-and-codecard.md, M3.30).
+ * would put cell (0,0) at strip (10,2) — 10 px left of where the symbols actually are. Resolved
+ * by a pixel-exact capture (docs/engine.md §9dp): both the strip and the cursor sprite land one byte
+ * (8 px) left of their nominal X on screen (`STRIP_SRC_X`), which puts cell (0,0) at screen 228 inside
+ * the cursor's frame (its first ink column is 9).
  */
 export const GRID = { cols: 8, rows: 8, pitchX: 20, pitchY: 18, cellX: 20, cellY: 3, stripX: 216, stripY: 179, cursorX: 226, cursorY: 181 }
 
@@ -172,14 +173,23 @@ export const BG_BOTTOM_COLOUR = 10
 export const XOR_TEXT = 0xf
 export const XOR_OVERLAY = 0x8
 
-// The symbol strip is drawn into an off-screen work buffer at its full 208px width, but the
-// page-copy that brings it onto the visible screen (`0x5b3`) only moves 25 of its 26
-// bytes/row (`rep movsb` with CX=0x19) -- 200 of 208 pixel columns. Checked against the real
-// decoded strip (this session): columns 200-207 hold real ink (648 non-zero pixels), not padding,
-// so the crop is a genuine, confirmed, reproducible original-game effect, not a safe truncation.
+// The symbol strip is drawn into an off-screen work buffer, and the page copy that brings it onto
+// the visible screen (`0x5b3`) moves 25 bytes/row (`rep movsb` with CX=0x19) -- 200 pixel columns.
+// Which 200: CORRECTED by a live capture (docs/engine.md §9dp) -- columns 8-207, not 0-199 (an
+// earlier note here said 200-207 were the ones cut); colour 0 is transparent over the off-screen
+// background (colour 10), and only 161 of the 162 rows show.
 export const STRIP_SCREEN_X = 216
 export const STRIP_SCREEN_Y = 179
 export const STRIP_VISIBLE_W = 200
+// Which 200 of the 208 columns: a live DOSBox capture of this screen (tools/refs/front/codecard.png,
+// docs/engine.md §9dp) shows strip columns 8-207 at X 216-415, not 0-199 -- the frame's left edge
+// sits at X 216 and its right edge at X 400. `0x5B3` copies from the off-screen row start (SI=0x8000),
+// so the strip lands one byte left in the off-screen buffer; the mechanism inside `0x4D4`'s shifted
+// planar blit is not traced. With this, the whole screen is pixel-exact against the capture.
+export const STRIP_SRC_X = 8
+// ...and its last (162nd) row does not show either: row 340 is the background colour live. Like
+// the column offset, measured, not traced inside `0x4D4`.
+export const STRIP_VISIBLE_H = 161
 
 // The cursor's own persistent position (FONT.BIN `[cs:0x2558]`/`[cs:0x255a]`), pixel coordinates,
 // carried across both accept rounds (never reset between them). Bounds and pitch match `GRID`
@@ -297,10 +307,13 @@ function paintBackground(screen) {
 /** The symbol grid, cropped to the real 200 (not 208) visible columns per-row (see STRIP_VISIBLE_W). */
 function blitSymbolStrip(screen, data) {
   const strip = symbolStrip(data)
-  for (let y = 0; y < strip.height; y++) {
+  for (let y = 0; y < STRIP_VISIBLE_H; y++) {
     const src = y * strip.width
     const dst = (STRIP_SCREEN_Y + y) * CODECARD_W + STRIP_SCREEN_X
-    screen.set(strip.indexed.subarray(src, src + STRIP_VISIBLE_W), dst)
+    for (let x = 0; x < STRIP_VISIBLE_W; x++) {
+      const v = strip.indexed[src + STRIP_SRC_X + x]
+      if (v !== 0) screen[dst + x] = v // colour 0 is transparent: the off-screen background shows (live, §9dp)
+    }
   }
 }
 
@@ -311,7 +324,7 @@ function blitCursor(screen, data, pos) {
     for (let x = 0; x < cursor.width; x++) {
       const idx = cursor.indexed[y * cursor.width + x]
       if (idx === 0) continue
-      const py = pos.y + y, px = pos.x + x
+      const py = pos.y + y, px = pos.x + x - STRIP_SRC_X
       if (py < 0 || py >= CODECARD_H || px < 0 || px >= CODECARD_W) continue
       screen[py * CODECARD_W + px] = idx
     }

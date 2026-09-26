@@ -6163,6 +6163,20 @@ From a read-only disassembly (`[STATIC]`), checked at 0 px against the captures 
 
 All 18 captured screens are now 0 px in `npm run front`. `game.html` draws these screens from the layouts (the results/outcome/champion faces blink with a 16-tick period from b=1; the exact phase is not modelled). Checked in the browser (a hidden Chrome window, so through the page's own step hooks): the page's own canvas is 0 px off the captures for OPTIONS, the title, SELECT GAME, the Challenge character select and the qualifier's intro, and ONE PLAYER GAME differs only in the thumb (the page enters it with the boot's persisted pick 2, as DOS does; the capture had 0 poked). Found on the way: a Challenge pick is followed by PRESS ANY KEY (`0C15`), which the capture run had dismissed unseen. The later screens need a race, which a hidden window cannot run (`requestAnimationFrame`); F3's walk covers them.
 
+## 9dp. Part F2: the code card, pixel-exact (2026-09-26)
+
+FONT.BIN's screen runs in mode 10h (640x350, 16 colours; the bridge's frame info reported BIOS mode 0x10 on it), so `A000` does not hold it as bytes: it was captured as RGB through the bridge's frame endpoint (`tools/refs/front/codecard.png`, target COLUMN O, ROW 4, cursor on the first cell). The port's `composeCodeCardScreen` with its EGA palette (`+0x689A`) was compared in RGB.
+
+The text and target overlay (rows 0-178) matched from the start. The grid did not: 10,881 px. Measured against the capture (`[PROVEN]`):
+- the strip shows its columns **8-207** at X 216-415, not 0-199 (the frame's left edge is at X 216, its right edge at X 400);
+- the strip's colour 0 is **transparent**: the off-screen buffer's background (colour 10, cyan) shows through, e.g. at X 412-415;
+- only **161 of its 162 rows** show (row 340 is background);
+- the cursor sprite is also drawn **8 px left** of its nominal X (its first ink column is 9), which puts it round cell (0,0) at screen 228 and explains the old "10 px left" note in `fontbin.js`.
+
+`0x5B3`'s page copy reads from the off-screen row start (`SI=0x8000`), so the strip and the cursor land one byte left in the off-screen buffer. The mechanism inside `0x4D4`'s shifted planar blit (`0x591 SHR AX,CL`) was not traced (`[STATIC]` gap); the three constants are measurements. An earlier note (`docs/intro-and-codecard.md`) said the 25-byte copy cut columns 200-207; that is corrected.
+
+`fontbin.js`: `STRIP_SRC_X = 8`, `STRIP_VISIBLE_H = 161`, a transparent strip blit, the cursor at x-8. `check-front` now also renders the code card and compares it in RGB (it failed with 10,881 px on the old code): **0 px**, so all 19 captures are exact.
+
 ## 10. Open items
 
 Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: `open`, `narrowed` (part answered; the rest is the open question), `closed`. **Section** is where the answer (or the question) is written up; the history, wrong turns included, stays in those sections and is not repeated here. **Address** is `MICROU.EXE`'s (`1000:` code, `DS:` data) unless another file is named. This table replaced a run-on paragraph of dated notes on 2026-09-26 (`GOAL-DOS-PARITY.md` D2, §9cx); each ID's status was re-read from its latest dated note. When an item opens or closes, change its row here in the same commit.
@@ -6176,7 +6190,6 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_162_stale_direction` | open | §9ax | `DS:0162` | The carousel entry-skip scroll direction is whatever a prior screen left there; the port defaults to LEFT/+1 (charSelect.js:61). |
 | `UNKNOWN_26cf_prompt_blink` | narrowed | §9dn (§9ax; PRESS ANY KEY §9bt) | `0C96`,`[0x26CF]` | The Challenge carousel's prompt now blinks with the 32-tick `[0x26CF]` toggle; the Head-to-Head carousels (older renderer) still do not. |
 | `UNKNOWN_989_98b_meaning` | open | §9bj (still open §9bl) | `1EF1` zeroing at `1F09-1F18`, `DS:0989`/`DS:098B` | No live reader; only the dead ShowHeadToHeadResultUnreferenced `2099-216B` uses them, as extra tally counters. |
-| `UNKNOWN_codecard_pixel_diff` | open | §9at; GOAL Part F | - (FONT.BIN, mode 10h) | No byte-exact diff yet; needs mode 10h's 4 planes combined. Only a visual match to live screenshots so far. |
 | `UNKNOWN_dosbox_wait_frames_cadence` | open | §9f | - | What `dosbox.wait_frames(1)` measures (host tick vs retrace) was never pinned down; dedup made it immaterial for M3.4. |
 | `UNKNOWN_intro_loop_vs_total_gap` | open | `docs/intro-and-codecard.md` (§9as) | - (SM.EXE `CS:097F`, `CS:07C6`) | The ~0.23 s gap between the loop's 314 iterations (~4.49 s) and the 4.72 s live total is untimed; plausibly pre-loop setup. |
 | `UNKNOWN_menu_default_persistence` | narrowed | §9aw | `0220`,`02CB`,`0360`,`[0x130]`,`[0x132]` | The asymmetric persistence is explained [PROVEN]; still open: why one fire once seemed to pass both menu levels. |
@@ -6190,7 +6203,7 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 
 | Item | Status | Section | Address | Open question |
 |---|---|---|---|---|
-| Front-end pixel parity | narrowed | §9dm-§9do; GOAL Part F | - | All 18 captured screens are 0 px in `npm run front`. Still open: the code card (`UNKNOWN_codecard_pixel_diff`), the Head-to-Head vs CPU variants of the carousel/intro, and the bonus race's intro. |
+| Front-end pixel parity | narrowed | §9dm-§9dp; GOAL Part F | - | All 19 captured screens (and §9bz's six two-human ones) are 0 px in `npm run front`. Not captured, so not checked: the Head-to-Head vs CPU carousel and intro, the round-9 bonus race's intro, PRESS ANY KEY, EXTRA LIFE / NO BONUS / FAILED TO QUALIFY, the credits and redefine-keys screens. |
 
 ### 10.3 Closed
 
@@ -6246,6 +6259,7 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_class8_choppers` | closed | §9dk; `docs/sound.md` §8 (M3.45) | `DS:002F`, `[9D8]`, `7AC9` | Class 8 = CHOPPERS from the class-name table [STATIC]; live, round 8's engine records get instrument 0x70 and delay 3 at `7A97` [PROVEN]. |
 | `UNKNOWN_codecard_cursor_origin` | closed | `docs/intro-and-codecard.md` (M3.30) | - (FONT.BIN) | A live capture shows the cursor frames cell (0,0) correctly [PROVEN]; the ~10px gap is likely a centred 32×22 cursor sprite [STATIC]. |
 | `UNKNOWN_codecard_neutralised` | closed | `docs/intro-and-codecard.md` (FONT.BIN) | FONT.BIN `+0xA8`/`+0x137` | Both code-card compare sites are byte-patched (`MOV AL,DL` plus a jump/NOPs), so any answer passes. |
+| `UNKNOWN_codecard_pixel_diff` | closed | §9dp (§9at) | FONT.BIN `0x4D4`, `0x5B3` | Pixel-exact against a live mode-10h capture once the strip and the cursor land 8 px left, the strip's colour 0 is transparent and 161 of its rows show [PROVEN, measured]; the blit's own mechanism is not traced. |
 | `UNKNOWN_codecard_pristine_bytes` | closed | `docs/intro-and-codecard.md` FONT.BIN section (M3.30) | FONT.BIN `+0xA8`, `+0x13A` | Both patched sites were originally CALL 0x190; CMP AL,DL; Jcc, inferred from the intact +0xE9 site [STATIC]. |
 | `UNKNOWN_col_response_active_state_gate` | closed | §9ae | `5534`/`553E` | The collision function gates on active!=0 && state==0; ported, and `bounceAndCommit` now reads persistent fields [STATIC, gate re-checked live]. |
 | `UNKNOWN_col_response_offtrack_branch` | closed | §9v | `5659-56A3`,`5671` | Past the 0x32 dwell it resets offTrackTicks, sets state 0xD and returns early, skipping hit-box detection; port fixed. |

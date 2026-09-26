@@ -14,7 +14,8 @@ import { MENU_VIEW, createMenuBuffer } from '../src/render/menuView.js'
 import { paintOps } from '../src/frontend/h2hScreens.js'
 import { FRONT_SCREENS } from '../src/frontend/frontLayouts.js'
 import { parseSettings } from '../src/formats/globaldata.js'
-import { savePng, scale } from './png.mjs'
+import { savePng, scale, readPngRgb } from './png.mjs'
+import { composeCodeCardScreen, fontbinPalette, CURSOR_X0, CURSOR_Y0 } from '../src/formats/fontbin.js'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const GAME = join(ROOT, 'game')
@@ -51,6 +52,18 @@ for (const [name, layout] of Object.entries(FRONT_SCREENS)) {
     savePng(join(OUT, `front_${name}_diff.png`), w * 3, h * 3, scale(rgba, w, h, 3))
   }
   report.push(`${name}: ${n} px differ${first ? ` (first at ${first.x},${first.y}: port ${first.port}, DOS ${first.dos})` : ''}${outside ? `, ${outside} border px not 15` : ''}`)
+}
+// The code card (FONT.BIN, mode 10h 640x350, docs/engine.md §9dp): captured as RGB (A000 does not hold
+// a planar screen), target COLUMN O ROW 4, cursor on the first cell; compared in RGB.
+if (!only || only === 'codecard') {
+  const png = readPngRgb(join(REFS, 'codecard.png'))
+  const data = new Uint8Array(readFileSync(join(GAME, 'FONT.BIN')))
+  const pal = fontbinPalette(data)
+  const { indexed } = composeCodeCardScreen(data, { stage: 'prompt', target: { col: 14, row: 3 }, cursor: { x: CURSOR_X0, y: CURSOR_Y0 } })
+  let n = 0
+  for (let i = 0; i < indexed.length; i++) if ([0, 1, 2].some((k) => pal[indexed[i] * 3 + k] !== png.rgb[i * 3 + k])) n++
+  if (n || png.width !== 640 || png.height !== 350) bad++
+  report.push(`codecard: ${n} px differ (640x350 RGB)`)
 }
 for (const line of report) console.log(line)
 console.log(bad ? `check-front: ${bad} screen(s) differ` : `check-front: all ${report.length} front-end screens are pixel-exact against their DOSBox captures`)

@@ -899,7 +899,7 @@ was carried forward and never met. Meet it now:
   SELECT GAME, ONE PLAYER GAME, character select (settled), board, race intro, results, outcome,
   eliminated, champion, and the H2H WON/LOST screens. Save the captures to `tools/refs/front/`
   and commit them.
-- [ ] F2. Write `tools/check-front.mjs` (`npm run front`). It renders the same screen through
+- [x] F2. **(§9dm-§9dp: `npm run front`, 19 captures at 0 px, in the suite.)** Write `tools/check-front.mjs` (`npm run front`). It renders the same screen through
   `screens.js` with the same inputs and reports the differing-pixel count per screen, the way
   `check-live.mjs` does. Target: 0 for every static screen. Where a screen animates, pin the frame
   using the tick count read live. Add `front` to the regression loop above.
