@@ -1733,7 +1733,7 @@ trail offset by the decaying `projStepsA/B`, then — for roughly 10 further tic
 a symmetric grow/shrink impact puff reusing the skid-dust PH0 bank.
 
 Two deliberate simplifications, both documented in `engine/projectile.js`'s own header: (1)
-**single decrement** — the real game decrements `reloadCooldown` twice per physics step under some
+**single decrement** (**replaced in §9cr: both decrements are ported, `8712`'s on drawn steps**) — the real game decrements `reloadCooldown` twice per physics step under some
 conditions (once in physics, once in the draw function, the latter only on ticks the smoothness
 draw-gate lets through), coupling a shot's timing to the player's smoothness setting; this port
 decrements once, in physics, every step, so a shot's ~60-tick lifecycle is fixed real-world time,
@@ -4236,7 +4236,7 @@ deterministic function of the persistent order, the laps and `[26C6]`. It is sam
 frame (`90c5` returns unless `[2638]==1`, the smoothness batch counter), i.e. every step at the
 shipped smoothness 1 (which this port matches) but only every n-th step at smoothness 2-4 -- a
 cadence the port does not reproduce (it ranks, and runs the state handlers, every step), a known
-divergence for n > 1 (corrected by the review pass; this paragraph first claimed "every step"
+divergence for n > 1 (**ported in §9cr**) (corrected by the review pass; this paragraph first claimed "every step"
 unconditionally). Consequence the user could hit: once a drone had
 finished, the port pinned everyone, so a player who then passed another drone still got the pinned
 place. Seed order `[0,1,2,3]` (`423a`; two-car `445e`/`4466` writes the same). Two-car format ranks
@@ -5630,6 +5630,8 @@ step, toggling every 16.
 
 ### 3. The smoothness cadence, for the flag write only
 
+**The rest of the cadence is ported in §9cr.**
+
 `RunRaceMainLoop` calls the render pass (`90C5`) every physics iteration, but `90C5` itself returns
 at its own top unless `[2638]==1` (the smoothness batch counter, decremented every physics step at
 `30b7` -- reaching 1, i.e. actually drawing, only on the last step of each N-step batch -- and reset
@@ -6145,6 +6147,11 @@ not a closure.
 matched, now pinned by a test), and the race-start fade-in (the port now holds black for the fade-up
 and steps nothing, then shows the first frame at full palette). Still unported: the race setup's own
 `395D` fade-out of the screen before the race (the port's front-end screens have no fades at all).
+
+**Added 2026-09-26 (§9cr).** The smoothness 2-4 cadence is ported in full: the state handlers, the
+ranking, the puffs, the projectile draw and the engine sounds run once per drawn frame, live-proven
+(breakpoint hit counts at `[263A]` 2 and 4). `8712`'s own reload decrement is ported with it, so TANKS
+shots last half as long at smoothness 1, as in DOS.
 
 **Added 2026-09-26 (§9cq).** SPEAKER (DRIVER2, ported and live-replayed, `docs/sound.md` §4) and NONE
 (DRIVER0) are real driver choices now, with the game's `[0F64]` branches. `UNKNOWN_drv2_live_fidelity`
@@ -12709,3 +12716,76 @@ round-robin order, the id-past-bank drop, the engine alternation parity, the pau
 and landing gates, the not-drawn override. Not caught, and not expected to be: dropping `021E`'s gate
 write (`02DD` already wrote the same value unless a note is out of range, which the shipped data never
 is). Not browser-checked (the Chrome window was hidden); nobody has listened to the speaker renders.
+
+## 9cr. The smoothness 2–4 cadence: everything in the render runs once per drawn frame (2026-09-26)
+
+GOAL-DOS-PARITY.md P5. §9ap 3 ported the cadence for the drawn flag only and left the rest open: the
+state handlers, the ranking and the rest of the render ran on every physics step in the port.
+
+**The loop, `[STATIC]`** (`RunRaceMainLoop 3067-30DD`): physics `4AEE`; the race-over test
+`3081-3093`; the render `3095 -> 90C5`; the per-car pass `3098-30B5`; then `DEC [2638]`, and at 0 the
+wait on `[263C + [263A]]` (`00 01 03 05 07`, 2N ticks per N steps, so physics stays at 35 Hz), the
+present `92BC` and `[2638] = [263A]`. `90C5` returns at its first instruction unless `[2638]==1`, so at
+smoothness N everything after that test runs on one step in N:
+- the tile animations (`8996`/`89E0`/`8A2B`, already gated by the pages since §9al);
+- the two-car gate `91F2-9205` (`78F8` when `[2913]`, `7759` when `[2911]==1`);
+- `DrawRaceCarLayer 7CE0`: the shadows `7E5C`; per car the splash `8386` and the puffs `8083`; per
+  car with `[13A4]!=0` the projectile draw `8712`; per car the state handler (`278F`, `7D45`) and the
+  finished label `9076`;
+- the ranking `8DFC` (`923E`);
+- the two-car banners `9241-9281` (`851F`/`855A` for the cars in states B/C, `8634`);
+- the engine sounds `UpdateEngineSoundsPerFrame 7B46` (`9281`).
+
+**Live `[PROVEN]`.** In a Head to Head vs CPU race (two active cars), with `[263A]` poked in memory
+and execute breakpoints whose condition never holds (`CS==0`), so that `hit_count` only counts:
+
+| `[263A]` | `4AEE` physics | `30B7` iterations | `7CE0` | `7D45` dispatches | `8DFC` | `7B46` |
+|---|---|---|---|---|---|---|
+| 2 | 100 | 101 | 50 | 100 (2 cars × 50) | 51 | 51 |
+| 4 | 144 | — | 36 | — | 36 | 36 |
+
+`[263A]` was restored to 1 afterwards; nothing was written to `SETTINGS.DAT`.
+
+**`8712` also counts the reload down `[STATIC]`** (`87E6 DEC [BX+13A4]`, `87EC` clears `[1394]` at 0,
+reached for a car that isn't live too; `7D14` calls it only while `[13A4]!=0`). With `51B2`'s own
+decrement that is two per step at smoothness 1: after the fire (`[13A4]=0x3C`) the shot moves on 10
+steps (`51B2` sees 58..40), which is what the trail counter `[139A]/[139E]=0xA` set at fire runs down
+in, and the tank can fire again 30 steps later. At smoothness 2 it is 40 steps, at 4 48, with the flight
+stretched the same way. `51B2` never clears `[1394]`; at smoothness 1 it is always `51B2` that reaches
+0, so the flag stays set until the next fire, which is harmless (`7D14` skips the draw at 0 and the hit
+test also needs `>= 0x28`). §9q's port had one decrement, in physics, deliberately, because the port had
+no render cadence then; its shots flew for 20 steps and reloaded in 60. `8712` draws at the cooldown it
+found, before its own decrement, and at the position the previous step's `51B2` left.
+
+**Port.**
+- `step.js`: `renderPass` holds what the engine models of `90C5`, in its order (the two-car gate, the
+  splashes and puffs, the projectile draws, the state handlers, the hidden car, the ranking, the two-car
+  banners), and `runStep` calls it only when `ctx.drawnTick !== false`. The ranking moved from the top
+  of `runStep` to `923E`'s place; the physics reads the order the last drawn frame left (the seed
+  `[0,1,2,3]` before one has run). `runPreLoopRender` (`39E8`) is the same pass now, with the ranking
+  and the puffs it lacked.
+- The puffs moved from after `7429` to the render's place, before the state handlers; they see the
+  cooldowns the previous step's `7429` left, and a splash triggered by a landing in `7429` spawns at the
+  next render, not the same step.
+- `sound.js` `updateEngines` returns when `ctx.drawnTick === false`, so the engines and the jitter PRNG
+  advance once per drawn step.
+- `projectile.js` `projectileDrawTick` is `8712`'s whole state step: the `7D14` gate, the draw
+  snapshot `car._projDraw` for `raceView.js`, the decrement and the clear. `updateProjectileFlight`
+  no longer clears `projActive`.
+
+At smoothness 1 every step is drawn, and every check's output is unchanged except the TANKS races
+(round 7), whose shots are now half as long: `npm run finish` ROUND71 10160 -> 10030 steps (car 0 3rd
+-> 4th), ROUND72 15094 -> 14811, ROUND73 18081 -> 18416, two-car ROUND71 1405 -> 1616, ROUND73 2610 ->
+2611. At smoothness 2-4, what a player notices: the start countdown, every knockout/respawn/fall
+animation and the two-car blink last N times as long, the HUD place updates once per frame, and
+TANKS shots fly further.
+
+**Tests.** `check-play` `checkSmoothnessCadence`: a ROUND21 race with the drones driving at smoothness
+1, 2 and 4 through the pages' own gate. The countdown takes 95/190/380 steps. On an undrawn step no state
+timer, ranking, place, puff or splash changes, while on drawn ones the ranking and the puffs still
+change. The engines are updated 6000/3000/1500 times in 1500 steps, and the jitter with them. The projectile tests cover
+10 moving steps and 30 to reload at smoothness 1, 40 and 48 at 2 and 4, the first draws at 60/58/56, the
+`87EC` clear and the `7D14` gate. `check-twocar`'s redirect test now expects the render's decrement too
+(49/47). Against the old `step.js` the countdown reads 95/95/95 and the frozen-step check fails. Against
+the old `sound.js` the engines read 6000 each. Against the old `projectile.js` five projectile checks
+fail (20 moving/60 steps at every setting).

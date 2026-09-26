@@ -1037,7 +1037,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
             runStep(world, cars, controls, raceState, raceCtx)
             if (isOver()) { over = true; presentCountdown = countdownAtHead; break } // the exiting step never renders (3081 jumps past 90C5, and 30B7's DEC)
             if (raceCtx.drawnTick) { shouldRender = true; raceState.tileAnimCounter = (raceState.tileAnimCounter ?? 0) + 1 }
-            updateEngines(sound, cars, raceCtx, jitter)
+            updateEngines(sound, cars, raceCtx, jitter) // 7B46: drawn steps only (it checks drawnTick)
           }
         }
         if (shouldRender && !over) {

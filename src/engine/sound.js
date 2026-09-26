@@ -79,6 +79,9 @@ export function raceInstrument(round) {
  * real driver call site uses.
  */
 export function updateEngines(driver, cars, ctx, jitter) {
+  // 7B46 is called from the render's tail (9281), which returns at its top unless [2638]==1: at
+  // smoothness N the engines update (and the jitter PRNG advances) once per N steps (§9cr, live).
+  if (ctx.drawnTick === false) return
   if (cars.some((c) => c.state === 0xb)) return
   if (!isOplDriver(driver)) { updateBeeperEngines(driver, cars, jitter); return } // 7B73 -> 7C4E
   const { instrument, delay } = raceInstrument(ctx.round)

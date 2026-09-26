@@ -275,23 +275,26 @@ function drawPuffsAndSplashes(dst, w, h, camX, camY, ph0, car) {
 const IMPACT_FRAME_TABLE = [0, 1, 2, 3, 4, 5, 4, 3, 2, 1, 0] // CS:8780, keyed by (reloadCooldown-0x1e)
 const IMPACT_FLOOR = 0x1e // 30
 
-/** One car's active shot (`FUN_1000_8712 1000:8712`), docs §9q. Two phases keyed on the single,
- * physics-only `reloadCooldown` this port uses (see engine/projectile.js's own header): while
- * cooldown is still in the flight window, a small flying icon (2 of PH0's 5 tail icons, plus a
- * black shadow-trail silhouette offset by the decaying projStepsA/B); for the ~10 ticks after,
- * a symmetric grow-then-shrink impact puff reusing the skid-dust bank; below that, nothing. */
+/** One car's active shot (`FUN_1000_8712 1000:8712`), docs §9q/§9cr. It draws what the render's own
+ * `projectileDrawTick` found (`car._projDraw`: the cooldown before 8712's decrement, the position the
+ * previous step's flight left); a car that never went through it (a synthetic test car) draws its
+ * own fields. Two phases on that cooldown: above the flight window (JA 0x28), a small flying icon (2 of
+ * PH0's 5 tail icons, plus a black shadow-trail silhouette offset by the decaying projStepsA/B); from
+ * 0x1E to 0x28, a symmetric grow-then-shrink impact puff reusing the skid-dust bank; below, nothing. */
 function drawProjectile(dst, w, h, camX, camY, ph0, car) {
-  if (!car.projActive) return
-  const dx = wrapDelta(car.projX - camX, WORLD_PX)
-  const dy = wrapDelta(car.projY - camY, WORLD_PX)
-  if (car.reloadCooldown > FLIGHT_THRESHOLD) {
-    const icon = ph0TailIcon(ph0, car._projIcon ?? (car.projFrame ?? 0) >> 2) // 871F-8723 (engine/projectile.js projectileDrawTick)
-    const sx = wrapDelta(car.projX + car.projStepsA - camX, WORLD_PX)
-    const sy = wrapDelta(car.projY + car.projStepsB - camY, WORLD_PX)
+  const d = car._projDraw !== undefined ? car._projDraw
+    : car.projActive ? { cooldown: car.reloadCooldown, x: car.projX, y: car.projY, stepsA: car.projStepsA, stepsB: car.projStepsB, icon: car._projIcon ?? (car.projFrame ?? 0) >> 2 } : null
+  if (!d) return
+  const dx = wrapDelta(d.x - camX, WORLD_PX)
+  const dy = wrapDelta(d.y - camY, WORLD_PX)
+  if (d.cooldown > FLIGHT_THRESHOLD) {
+    const icon = ph0TailIcon(ph0, d.icon) // 871F-8723
+    const sx = wrapDelta(d.x + d.stepsA - camX, WORLD_PX)
+    const sy = wrapDelta(d.y + d.stepsB - camY, WORLD_PX)
     blitSilhouette(dst, w, h, sx - 4, sy - 4, icon)
     blitTransparent(dst, w, h, dx - 4, dy - 4, icon)
-  } else if (car.reloadCooldown >= IMPACT_FLOOR) {
-    const frame = IMPACT_FRAME_TABLE[car.reloadCooldown - IMPACT_FLOOR]
+  } else if (d.cooldown >= IMPACT_FLOOR) {
+    const frame = IMPACT_FRAME_TABLE[d.cooldown - IMPACT_FLOOR]
     blitTransparent(dst, w, h, dx - 4, dy - 4, ph0PuffFrame(ph0, 1, frame))
   }
 }

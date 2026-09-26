@@ -117,8 +117,10 @@ and stays local to your machine.
   keypad `+`/`-` jumps to the next/previous race, as the original's developers left it).
 - **Two "polish" settings**, both faithful to the original rather than added for their own sake:
   - **Smoothness** (1–4, or AUTO on `game.html`'s own OPTIONS screen): the original's own
-    display-vs-physics-rate tradeoff — physics always runs at 35 Hz, this only controls how often
-    the screen redraws. On modern hardware there's no performance reason to use anything but 1
+    display-vs-physics-rate tradeoff — physics always runs at 35 Hz, this controls how often the
+    screen redraws, and, as in the original, everything the original does while drawing: the car
+    animations and countdowns, the race placings, the engine sound and the TANKS shots all advance
+    once per drawn frame, so at 2–4 they run 2–4 times slower. On modern hardware there's no performance reason to use anything but 1
     (the smoothest); it's here for parity with the original's own options screen, not because the
     browser needs it. (`index.html`'s single-race page keeps a header select instead, since it has
     no boot chain of its own to host a real OPTIONS screen.)

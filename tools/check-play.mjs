@@ -32,6 +32,8 @@ import { animTimerPass } from '../src/engine/step.js'
 import { recordingReader, createTapeReader } from '../src/engine/input.js'
 import { updateCheckpointsAndLaps } from '../src/engine/checkpoints.js'
 import { checkpointList } from '../src/data/engine-tables.js'
+import { createSmoothnessGate } from '../src/engine/smoothness.js'
+import { updateEngines } from '../src/engine/sound.js'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const GAME = join(ROOT, 'game')
@@ -1208,8 +1210,8 @@ async function checkProjectiles() {
     check('fireProjectile: cannot re-fire while reloading', (() => { const before = car.reloadCooldown; fireProjectile(car, { round: 7 }); return car.reloadCooldown === before })())
   }
 
-  // (d) flight: the shot moves and reloadCooldown counts down; projActive clears exactly when
-  // reloadCooldown reaches 0, not before.
+  // (d) flight alone (51B2): the shot moves and reloadCooldown counts down; 51B2 never clears
+  // projActive -- only 8712 does (docs/engine.md §9cr).
   {
     const car = mk({ heading: 0x40 }) // pointing right, so projX should drift
     fireProjectile(car, { round: 7 })
@@ -1219,7 +1221,7 @@ async function checkProjectiles() {
       updateProjectileFlight(car)
     }
     check('updateProjectileFlight: reloadCooldown reached exactly 0', car.reloadCooldown === 0)
-    check('updateProjectileFlight: projActive cleared the instant cooldown hits 0', car.projActive === 0)
+    check('updateProjectileFlight: 51B2 taking the cooldown to 0 leaves projActive set (only 8712 clears it)', car.projActive === 1)
     check('updateProjectileFlight: the shot actually moved from its fire position', car.projX !== x0)
     check('updateProjectileFlight: projStepsA/B decayed to 0, not left at 10', car.projStepsA === 0 && car.projStepsB === 0)
   }
@@ -1262,6 +1264,36 @@ async function checkProjectiles() {
     const icons = []
     for (let i = 0; i < 6; i++) { projectileDrawTick(car); icons.push(car._projIcon); updateProjectileFlight(car) }
     check(`projectile tail icon: 0,0 then 1 (871F read before the count-up, 51D8 in flight) -- got ${icons.join(',')}`, icons.join() === '0,0,1,1,1,1' && car.projFrame === 5)
+  }
+  // Two decrements (docs/engine.md §9cr): 8712 (render, drawn steps only) then 51B2 (every step).
+  // Smoothness 1: 2 per step, so the shot moves on 10 steps (58..40, the projStepsA=0xA trail) and
+  // the tank can fire again after 30; at smoothness 2 and 4 both last longer. 8712 draws at the value
+  // it found, then decrements, and it is the one that clears projActive at 0.
+  {
+    const { projectileDrawTick } = await import('../src/engine/projectile.js')
+    const life = (n) => {
+      const car = mk({ heading: 0x40 })
+      fireProjectile(car, { round: 7 })
+      let steps = 0, moving = 0, drawn = []
+      while (car.reloadCooldown !== 0 && steps < 200) {
+        if (steps % n === n - 1 || n === 1) { projectileDrawTick(car); if (car._projDraw) drawn.push(car._projDraw.cooldown) }
+        const x = car.projX
+        updateProjectileFlight(car)
+        if (car.projX !== x) moving++
+        steps++
+      }
+      return { steps, moving, drawn, stepsA: car.projStepsA }
+    }
+    const l1 = life(1), l2 = life(2), l4 = life(4)
+    check(`projectile: smoothness 1 -- moves on 10 steps, reload done after 30, trail counter spent (got ${l1.moving}/${l1.steps}/${l1.stepsA})`, l1.moving === 10 && l1.steps === 30 && l1.stepsA === 0)
+    check(`projectile: 8712 draws at the cooldown it found, before its own decrement (first draws ${l1.drawn.slice(0, 3)})`, l1.drawn.slice(0, 3).join() === '60,58,56')
+    check(`projectile: smoothness 2 and 4 stretch the flight and the reload (got ${l2.moving}/${l2.steps}, ${l4.moving}/${l4.steps})`, l2.steps === 40 && l4.steps === 48 && l2.moving > 10 && l4.moving > l2.moving)
+    const last = mk({ projActive: 1, reloadCooldown: 1 })
+    projectileDrawTick(last)
+    check('projectile: 8712 taking the cooldown to 0 clears projActive (87EC)', last.reloadCooldown === 0 && last.projActive === 0)
+    const idle = mk({ projActive: 1, reloadCooldown: 0 })
+    projectileDrawTick(idle)
+    check('projectile: 7D14 skips 8712 at cooldown 0 (no draw, no underflow)', idle.reloadCooldown === 0 && idle._projDraw === null)
   }
 }
 
@@ -2590,6 +2622,43 @@ async function checkRaceEnd() {
   }
 }
 
+/**
+ * The smoothness 2-4 cadence (docs/engine.md §9cr): `90C5` returns unless `[2638]==1`, so the state
+ * handlers, the ranking `8DFC`, the puffs and the engine sounds `7B46` run once per N physics steps
+ * -- live, 100 steps at smoothness 2 gave 50 renders/51 rankings/51 engine updates, 144 at 4 gave
+ * 36 of each. ROUND21 with the drones driving, `ctx.drawnTick` from the pages' own gate.
+ */
+async function checkSmoothnessCadence() {
+  const run = async (n, steps) => {
+    const s = await setupRace()
+    s.ctx.camera = s.camera
+    const gate = createSmoothnessGate(n)
+    const out = { countdownSteps: -1, frozenOk: true, rankChanges: 0, puffChanges: 0, engineCalls: 0, jitterCalls: 0 }
+    const snap = () => JSON.stringify([s.raceState.dropInTimer, s.raceState.rankOrder, s.cars.map((c) => [c.racePosition, c.puffSlotCursor, c.puffSlots, c.splashSlots])])
+    const driver = { kind: 'opl', engine: () => { out.engineCalls++ }, playSfx() {}, keepAliveSfx() {}, command() { return 0 } }
+    const jitter = () => { out.jitterCalls++; return 0 }
+    for (let step = 0; step < steps; step++) {
+      s.ctx.drawnTick = gate.shouldDraw()
+      const before = snap(), rankBefore = JSON.stringify(s.raceState.rankOrder)
+      const puffBefore = JSON.stringify(s.cars.map((c) => c.puffSlots))
+      runStep(s.world, s.cars, s.cars.map((c, i) => (i === 0 ? 0x20 : droneControlByte(c, s.ctx))), s.raceState, { ...s.ctx, sound: driver })
+      updateEngines(driver, s.cars, s.ctx, jitter)
+      if (!s.ctx.drawnTick && snap() !== before) out.frozenOk = false
+      if (JSON.stringify(s.raceState.rankOrder) !== rankBefore) out.rankChanges++
+      if (JSON.stringify(s.cars.map((c) => c.puffSlots)) !== puffBefore) out.puffChanges++
+      if (out.countdownSteps < 0 && s.cars[0].state !== 0xa) out.countdownSteps = step
+    }
+    return out
+  }
+  const r1 = await run(1, 1500), r2 = await run(2, 1500), r4 = await run(4, 1500)
+  check(`cadence: the start countdown (state A's own [26D5]) takes N times the steps at smoothness N (got ${r1.countdownSteps}/${r2.countdownSteps}/${r4.countdownSteps})`,
+    r1.countdownSteps > 50 && Math.abs(r2.countdownSteps - 2 * r1.countdownSteps) <= 2 && Math.abs(r4.countdownSteps - 4 * r1.countdownSteps) <= 4)
+  check('cadence: on a step that is not drawn, no state timer, ranking, race position, puff or splash changes', r2.frozenOk && r4.frozenOk)
+  check(`cadence: the ranking and the puffs still run on drawn steps (rank changes ${r2.rankChanges}/${r4.rankChanges}, puff changes ${r2.puffChanges}/${r4.puffChanges})`, r2.rankChanges > 0 && r4.rankChanges > 0 && r2.puffChanges > 0 && r4.puffChanges > 0)
+  check(`cadence: the engine sounds (7B46) update once per drawn step, 4 cars each, and the jitter PRNG with them, as live (got ${r1.engineCalls}/${r2.engineCalls}/${r4.engineCalls})`,
+    r1.engineCalls === 4 * 1500 && r2.engineCalls === 4 * 750 && r4.engineCalls === 4 * 375 && r2.jitterCalls === r2.engineCalls)
+}
+
 async function main() {
   await checkCameraTracking()
   await checkCarCarCollision()
@@ -2605,6 +2674,7 @@ async function main() {
   await checkPause()
   await checkFade()
   await checkCountdownHudDigit()
+  await checkSmoothnessCadence()
   checkRanking()
   await checkRaceEnd()
   await checkLapCountSanity()

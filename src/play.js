@@ -159,7 +159,7 @@ export async function bootRace({ canvas, statusEl, pickButton, dropZone, oplStri
       // 30DF: sfx 16 gated on car 0 (the camera-table car), then the 100-tick hold + fade-out.
       if (!raceOverAnnounced) { raceOverAnnounced = true; raceOverStart(sound, cars, 0); raceEnd = createRaceEndState() }
     } else {
-      updateEngines(sound, cars, ctx, jitter)
+      updateEngines(sound, cars, ctx, jitter) // 7B46: drawn steps only (it checks ctx.drawnTick)
     }
     steps++
   }

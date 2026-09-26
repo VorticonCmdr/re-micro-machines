@@ -3,19 +3,13 @@
 // sub-stepping, and the hit test are all no-ops outside that gate in the real game (re-verified
 // live: `1000:5e3c-5e48`'s hit-check call site carries the identical gate as Fire's own).
 //
-// Single-decrement simplification (docs/engine.md §9q). The real game decrements `reloadCooldown`
-// TWICE per physics step under some conditions: once in the physics function (`51b2`, every step)
-// and again in the per-frame DRAW function (`8712`, only on ticks the smoothness draw-gate lets
-// through) -- coupling a shot's real-world flight/reload duration to the player's smoothness
-// setting. `8712` is also the ONLY place besides a hit that clears `projActive`, so a skipped draw
-// frame could in principle leave a shot's state stuck forever. This port's own smoothness gate
-// (`src/engine/smoothness.js`) is a draw-SKIP counter over an always-35Hz physics loop -- a
-// different structural split from the original's own render/physics batching -- so reproducing the
-// double-decrement literally would import a video-setting dependency this port's physics layer was
-// never designed to have, and would inherit the same "state depends on whether a frame drew"
-// fragility. Deliberately simplified to ONE decrement, in physics, every step: a fired shot's
-// total lifecycle (60 ticks: ~20 visible flight + ~40 reload) is fixed real-world time, not
-// smoothness-dependent, unlike the original.
+// Two decrements (docs/engine.md §9cr). `reloadCooldown` counts down in two places: the flight step
+// `51B2` (the per-car pass, every physics step) and the projectile draw `8712` (the render, which
+// runs on drawn steps only -- one in N at smoothness N). At smoothness 1 that is 2 per step: a shot
+// moves for 10 steps (58..40, matching the `projStepsA/B = 0xA` trail counter set at fire) and can
+// fire again 30 steps after the last. At smoothness 2-4 the flight and the reload both last longer,
+// as in DOS. Only `8712` clears `projActive` (at 0, `87EC`); `51B2` never does. §9q's port had one
+// decrement per step, because the port then had no render cadence.
 //
 // Flight motion simplification. `87f3`'s 6-substep-per-axis 8-bit accumulator (with its own
 // "AND AH,0xF0 before every substep, re-OR the frac nibble back in after the group" idiom) was
@@ -94,18 +88,29 @@ export function updateProjectileFlight(car) {
       car.projStepsB = toI16(car.projStepsB - 1)
     }
   }
-  if (car.reloadCooldown === 0) car.projActive = 0
+  // 51B2 never clears [1394]: when it takes the cooldown to 0 (at smoothness 1 it always does), the
+  // flag stays set, harmlessly -- 7D14 skips 8712 at 0 and the hit test also needs >= 0x28.
 }
 
-/** `8712`'s own state step (`871C-872D`), run in the render before the state handlers (DrawRaceCarLayer's
- * projectile pass 7D14 precedes 7D2B): while the shot is live ([1394]), the tail icon drawn this frame
- * is `[1396] >> 2`, read BEFORE `[1396]` counts up (saturating at 5). With `51B2`'s own count-up in the
- * per-car pass after it, that is icon 0 on the firing frame and the next, then icon 1
- * (docs/engine.md §9cj). `car._projIcon` carries the icon to the renderer. */
+/** `8712`'s state step, run in the render before the state handlers (DrawRaceCarLayer's projectile
+ * pass 7D14 precedes 7D2B), on a drawn step only (docs/engine.md §9cr):
+ * - 7D14 calls it only while `reloadCooldown` != 0;
+ * - while the shot is live ([1394]) it draws: the tail icon is `[1396] >> 2`, read BEFORE `[1396]`
+ *   counts up (saturating at 5, `871F-872D`; with `51B2`'s own count-up that is icon 0 on the firing
+ *   frame and the next, then icon 1, §9cj), at the cooldown and position it finds -- the previous
+ *   step's `51B2` left them;
+ * - then, live or not, it decrements `reloadCooldown` (`87E6`) and clears `projActive` at 0 (`87EC`).
+ * `car._projDraw` is what this frame draws (`raceView.js`), or null. */
 export function projectileDrawTick(car) {
-  if (!car.projActive) return
-  car._projIcon = (car.projFrame ?? 0) >> 2
-  if ((car.projFrame ?? 0) < 5) car.projFrame = (car.projFrame ?? 0) + 1
+  car._projDraw = null
+  if (!car.reloadCooldown) return
+  if (car.projActive) {
+    car._projIcon = (car.projFrame ?? 0) >> 2
+    if ((car.projFrame ?? 0) < 5) car.projFrame = (car.projFrame ?? 0) + 1
+    car._projDraw = { cooldown: car.reloadCooldown, x: car.projX, y: car.projY, stepsA: car.projStepsA, stepsB: car.projStepsB, icon: car._projIcon }
+  }
+  car.reloadCooldown--
+  if (car.reloadCooldown === 0) car.projActive = 0
 }
 
 /** Hit (`1000:79fd`). Once per step, not per car -- a shot can hit any OTHER present car. No-op

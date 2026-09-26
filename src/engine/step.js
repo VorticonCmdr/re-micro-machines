@@ -1,6 +1,7 @@
-// One 35 Hz physics step: `RunRaceMainLoop`'s `4aee` physics call, the state-handler dispatch that
-// in the real game runs from the render call `90c5` (docs/engine.md §4's dispatch condition), and
-// the per-car airborne pass `7429` (docs/engine.md §2/§3). Rendering and input capture are out of
+// One 35 Hz physics step: `RunRaceMainLoop`'s `4aee` physics call, the part of the render `90c5`
+// the engine models (the state handlers, the ranking, the puffs, the projectile draw's count-down --
+// on drawn steps only, `ctx.drawnTick`, docs/engine.md §9cr), and the per-car pass `7429`
+// (docs/engine.md §2/§3). Rendering and input capture are out of
 // scope here; sfx are wired where the underlying modules already trigger them
 // (checkpoints.js/collide.js/velocity.js/terrain.js/states.js/projectile.js), gated per
 // docs/sound.md §3b, via `ctx.sound` (optional, `src/engine/sound.js`'s driver shape) -- M3.7.
@@ -145,14 +146,11 @@ const FINISH_SENTINEL = 0x7d00
  *   have both finished and their progress differs by >= [2654], the order is forced (8f87/8f95:
  *   car 0 first when car 1's progress is greater, else car 1 first).
  *
- * The real routine runs from the render `90c5`, which returns at once unless `[2638]==1` -- i.e.
- * once per DRAWN frame, every [263A] (smoothness, SETTINGS.DAT word 2) physics steps, AFTER that
- * step's physics. At the shipped smoothness 1 that is every step, which this port matches (it ranks
- * at the top of the next `runStep`, reading the same state); at smoothness 2-4 the real game samples
- * the ranking (and runs the state handlers) only every n-th step, a cadence this port does not
- * reproduce -- a known divergence for n > 1 (docs/engine.md §9ah). On the exiting iteration the real
- * game skips the render (3081 -> 30df), so the final order is the last one computed -- exactly
- * `raceState.rankOrder` when `runStep` reports `raceState.raceOver`.
+ * The real routine runs from the render `90c5` (`923E`), which returns at once unless `[2638]==1` --
+ * once per DRAWN frame, every [263A] (smoothness) physics steps, after that step's physics and state
+ * handlers (live: 36 rankings in 144 steps at smoothness 4). `renderPass` calls it there; the
+ * physics in between reads the order it left (docs/engine.md §9cr). On the exiting iteration the
+ * real game skips the render (3081 -> 30df), so the final order is the last one computed.
  */
 export function computeRanking(cars, ctx, raceState) {
   const order = raceState.rankOrder ?? cars.map((_, i) => i)
@@ -259,7 +257,9 @@ export function runStep(world, cars, controls, raceState, ctx) {
   const twoCar = ctx.raceFormat === 2 && ctx.round !== 9
   if (twoCar && !raceState.twoCar) initTwoCarMatch(raceState)
 
-  const order = computeRanking(cars, ctx, raceState)
+  // The order array as the last drawn frame's ranking (`8DFC`, inside the render) left it -- the
+  // race-init seed [0,1,2,3] (`423a`) until one has run (docs/engine.md §9cr).
+  const order = raceState.rankOrder ?? cars.map((_, i) => i)
   // [262F], computed per car at 4b1c-4b41 (throttle x6) and again at 5286-52ab (velocity grip x1.5):
   // an off-screen car other than car 0 is boosted when car 0 is found in the order array before the
   // car itself. The scan's loop test is `CMP SI,[0x267E]` -- a MEMORY operand holding the car
@@ -349,29 +349,16 @@ export function runStep(world, cars, controls, raceState, ctx) {
     return
   }
 
-  // The render's two-car gate (91f2-9205) runs before the car layer's state handlers.
-  if (twoCar) twoCarRenderGate(cars, raceState, ctx)
-  // `hiddenCar`: 7D74's car, which 7D73 leaves before its clip test and rotor call (drawn.js).
-  const hiddenCar = twoCar && raceState.twoCar.hiddenCar != null ? cars[raceState.twoCar.hiddenCar] : null
-  // DrawRaceCarLayer's projectile pass (7D14 -> 8712) runs before its state-handler pass (7D2B).
-  for (const car of cars) projectileDrawTick(car)
-  runStates(cars, raceState, { ...ctx, world, hiddenCar }) // the state-handler dispatch the real game runs from render (90c5)
-  if (twoCar) {
-    // 7d74: the car [2621] names is not drawn (so its drawnThisFrame stays 0) -- as the car layer
-    // saw [2621] this frame, before the post-HUD dispatch (9241-9281) below can change it. 7d74 is
-    // itself inside 7D73, so like every other write of this flag it only happens on a drawn tick
-    // (docs/engine.md §9ap 3) -- gated the same way `markDrawn` gates its own write.
-    const m = raceState.twoCar
-    m.hiddenCarLayer = m.hiddenCar
-    if (m.hiddenCar != null && ctx.drawnTick !== false) cars[m.hiddenCar].drawnThisFrame = 0
-    twoCarBanners(cars, raceState, ctx)
-  }
+  // The render (`3095 -> 90C5`) returns at its top unless `[2638]==1`: at smoothness N it runs
+  // on one step in N, and everything inside it -- the state handlers, the ranking, the two-car
+  // match's render half, the puffs -- with it (docs/engine.md §9cr). `ctx.drawnTick` is that gate
+  // (unset = drawn: smoothness 1 and every headless caller).
+  if (ctx.drawnTick !== false) renderPass(world, cars, raceState, ctx, twoCar)
 
   // `RunRaceMainLoop`'s own per-car pass (`3098-30b5`, docs §2), in its documented order: airborne/
   // landing (`7429`), THEN the scripted-drift/animTimer pass (`73e7`, docs §9r -- runs AFTER the
   // state dispatch above, matching the real order; states 1/4/5 only), THEN projectile flight
-  // (`51b2`). Puffs (not part of this real per-car pass, an M3.12 addition) run after airborne too,
-  // since their cooldowns are decremented there.
+  // (`51b2`). The puffs are the render's (above), which reads the cooldowns 7429 decrements here.
   cars.forEach((car, i) => {
     const grounded = updateCarAirborneLanding(car, ctx)
     // 7429 does not save BX: its two-car block (75c2-7758) can leave another car's base in BX, and
@@ -388,8 +375,33 @@ export function runStep(world, cars, controls, raceState, ctx) {
       applyScriptedDrift(t, ctx, bx === 0)
       updateProjectileFlight(t)
     } else applyScoreSlotGarbage(cars[0], bx.scoreSlot, ctx) // a blink swap tick: BX = the bar value
-    updatePuffsAndSplashes(car, ctx)
   })
+}
+
+/**
+ * The part of `90C5` after the tile layer that the engine models, in its order (docs/engine.md
+ * §9cr): the two-car gate (`91F2-9205`), then `DrawRaceCarLayer 7CE0` -- per car the splash `8386`
+ * and the puffs `8083`, then every car's projectile draw `8712`, then every car's state handler
+ * (`278F`) -- then the ranking `8DFC` (`923E`) and the two-car banners (`9241-9281`). The engine
+ * sounds `7B46` (`9281`) are the caller's `updateEngines`, gated the same way. The per-car pass
+ * `3098` runs after this, so the puffs see the cooldowns the previous step's `7429` left.
+ */
+function renderPass(world, cars, raceState, ctx, twoCar, opts) {
+  if (twoCar) twoCarRenderGate(cars, raceState, ctx)
+  // `hiddenCar`: 7D74's car, which 7D73 leaves before its clip test and rotor call (drawn.js).
+  const hiddenCar = twoCar && raceState.twoCar.hiddenCar != null ? cars[raceState.twoCar.hiddenCar] : null
+  for (const car of cars) updatePuffsAndSplashes(car, ctx) // 7D01-7D0F
+  for (const car of cars) projectileDrawTick(car) // 7D14-7D26
+  runStates(cars, raceState, { ...ctx, world, hiddenCar }, opts) // 7D2B-7D70
+  if (twoCar) {
+    // 7d74: the car [2621] names is not drawn (so its drawnThisFrame stays 0) -- as the car layer
+    // saw [2621] this frame, before the post-HUD dispatch (9241-9281) below can change it.
+    const m = raceState.twoCar
+    m.hiddenCarLayer = m.hiddenCar
+    if (m.hiddenCar != null) cars[m.hiddenCar].drawnThisFrame = 0
+  }
+  computeRanking(cars, ctx, raceState) // 923E
+  if (twoCar) twoCarBanners(cars, raceState, ctx) // 9241-9281
 }
 
 /** `309F-30A6` -> `73E7-73F4`: the per-car pass's animTimer bump, the only one there is -- for a car not
@@ -407,7 +419,10 @@ export function animTimerPass(car, bx, ctx) {
  * `[26D5]` with no per-car pass after it, so every timer ends the countdown one lower: 94, not 95)
  * and the round-2/8 tile animation counter (89E0 `INC [26D1]`). The caller decides whether it runs. */
 export function runPreLoopRender(world, cars, raceState, ctx) {
-  for (const car of cars) projectileDrawTick(car)
-  runStates(cars, raceState, { ...ctx, world }, { preRender: true })
+  const progressScale = world.map.maxPlane2
+  ctx = { ...ctx, progressScale, halfMaxProgress: progressScale >> 1 }
+  const twoCar = ctx.raceFormat === 2 && ctx.round !== 9
+  if (twoCar && !raceState.twoCar) initTwoCarMatch(raceState)
+  renderPass(world, cars, raceState, ctx, twoCar, { preRender: true })
   raceState.tileAnimCounter = (raceState.tileAnimCounter ?? 0) + 1
 }

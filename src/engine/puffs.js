@@ -3,15 +3,11 @@
 // elsewhere (`terrain.js`'s `puffSrcWet`/`puffSrcSkid`, this file's own low-grip check,
 // `airborne.js`'s `splashTrigger`) and consumed here, once per car per physics step.
 //
-// Architecture note: in the real game this spawn/animate logic lives INSIDE the DRAW functions,
-// called once per drawn frame -- so a chunkier smoothness setting slows puff/splash animation in
-// the original (the shared cooldown, decremented every physics step in
-// `UpdateCarAirborneLandingSfx`, is only actually consulted as often as a frame is drawn). This
-// port keeps spawn/animate in the engine layer instead, called every physics step regardless of
-// smoothness -- consistent with this project's own physics/render split everywhere else (e.g. the
-// HUD's rank is computed in step.js, not in hud.js) and avoiding the same smoothness-coupling risk
-// flagged for projectiles (docs/engine.md §9q). Documented divergence: puffs/splashes animate at a
-// fixed real-world rate in this port, not a smoothness-dependent one.
+// Cadence (docs/engine.md §9cr): in the real game this spawn/animate logic lives inside the draw
+// (`DrawRaceCarLayer 7CE0`, called from the render `90C5`), so it runs once per DRAWN frame -- one
+// physics step in N at smoothness N -- while the shared cooldowns are decremented every physics step
+// in `UpdateCarAirborneLandingSfx`. `step.js`'s `renderPass` calls this on drawn steps only, before
+// the state handlers and before that step's `7429`, as the real order has it.
 //
 // UNKNOWN_puff_slot_fields resolved (car.js): every trigger spawns a PAIR of 8x8 sprites (xA/yA at
 // heading+puffOffA+0x80, xB/yB at heading+puffOffC+0x80 -- the "+0x80" points the spray behind the
@@ -76,9 +72,8 @@ function advanceFrames(slots, maxFrame) {
   }
 }
 
-/** Call once per car per physics step (after `puffCooldown`/`splashCooldown` have already been
- * decremented this step -- `airborne.js`, matching `UpdateCarAirborneLandingSfx`'s own order).
- * The real order (`DrawRaceCarLayer 7D01`): the splash `8386` first, then the puffs `8083`
+/** Call once per car per drawn step, from the render (`step.js` `renderPass`): the cooldowns are the
+ * ones the previous step's `7429` (`airborne.js`) left. The real order (`DrawRaceCarLayer 7D01`): the splash `8386` first, then the puffs `8083`
  * (docs/engine.md §9ch). */
 export function updatePuffsAndSplashes(car, ctx) {
   // 8386: with the cursor [1298] nonzero (838D), the live splash frames advance on the PUFF

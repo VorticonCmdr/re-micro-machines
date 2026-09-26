@@ -549,7 +549,8 @@ async function settled(round, race) {
   while (!(r.rs.twoCar?.blink === 0x3e && r.rs.twoCar?.spotlight === 1) && n < 5000) { step(r); n++ }
   r.cars[0].reloadCooldown = 50; r.cars[1].reloadCooldown = 50
   step(r)
-  check('redirect: while P2 scores, car 1\'s projectile flight is frozen and car 0\'s runs twice (51B2 on BX=P1)', r.cars[1].reloadCooldown === 50 && r.cars[0].reloadCooldown === 48)
+  // Each also loses one to the render's own 8712 (docs/engine.md §9cr), which the redirect doesn't touch.
+  check('redirect: while P2 scores, car 1\'s projectile flight is frozen and car 0\'s runs twice (51B2 on BX=P1)', r.cars[1].reloadCooldown === 49 && r.cars[0].reloadCooldown === 47)
 }
 
 // `ctx.drawnTick` (docs/engine.md §9ap 3, 4): 7d74's own [2621] hidden-car write is inside 7D73, so

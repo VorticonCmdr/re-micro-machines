@@ -774,7 +774,7 @@ docs, (6) commit.
   drop the per-state inline bumps. Port `82BE`'s one-step `[12B8]` cursor (the port's `findIndex`
   rescan would jump straight to the end with a big timer). Then re-check trace/ai and the
   tournament flow.
-- [ ] **The smoothness 2–4 state/ranking cadence** (§9ah): only the drawn-flag write honours
+- [x] **The smoothness 2–4 state/ranking cadence** **Done (§9cr, M3.99): the whole render -- state handlers, ranking, puffs, projectile draw (with its own reload decrement), engine sounds -- runs once per drawn frame; live-proven by breakpoint hit counts.** (§9ah): only the drawn-flag write honours
   `ctx.drawnTick` today. Port the full cadence.
 - [ ] **The BX-quirk garbage carries over between races** in DOS, because car records are not
   fully re-initialised. The port resets it every race (§9an 8). Carry it across races in `flow.js`'s
