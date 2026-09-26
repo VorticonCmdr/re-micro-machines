@@ -883,7 +883,7 @@ commits.
 - [ ] D1. Make every open-item list agree with §10: `PLAN.md` §9, `docs/track-graphics.md`,
   `docs/track-layout.md`, `docs/sound.md` §8, the `docs/engine.md` §7 wording on `26B8`, and the
   `UNKNOWN_*` comments in `src/` that cite closed IDs (`rtk proxy grep -rn UNKNOWN_ src`).
-- [ ] D2. Rewrite §10 itself as a clean table (ID | status | section | address) instead of one
+- [x] D2. **Done (§9cx): 158 IDs, 27 open or narrowed; `UNKNOWN_4be7_twocar_rubberband` found already answered.** Rewrite §10 itself as a clean table (ID | status | section | address) instead of one
   run-on paragraph. Keep the history in the §9x sections.
 - [x] D3. **Done (§9cw): Ghidra already had the right names since §9b; §7's wording was the stale part.** Rename the misleading Ghidra function names listed in §7 ("Ghidra names to fix": `0fbf`,
   `102b`). Ghidra isn't in git; save the program with `save_program`.

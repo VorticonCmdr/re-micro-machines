@@ -5935,254 +5935,189 @@ TANKS/a cheat spot actually lets a shot fire. The release tick's own speed jump 
 
 ## 10. Open items
 
-**2026-09-26 (§9cw), Part D3:** the §7 "Ghidra names to fix" were already renamed in §9b; §7 now says so and uses the names.
+Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: `open`, `narrowed` (part answered; the rest is the open question), `closed`. **Section** is where the answer (or the question) is written up; the history, wrong turns included, stays in those sections and is not repeated here. **Address** is `MICROU.EXE`'s (`1000:` code, `DS:` data) unless another file is named. This table replaced a run-on paragraph of dated notes on 2026-09-26 (`GOAL-DOS-PARITY.md` D2, §9cx); each ID's status was re-read from its latest dated note. When an item opens or closes, change its row here in the same commit.
 
-**2026-09-26 (§9cn):** the banners' sfx keep-alive and the pause's cheat key combos are ported; the combos are live-proven.
+### 10.1 Open and narrowed
 
-**2026-09-26 (§9cm):** `UNKNOWN_exit_hold_855a_pass` ported (the BX drift can pass all 100 iterations); `UNKNOWN_rematch_fail_stale_2682` closed (the forced outcomes traced, unreachable in play).
+| ID | Status | Section | Address | Answer or open question |
+|---|---|---|---|---|
+| `UNKNOWN_0db0_ch1_frown_trigger` | open | §9bl | `0DB0`, `[BX+0x13]` high byte (CH=1) | What writes CH=1 so that `0DB0` draws the FCFROWN bank; neither `256E` nor `09E0`'s commit-blink writes it (low priority). |
+| `UNKNOWN_0eba_0400_menu_calls` | narrowed | §9aw (callees read §9az/§9bj/§9bz) | `0369`, `0EBA`, `0400` | 0EBA is ResetTournamentState and 0400 is the header draw. [0x160]/[0x192] remain UNKNOWN_0160_0192_meaning. |
+| `UNKNOWN_162_stale_direction` | open | §9ax | `DS:0162` | The carousel entry-skip scroll direction is whatever a prior screen left there; the port defaults to LEFT/+1 (charSelect.js:61). |
+| `UNKNOWN_26cf_prompt_blink` | narrowed | §9ax (PRESS ANY KEY blink ported §9bt) | `0C96`,`[0x26CF]` | The `0C96` blink is ported for PRESS ANY KEY; the character-select IDLE prompt still has no blink. |
+| `UNKNOWN_989_98b_meaning` | open | §9bj (still open §9bl) | `1EF1` zeroing at `1F09-1F18`, `DS:0989`/`DS:098B` | No live reader; only the dead ShowHeadToHeadResultUnreferenced `2099-216B` uses them, as extra tally counters. |
+| `UNKNOWN_carousel_pixel_diff` | open | §9ax; GOAL Part F | - | No pixel diff yet of the character-select carousel against a DOSBox capture. |
+| `UNKNOWN_challenge_qualifier_intro_banner` | open | §9be | `127E-12BA` | What does the Challenge qualifier's separate intro banner (SI=0x35C/0x367, a [BC5]-keyed reveal) do? It is not disassembled or ported. |
+| `UNKNOWN_champion_slide_duration` | open | §9bs (GOAL Part L) | `1AAD` | The DOS duration of the 108 poll-free slide iterations is CPU-bound and underivable; the port runs one iteration per tick. |
+| `UNKNOWN_codecard_pixel_diff` | open | §9at; GOAL Part F | - (FONT.BIN, mode 10h) | No byte-exact diff yet; needs mode 10h's 4 planes combined. Only a visual match to live screenshots so far. |
+| `UNKNOWN_dosbox_wait_frames_cadence` | open | §9f | - | What `dosbox.wait_frames(1)` measures (host tick vs retrace) was never pinned down; dedup made it immaterial for M3.4. |
+| `UNKNOWN_exit_banner_live` | open | §9an 8; GOAL Part L | `30DF`, `855A` | Needs a live check that ES is 193C at 30DF, so the exit-hold 855A calls draw into DS and no banner shows. |
+| `UNKNOWN_intro_loop_vs_total_gap` | open | `docs/intro-and-codecard.md` (§9as) | - (SM.EXE `CS:097F`, `CS:07C6`) | The ~0.23 s gap between the loop's 314 iterations (~4.49 s) and the 4.72 s live total is untimed; plausibly pre-loop setup. |
+| `UNKNOWN_live_verification` | narrowed | §9aa/§9ab/§9aq 3; GOAL Part L | - | Spawn-time car records are live-verified. Still open: car 0's key-press → control-byte leg, sfx 2 on a lap, and a longer driving/collision trace. |
+| `UNKNOWN_menu_default_persistence` | narrowed | §9aw | `0220`,`02CB`,`0360`,`[0x130]`,`[0x132]` | The asymmetric persistence is explained [PROVEN]; still open: why one fire once seemed to pass both menu levels. |
+| `UNKNOWN_menu_pixel_diff` | open | §9aw; GOAL Part F | - | No DOSBox pixel diff yet of SELECT GAME / ONE PLAYER GAME. |
+| `UNKNOWN_mouse_host_scale` | open | §9cu | - | Browser pointer pixels to INT 33h mickeys is taken as 1:1 per CSS pixel; the true scale is not established. |
+| `UNKNOWN_opl_sample_fidelity` | open | `docs/sound.md` §6-§8; GOAL Part L | - | The JS OPL2 core's audio has never been compared against DOSBox; only the register stream is proven. |
+| `UNKNOWN_options_pixel_diff` | narrowed | §9cu | `0400`, `DS:0E88` | The options/F7 body (rows 30-199) is 0 px off against three live frames. The `0400` logo-header background is still undrawn (GOAL Part F). |
+| `UNKNOWN_overlay_tile_191` | open | `docs/track-graphics.md` overlay tiles; §9d | `9214-9237` | Round 2 overlay index 191's +12 variant differs from its base; how it looks with a car under it is unverified. |
+| `UNKNOWN_race_4th_engine_delay` | open | `docs/sound.md` §8; GOAL Part L | `7B46-7C4D` | Car 3's AH=5 was logged 2 ticks late (likely a capture artifact); needs a fresh race-start capture logging AH=3's return. |
+| `UNKNOWN_race_live_reverify` | narrowed | `docs/sound.md` §8; §9av | `03CE` (FUN_0382), `0100` | Cause refuted (no title timeout, KEYS1 reachable). Remaining: the race-start sound replay rests on one capture. |
+| `UNKNOWN_replay_determinism` | open | PLAN-ENGINE.md §4 | - | Is a replay deterministic across DOSBox sessions? Matters only for human-tape replays; never investigated. |
+| `UNKNOWN_single_race_28c1` | open | §9by | `2329`, `DS:28C1` | 2329 never writes [28C1], so a two-human single race runs on a stale value. Effect via its non-tuning readers untraced (port passes 1). |
+| `UNKNOWN_thumb_frame1_invisible` | open | §9av (from §9ao 7) | `0382`, `[130]` | Why SELECT GAME's THUMB frame 1 renders no visible highlight live while frame 2 does (a sprite-art question). |
+| `UNKNOWN_title_pixel_diff` | open | §9av; GOAL Part F | - | LOGO's exact y position on the title screen was never re-read live, and no title pixel diff exists. |
+| `UNKNOWN_twocar_live_cycle` | open | §9am; GOAL Part L | `[2911]`,`[27B5]`,`[26B8]`,`[26BA]`,`[26B4]` | No live capture of a full two-car knockout exchange exists; the exchange logic is still [STATIC]. |
+| `UNKNOWN_waveform_target` | open | `docs/sound.md` §8; GOAL Part L | - | YM3812 sines vs OPL3/DOSBox waveforms: both are implemented, but there is no audio-level diff of the JS OPL2 core against DOSBox. |
 
-**2026-09-26 (§9cl):** the pause minimum is fixed -- DOS has none without the `25011968` flag; the pause ends at the first key release through the ISR's gate (live-proven).
+### 10.2 Open, without an ID
 
-**2026-09-25 (§9cf), Part R closed:** `UNKNOWN_lev_low_bits` (no reader), `UNKNOWN_map_attr_bits` (bit 1 = mirrored flow field), `UNKNOWN_cheats_type` (`[2917]`/`[291B]` write-only), `UNKNOWN_race_reader_low_bits` (no control-byte reader; the pause's cheat-gated F1+F2/F2+F3 combos found instead), `UNKNOWN_pr0_header_use` (tile 0), `UNKNOWN_sfx_semantics` (consistent; not yet listened to), `UNKNOWN_microu_runs_standalone` (yes, `[PROVEN]`), `UNKNOWN_gfx1_header`, `UNKNOWN_unp_version` (4.11), `UNKNOWN_ph0_1140_1380` (unused knockout slot 5). The race-draw helpers are all named; four port divergences (puffs/splash, paint order, projectile tail icon) and the pause combos went to GOAL P5.
+| Item | Status | Section | Address | Open question |
+|---|---|---|---|---|
+| A whole four-car race end, live | open | §9ah; GOAL Part L | `6054`, `[26CC]`, `[26C6]` | The countdown, the final order and the ROUND21 lead rule firing, in one live capture. |
+| The rubber band while car 0 really leads | open | §9aq 4; GOAL Part L | `4B1C-4B41`, `[262F]` | The ×6 boost is live-proven only with the race-start seed order; the grip ×1.5 site was never seen reached. |
+| A "drawn but invisible" car | open | §9ap; GOAL Part L | `[1250]`, `7D73` | Is a car whose drawn flag is set really absent from the screen? Tried, not obtained. |
+| The LIVES outcome screen's first poll | open | §9bq (assumptions a-c); GOAL Part L | `1DCD`, `[261F]` | The port's model predicts `[261F]`=156 at the first poll; not read live. |
+| Front-end pixel parity | open | GOAL Part F | `0400` | No byte-exact diff of most front-end screens (the options/F7 header, the carousel's look, the H2H vs CPU race-intro sprite panel); §9bz's four H2H screens and §9cu's options body are the exceptions. |
 
-**2026-09-25 (§9ce):** the round-2 bathtub plughole (`62E3`) is ported and live-proven. `UNKNOWN_stale_animtimer_port` **resolved and ported 2026-09-25 (§9cg)** -- `[12B0]` is not bumped in state 0 (`309F`) and not zeroed by the 0→1/0→D entries `62E3`/`6169`/`5FAC`, so those animations start from the value the car entered state 0 with (94 after the countdown, live); the port starts them from 0 (GOAL P5).
+### 10.3 Closed
 
-`UNKNOWN_tile_index_overflow` **resolved 2026-09-22 (§9ac): three real cases across all 29 races,
-not just the two on record -- round 8 (tile 58, `.COL` only) and round 9 (tile 60, `.COL`+`.DIR`)
-are confirmed structurally UNREACHABLE by a full sub-cell flood fill from each race's own start
-position (4- and 8-directional, matched); round 5's tile 56 (`.DIR` only, previously undocumented)
-is the opposite -- fully open, on the real racing line, reached in both affected races. The real
-bug: the port discarded real, present file bytes (round 5's own file has 18 of tile 56's 36 `.DIR`
-bytes) along with the genuinely-missing ones, because the whole-tile gate that existed to avoid an
-`undefined`-not-`0` crash (`dirTile`'s bare `.subarray()`) didn't distinguish "partially present"
-from "fully absent". Fixed: `dirTile` now zero-fills only genuinely-missing bytes; `collide.js` no
-longer gates on the tile index at all. The real leftover byte for the genuinely-missing tail is
-tournament-history-dependent (traced to round 4's own tile-56 data for the canonical Challenge
-order). **Follow-up (§9ad, same day, on request): that cross-race replication IS now implemented**
-(opt-in `createColDirBuffers()`, threaded through `flow.js`'s own tournament session, verified
-against the exact traced value), the asset viewer's own analogous whole-tile gate is fixed too, and
-the `.CT`/render-bank visibility question is settled closed (the same flood fill shows round 8/9's
-cells are 264-744 world units from the camera's own reach, never visible either). A fourth,
-previously-unknown sibling case surfaced and was fixed in the same pass: `.BRK` has the identical
-fixed-512-byte-never-cleared buffer shape, and round 3's own progress plane genuinely reaches 255
-as REAL, REACHABLE course data (not a dead corner) -- `createBrkBuffer()`, same opt-in pattern.**
-`UNKNOWN_26B8_polarity` **resolved 2026-09-22 for the finish-decided case (§9u): a shared slot re-armed by two different events -- the knockout-reset writer's own immediate effect reads loser-ish, but the match-winner determination reads `[26B8]` as scorer/winner, confirmed by literal `"WINNER!"`/`"LOSER!"` on-screen text; a real state-assignment bug this finding surfaced in `twocar.js`'s `resolveTwoCarKnockout` was fixed as a direct consequence. New, narrower open items surfaced then, one now resolved: `UNKNOWN_h2h_knockout_only_ending` **resolved 2026-09-22 (§9x) for the race-loop half: NO -- `RunRaceMainLoop`'s sole exit gate (`[26C6]>=2`, `1000:3081`) is structurally unreachable from a knockout, since `ResetCarsAfterKnockoutSfxA` (fully re-disassembled, all 106 instructions) never touches `lapsRemaining`/`[26C6]`, and none of `[26C6]`'s other five direct setters connect to knockout either -- both cars keep racing normally after a knockout until someone eventually finishes some other way. Also corrected in passing: `4C08`/`4C64` were mischaracterized as "finish-detection" -- the real outer gate is the two-car match SCORE `[26B4]`, not a finish flag. New, narrower open item: `UNKNOWN_h2h_match_score_writers`** (does `[26B4]`/`[26C4]`'s match-decided writer agree with the knockout-reset's own `[26B8]` verdict, or can they disagree) and `UNKNOWN_851f_bonus_banner_choice`** **both resolved 2026-09-23 (§9ag): yes, they CAN disagree -- `4C08`/`4C64` mechanically echo `77F5`'s own first verdict but fire at most once per race, permanently freezing the HUD rank table, while `77F5` can keep re-arming `[26B8]` for later knockouts in the same race; "Bonus" (851F, state `0xB`) is the artist's label for whichever car the knockout-reset spotlight currently names, not a real third outcome or the round-9 bonus-race indicator (851F itself gates `[28BF]!=9`)**, `UNKNOWN_6ae5_round3_sequencer` **resolved 2026-09-22 (§9r)**, `UNKNOWN_stateE_reach` **resolved 2026-09-22 (§9r)**, `UNKNOWN_22E1_scope` **resolved 2026-09-22 (§9r)**, `UNKNOWN_1254_1256` **resolved 2026-09-22 (§9v): genuinely dead per-car static data, confirmed by full-file-coverage searches (0 references, 2 independent methods) -- values follow a clean arithmetic progression, purpose unresolvable further without external context**, `UNKNOWN_1386` **resolved 2026-09-22 (§9v): the exact logical NOT of `[1388]`/`onBridge`, confirmed genuinely write-only (full-coverage search, 3/3 hits all known writers, no reader)**, `UNKNOWN_138A_clear` **resolved 2026-09-22 (§9v): no clear-to-0 site exists anywhere (7/7 hits, full coverage) -- "wall bounces always halve" is the fully-confirmed closed answer, not a simplification**, `UNKNOWN_ph0_1140_1380` **investigated thoroughly 2026-09-22 (§9v), genuinely still unresolved: three independent full-coverage search methods (incl. a directly-refuted adjacency hypothesis) found no consumer, but the region is NOT empty padding as a static image might suggest -- decompressing the real shipped file shows 35 non-zero bytes forming three small designed icon shapes, rendered and visually confirmed**, `UNKNOWN_puff_slot_fields` **resolved 2026-09-22 (§9q)**, `UNKNOWN_ph0_tail_icons` **resolved 2026-09-22 (§9q)**, `UNKNOWN_pause_exact_timing` **resolved 2026-09-22, upgraded to `[PROVEN]` (§9v): `[261F]` shares one 70.0Hz incrementer with `DS:0002` -- 140 ticks is exactly 2.000 seconds; this port's own chosen `MIN_PAUSE_MS=2000` is the precise real-world duration, not an approximation**, `UNKNOWN_pause_banner_position` **resolved 2026-09-23 (§9q), `[PROVEN]` by disassembly: the real vertical offset is 48, not the symmetric `(h-22)/2=89` this section previously assumed -- each banner's screen position is an individually hand-authored constant (the race-over "Winner" banner uses a different literal centre-Y), not derived from view height; fixed in `raceView.js`'s `drawPauseBanner` (also correcting the blit mode from an opaque copy to the real colour-0-transparent blit found while at the same call site), teeth-proven in `check-play.mjs`**, `UNKNOWN_17DA_semantics` **resolved 2026-09-22 (§9v): same convention, zero transform -- confirmed two ways (live disassembly of the one real consumer, and a physical sanity check across all four cardinal separations); the port was already correct**, `UNKNOWN_car_camera_2p`, `UNKNOWN_car_draw_anchor` **resolved 2026-09-23 (§9d), `[STATIC]` by disassembly: the prior centred-anchor guess matched exactly (`dx-half-z` body / `dx-half+z` shadow off the same base `(posX-camX,posY-camY)`, half=size>>1 confirmed a hand-authored literal at both 24×24 and round 9's 40×40), so the anchor formula itself needed no code change -- but the same disassembly pass found and fixed two adjacent real divergences (round 8/CHOPPERS forces z=0 and skips the shadow entirely; height is never clamped to >=0 in the real draw, unlike this port's prior `Math.max(0,height)`), teeth-proven in `check-play.mjs`'s `checkCarDrawAnchor`. Two narrower open items surfaced, both deliberately unported: CHOPPERS' own separate round-8-only 32×32 extra animation (`DrawRound8ExtraAnim32 1000:843d`, `DS:5EE3`) is not disassembled further -- what it draws is unestablished, not assumed to be a shadow substitute; and `UNKNOWN_car_draw_wrap_asymmetry` **resolved and FIXED 2026-09-23 (M3.44, full account §9d): the follow-up pass's own "provably benign" framing AND its own worked counter-example were both wrong (the example was itself off-screen once carried through the half-offset and clip test, not the 22px on-screen case it claimed); the real, brute-forced disagreement window is an 11px positive-side sliver plus a second, independent round-9 near-camera window -- `raceView.js`'s body/shadow now fold through the same `viewCoord` `markDrawn` already used, `[STATIC]` by disassembly, teeth-proven, with zero behaviour change found in either window across a 29-race x both-format x 8000-step sweep. The round-8 rotor overlay is ALSO now gated -- on a FRESH per-render clip test (`drawCarBody`'s own return value), not the separate, state-gated `drawnThisFrame` sticky flag an earlier draft wrongly reused (caught before being trusted) -- matching `843d`'s real control-flow position behind the body's own clip test in the SAME function call; unlike the seam fold, this DOES change real frames: 71 of 87842 round-8 car-ticks in that same sweep (history: 137 checked the OLD rotor against the wrong 256x224 window instead of its own real 200-row canvas, caught in review; 425 then dropped the `oldR` AND the fix's own semantics require, caught by an always-zero `other`-bucket self-check), an everyday screen-edge sliver (left/right/top only, never bottom) the rotor's own larger 32x32 box used to show with no body under it. Two further effects are `[STATIC]` by disassembly: the hidden two-car loser's rotor is exposed 192 times, 186 eligible (non-2/0xD), `oldR` already false in every one of those 186 (`[PROVEN]` by its own dedicated pixel test that the port's own gate correctly suppresses a hidden car's rotor) but never observed to change a frame; a states-1/4/5 bodyless-rotor case (correctly scoped to those states, not state 2/0xD's own separate `drawBody:false`, a mistake an earlier draft of that counter made and corrected) was never once exercised by a round-8 car in these 29 races -- not a world-seam exotic**, `UNKNOWN_ranking_2670` **resolved 2026-09-22 (§9s): the full `8e10` scoring formula, freeze-on-finish, and persistent bubble sort**, `UNKNOWN_2652_progress_scale` / `UNKNOWN_2654_half_max_progress` **resolved 2026-09-22 (§9s): both are per-race data (the max/half-max of the loaded race's own `.MAP` progress plane), derived in `runStep` from the pre-existing `world.map.maxPlane2` and no longer defaulted**, `UNKNOWN_col_response_offtrack_branch` **resolved and FIXED 2026-09-22 (§9v): the real function resets offTrackTicks and returns early (skipping wall-hit-box detection entirely) once the dwell threshold is crossed -- the port's prior unconditional fall-through was a real bug, now fixed with teeth-proven tests**, `UNKNOWN_respawn_sideways_offset` **resolved and FIXED 2026-09-22 (§9v): a 12-unit vector at heading±90° (not literal ±12px), the camera-target car rotating +90° and every other car -90° -- the port's own `stepRespawn` had no way to distinguish which car is which until `cars` was threaded into its `ctx`, now fixed with teeth-proven tests**, `UNKNOWN_2911_2913` **fully resolved 2026-09-22: split (§9r) into two unrelated globals -- `[2913]` is an unrelated render-only hazard/crash "flash" flag; `[2911]`'s complete state machine characterized (§9v): 0=idle, 1=armed (a projectile kill or a drop-in partner timeout), 2=processing, confirmed across all 8 write sites**, `UNKNOWN_h2h_12f1_12f3` **resolved 2026-09-22 (§9y): `car.js`'s already-named `safeX`/`safeY`, already correctly ported everywhere -- no port change needed**, `UNKNOWN_rufftrux_timer` / `UNKNOWN_bonus_race_rules` **resolved 2026-09-22 (§9y): already correct -- fresh disassembly re-confirms `docs/engine.md` §7's own original prose and `tournament.js`'s existing implementation, a stale catalog entry rather than a real gap**, `UNKNOWN_state1_880a` **and `UNKNOWN_state1_oscillator_port` both resolved and FIXED 2026-09-22 (§9w): the M3.17 deferral's own premise ("five currently-unnamed CarRecord fields") was wrong -- all five (`heading`/`speed`/`animTimer`/`animStep`/`driftSteps`) were already named in `car.js`, just not cross-referenced by relative offset. The real mechanism (bucket `heading&0xF8`, step ±4/tick toward the nearer of {0,0x80} around the circle including wraparound, table selected by WHICH waypoint not by round, gated by `driftSteps`) is now ported in `stepHazardDeath` with teeth-proven tests. New, narrower open item surfaced along the way: `UNKNOWN_state4_5_driftsteps_gate`** **resolved and FIXED 2026-09-22 (§9z): the gate itself, plus a real sfx-timing bug (the port tested `animTimer` where the real gate tests post-increment `animStep` -- fired ~2-4x too early) and an incomplete terminal-field set (both states), all found alongside it -- teeth-proven tests, full account §9z** / state A internals (visual sequences, not core physics), `UNKNOWN_kidmodifier_use` **resolved and FIXED 2026-09-22 (§9y): a real, substantial port gap -- `InitRaceCarsFromTables`'s full 7-field per-car tuning handicap (`maxSpeedCur`/`reverseLimit`/`accel`/`brakeDecel`/`slipThreshold`/`gripStep` plus `DRONE_MAX_VEL_HANDICAP` and a two-car-format/race-23 penalty layer) was entirely unapplied since M3.6; now ported into `spawnCars` with teeth-proven tests -- an investigating fork's own report had 3 concrete errors, caught by independent re-verification before any code was written**, `UNKNOWN_2p_p2_record` **resolved 2026-09-22 (§9y): the two-human H2H win-tally scoreboard (`[98A]`/`[98C]`, first to 4 wins) plus a confirmed-dead abandoned draft function (`ShowHeadToHeadResultUnreferenced`) -- pure documentation, no port gap since two-human H2H isn't implemented at all**, `UNKNOWN_frontend_stat_block_0359` **resolved 2026-09-22 (§9t): two unrelated blocks -- `DS:0312` is the tournament board's 26-word icon-position table, `DS:034B` is a 17-byte bounce/wobble curve used by the elimination screen**, `UNKNOWN_beat_the_clock_timetrials` **resolved 2026-09-22 (§9t): not a hidden mode -- "TRIPLE WIN !!!"/"BONUS RACE"/"BEAT THE CLOCK"/"TIMETRIALS" are round 9's own bonus-race intro banner, gated on `[28BF]==9`; "RACE 99" and "IS OUT!!" are unrelated, resolved separately (a self-patching race-number template and the elimination screen's own banner)**, `UNKNOWN_frontend_submenu_labels` **resolved 2026-09-22 (§9t): the two items are WORDS.CHR sprite graphics, not strings -- "Head to Head" (slot 11, frame 1) and "Challenge" (slot 11, frame 2), each paired with a SELGAM.CHR icon (slot 10, frames 2/3), confirmed by descriptor-slot arithmetic against the documented 18-slot binding table**, `UNKNOWN_smoothness_label_map` **resolved 2026-09-22 (§9t): 1=HIGH, 2=GOOD, 3=MEDIUM, 4=LOW, a direct unreordered walk confirmed live; "AUTO" is proven NOT part of the set (its own purpose is a new, narrower, unnamed open item)**, `UNKNOWN_lua_hook_model` / `UNKNOWN_replay_determinism` (bridge), and **`UNKNOWN_live_verification`**
-**narrowed, not closed, 2026-09-22 (§9aa/§9ab): the first true live-DOSBox check of any M3 engine
-code.** §9aa's own paused, symbol-confirmed memory read of a fresh `ROUND21` race matched every one
-of the 7 tuning fields × 4 cars against `race.js`'s current formula (`maxSpeedBase`'s own match was
-initially mis-transcribed as 1662 for every car, agreeing with a then-also-wrong `tuningFieldsFor`
-formula -- both corrected in §9aa's own correction note and §9ab), and resolved M3.4's own long-open
-step-1 divergence as a stale test-harness approximation (`check-trace.mjs`'s own `staticFieldsFor`,
-replaced by a shared `tuningFieldsFor` export) rather than an engine bug. §9ab (same day, continuing
-the two open items §9aa itself surfaced) resolved both: `UNKNOWN_ai_maxspeedcur_brk_interaction`
-**fixed** -- the real single writer of `maxSpeedBase` (`InitRaceCarsFromTables 4244-4248`) copies it
-from the CX-adjusted `maxSpeedCur`, not the round-flat `info[0]` `tuningFieldsFor` used; fixing that
-one line also fixed this, since `ai.js`'s `car.maxSpeedCur = car.maxSpeedBase` reset now restores the
-correct value. `UNKNOWN_trace_posY_terrain_stop` **resolved, not an engine bug**: proven by removing
-the one suspect row from the trace and re-running the full replay -- 19 of 19 remaining transitions
-then match exactly, zero mismatches, confirming the "divergence" was a single torn Lua-capture sample
-(raw step label 69; only one car's `controlBits` differed from the previous kept row, everything else
-frozen -- the same artifact class §9g already diagnosed once in this trace's own AI stage-2 test, this
-time pinned to `RunDroneSteeringAi`'s own first instruction, `1000:542e`, zeroing `controlBits` before
-rebuilding it). `npm run trace`'s own literal, unfiltered output is 13 of 20 (the tool doesn't filter
-the bad row, so the number stays honest); the true result -- every real physics step in this trace
-matches -- is documented, not silently substituted for it. A real, independently-found bug was fixed
-along the way: `bounceAndCommit` read a freshly-computed local instead of the persistent
-`car.wallHitPending` field the real bytes (`5c7a`) actually gate on, and `updateCarTileCollision` never
-reset that field when not colliding (real reset site `1000:57fb`) -- both fixed. A narrower gap
-surfaced by that same investigation was deliberately left open after a fix attempt caused a real
-regression (round 3's drop-in sequencer): `UNKNOWN_col_response_active_state_gate` **resolved and
-FIXED 2026-09-22 (§9ae): the gate is now ported exactly (`1000:5534`/`553e`), `bounceAndCommit` reads
-persistent `car.progress`/a fresh `world.levOf(car.metaTile)` instead of the old ephemeral `hit`, and
-two further real gaps surfaced and were fixed alongside it -- an unconditional hit-flag clear
-(`5d1d-5d32`) newly load-bearing under the gate, and `tools/check-rounds.mjs`'s own drop-in test
-constant (334 ticks), which turned out to have been measuring a bug (the ungated collision function
-was picking up real wall bounces mid-slide, converging FASTER than the real bytes do) rather than the
-genuine ~532-tick real rate. New, narrower open item surfaced: `UNKNOWN_commit_reintegrates_post_bounce`
-**resolved and FIXED 2026-09-23 (§9af): a fresh re-disassembly of `5c70-5d9f` (not trusted from this
-citation) confirmed the divergence and found the hit-flag clear is ALSO scoped to the same
-`wallHitPending && wallBounceEnable` gate, not unconditional as described here -- both fixed together
-in `bounceAndCommit` (a second `integrateCar(car)` call inside the gate, and the clear moved inside
-it), with a real second bug found alongside (terrain.js's `h6882`-triggered bounces were reading
-stale hit flags as always-zeroed "none" under the old unconditional clear). `npm run trace`/`npm run
-ai`'s 13-of-20/59-of-60 baseline is unchanged (this capture never exercises a bounce tick), confirmed
-as the discriminating regression check rather than assumed clean.**. Still open:
-a longer/driving/turning/collision trace,
-car-car impulse sign (already separately resolved 2026-09-21 without a DOSBox capture — §9n — by
-re-reading the disassembly directly), sfx-2-on-lap-completion, and one live physics step of car 0
-(human) under real input. **Narrowed 2026-09-23 (§9aq 3): the control-byte -> physics leg IS now
-live-checked (`0x20`/`0x48`/`0x28`/`0x40` all traced live over 7 ticks, `[PROVEN]`, M3.42/M3.43) —
-what remains open is specifically the earlier key-press -> control-byte leg, which §9aq 3's own
-poke deliberately bypassed (`[BX+137B]` was written directly at the breakpoint, after
-`PollAllCarInputs` had already run for that tick) rather than exercised.**
+| ID | Status | Section | Address | Answer or open question |
+|---|---|---|---|---|
+| `UNKNOWN_0160_0192_meaning` | closed | §9ax/§9az (listed open again in §9bj–§9bl) | `[0x160]`,`[0x192]`,`ResetTournamentState 0EBA` | `[0x160]` is the carousel's "centred" value, `[0x192]` its scroll position. |
+| `UNKNOWN_0400_mode` | closed | §9bz (first read §9bf) | `0400`/`0420`, `DS:[0x156]` | With [0x156]=1 (two-human play only), header 0400 also draws WORDS frame 1 at (0xA2,8) and a divider (rows 0x1E-0x21); pixel-checked [STATIC]+live frames. |
+| `UNKNOWN_0db0_descriptor_contents` | closed | §9bl | `0DB0` | The resolver dispatches to chrDescriptorTable slots FCHAPPY/FCSAD/FCFROWN/FCNORMAL, frame = 2·character+bit4 [STATIC]. |
+| `UNKNOWN_0f64_speed_zero` | closed | §9cq (mechanism §9ar a) | `7AF8`, `DS:0F64`, `[127A]` | Under OPL, 7AF8 zeroes all four car speeds; SPEAKER/NONE keep them and send AH=0x10 [PROVEN]. The OPL pitch itself was not captured. |
+| `UNKNOWN_1082_meaning` | closed | §6 | `DS:1082` | Trivial: `SetupTournamentRace`/`StopMusicRunRaceReloadAssets` set it to 1 around `RunRaceMainLoop` [STATIC]. |
+| `UNKNOWN_1254_1256` | closed | §9v (re-confirmed §9cf) | `CarRecord+0x1254/+0x1256` | Dead per-car static words, 0 references in the image; values follow (car+1)·0x2400 and car·0x3600. |
+| `UNKNOWN_1386` | closed | §9v | `[1386]` (writers `43AC`,`6AD0`,`6ADE`) | Write-only; exact logical NOT of [1388]/onBridge, no reader found in a full-coverage search [STATIC]. |
+| `UNKNOWN_138A_clear` | closed | §9v | `DS:138A` | No clear-to-0 site exists (4 writers set 1, 3 readers), so wall bounces always halve. |
+| `UNKNOWN_17DA_semantics` | closed | §9v | `5960-5B34`,`DS:10A0` | CONTACT_TABLE's angle and SINE8's index use the same convention with no transform; the port was already correct. |
+| `UNKNOWN_17ff_other_callers` | closed | §9br (raised §9bl) | `17FF` (sites `1908`,`1919`,`196C`,`1988`,`164B`,`1E0C`,`26BA`,`2166`) | All 8 xref sites read. Board, results and outcome waits are ported; 26BA is ported in §9bx; 2166 is in dead code. |
+| `UNKNOWN_22E1_scope` | closed | §9r | `DS:22E1`, `6AE5-6FEA` | DS:22E1 is exactly 74 bytes: 5 × 7-word round-3 drop-in entries plus a FFFF,FFFF terminator [PROVEN] (live read). |
+| `UNKNOWN_25011968_reset_timing` | closed | §9bc (also §9ar note) | `11AF-11BA` in `115C` | The cheat's lives=10 reset lands after in-race type-0 decrements and before the loss check; ported into `reportRaceResult` [STATIC]. |
+| `UNKNOWN_2652_progress_scale` | closed | §9s | `[2652]`,`3D34-3D51` | Per-race data: `[2652]` is the max byte of the .MAP progress plane, `[2654]` half that. |
+| `UNKNOWN_2654_half_max_progress` | closed | §9s | `[2654]`, `3D34-3D51` | Per-race data: [2652]=max byte of the race's .MAP progress plane, [2654]=[2652]>>1. Replaced a wrong hardcoded 128. |
+| `UNKNOWN_2656_valueset` | closed | §7; `docs/sound.md` §8 | `DS:2656`; writers `0FC9`,`103A`,`1E52`,`1F88` | Only ever 1 or 2: the race-format selector (four-car or two-car), not the player count. |
+| `UNKNOWN_26B8_polarity` | closed | §9u (knockout-only half §9x) | `DS:26B8`, `77F5`, `4C08`/`4C64` | One slot re-armed by two events (knockout reset, finish block); the match winner reads it as scorer/winner, shown by WINNER!/LOSER! [STATIC]. |
+| `UNKNOWN_2911_2913` | closed | §9r / §9v | `[2911]`, `[2913]` | Two unrelated globals: [2913] is a render-only crash flash flag; [2911] is 0 idle, 1 armed, 2 processing (arming source corrected §9am). |
+| `UNKNOWN_2p_p2_record` | closed | §9y | `DS:098A`/`DS:098C`, `240A`, `2081/208B` | The two-human H2H win tally (first to 4), plus a dead draft function ShowHeadToHeadResultUnreferenced. |
+| `UNKNOWN_4be7_twocar_rubberband` | closed | §9cx (the block itself §9am) | `4B41`, `4B45-4B56`, `4BE7-4CFE` | Not a rubber band branch: `4B41` stores the flag `[262F]` first; `4BE7` is the two-car finish block, reached only with laps ≤ 0 [STATIC]. |
+| `UNKNOWN_589c_progress_transform` | closed | §3 / §9ad | `589C-5920` | No transform: TestColMaskBitAtWorldXY returns the raw .MAP plane-2 byte in ES. |
+| `UNKNOWN_6210_dispatch_path` | closed | `docs/sound.md` §3b | `DS:26D7` | Resolved to the per-round DS:26D7 sfx dispatch table-of-tables. |
+| `UNKNOWN_666e_dispatch_path` | closed | `docs/sound.md` §3b/§8 | `666E`, `DS:26D7` | Reached through the per-round DS:26D7 dispatch table of tables (id-18 low-grip tile handler). |
+| `UNKNOWN_6ae5_round3_sequencer` | closed | §9r | `6AE5-6FEA`,`[1382]` | Round 3's 5-substate drop-in/shortcut sequencer (state 0xE), ported in dropin.js. |
+| `UNKNOWN_851f_bonus_banner_choice` | closed | §9ag | `851F`, `77F5`, `[26B8]` | "Bonus" labels the car the knockout-reset spotlight names; not a third outcome. |
+| `UNKNOWN_8a2_accel_gate_relevance` | closed | §9bf | `40A0`, `DS:08A2` | Moot: 40A0 lies inside 3FBE-4134, which two-human H2H never reaches, so no [8A2] gate is needed. |
+| `UNKNOWN_8a2_meaning` | closed | §9bg | `DS:08A2` (`CS:9C62`), `3F30` | `[0x8A0]`/`[0x8A2]` hold the CHOOSE GAME pick (tournament/single race), not the handicap answer; the `3F30` fork was read ==1 live [PROVEN]. |
+| `UNKNOWN_93c2_writer` | closed | §9bn/§9bo (reverses §9ar e) | `17D7`,`179B`,`CS:[0x93C2]` | `CS:[0x93C2]` aliases `DS:[0x2]`, the tick counter, so `179B` has a real ~700-tick timeout. |
+| `UNKNOWN_a329_writer` | closed | §9bn/§9bo (reversing §9ar f); §9cf 4 | `37BF`, `CS:A329`=`DS:0F69`, `2911` | CS:[A329] is DS:[0F69], the 25011968 cheat flag (writer 2911), so the F12 dump is reachable [STATIC]. The AL==0x58 source is untraced and it was not live-tested. |
+| `UNKNOWN_ai_maxspeedcur_brk_interaction` | closed | §9ab | `4244-4248`, `129E` | `maxSpeedBase` is copied at spawn from the already-CX-adjusted `maxSpeedCur`; `tuningFieldsFor` was fixed and ai.js was already exact [PROVEN] live reads. |
+| `UNKNOWN_alt_tuning_path` | closed | §9bg | `3F3B-3FBD`,`[0x8A2]` | Two-human H2H's alternate tuning is ported (altTuningFieldsFor), live-proven for the bit7=0 case [PROVEN]. |
+| `UNKNOWN_antifont_empty` | closed | `docs/intro-and-codecard.md` (SM.EXE section) | - (SM.EXE `CharWidthTable` image 0x6CF) | Harmless: the 0-byte ANTIFONT.BIN makes SM.EXE blit an uninitialised block, invisible in practice [STATIC]. |
+| `UNKNOWN_bc5_high_byte` | closed | §9ar d | `DS:0BC5` | Both writers (title counter 0-8 and H2H round-1 with XOR AH,AH) stay in a byte, so the high byte is dead. |
+| `UNKNOWN_beat_the_clock_timetrials` | closed | §9t | `11F8`, `1219-121E`, `[28BF]` | Not a hidden mode: the four strings are round 9's bonus-race intro banner, gated on `[28BF]==9` [STATIC]. |
+| `UNKNOWN_bonus_race_rules` | closed | §9y, corrected §9bb | `1A82`,`1123-113A`,`1A9F`,`[343]`,`[291D]` | Rules confirmed in §9y; §9bb found the trigger is uncapped and the cap applies only when resolved. |
+| `UNKNOWN_brk_format` | closed | `docs/track-layout.md` .BRK section / Open items | `5495`, buffer `3B92` | Decoded: per-race AI brake/speed-limit stream indexed by the .MAP progress plane-2 value. |
+| `UNKNOWN_brk_nibble_reuse` | closed | `docs/track-layout.md` .BRK section | `5495-5531` | Nibble 0 jumps straight past 54AF (never brakes). 4/15 run the type-1 check mid-correction; 3/4/15 are identical. No second consumer. |
+| `UNKNOWN_brk_record_types` | closed | `docs/track-layout.md` .BRK section / Open items | `5429-5531` | Type 1 is a brake check on current speed (896+128n) and the only type that can brake; type 2 floors target speed (1536+64n) and never brakes [STATIC]. |
+| `UNKNOWN_bx_at_30df` | closed | §2 | `30DF`,`[27B5]`,`[27B7]` | BX is the camera-target car (`word[27B7+2·[27B5]]`, or `[2662]` when that word is 1); one-player gives car 0. |
+| `UNKNOWN_car_camera_2p` | closed | §3 / §9c | `5019-51B0`, `DS:27B7`, `[27B5]` | CAR_CAMERA_TABLE[[27B5]]: index 0 = sentinel for the two-car branch, 1-4 = car record offsets; table read live. |
+| `UNKNOWN_car_draw_anchor` | closed | §9d (M3.32) | `7D73`, `7CE0`, `7E5C` | The sprite is centred: body at dx-half-z, shadow at dx-half+z from (posX-camX, posY-camY) [STATIC]. |
+| `UNKNOWN_car_draw_wrap_asymmetry` | closed | §9d (M3.44) | `7D73`, `7E5C` | The real one-sided `+0xC00` seam fold (not a symmetric wrapDelta) is ported; the disagreement window was an 11px sliver plus a round-9 case. |
+| `UNKNOWN_case_chr_format` | closed | §9ay (+ `src/formats/chr.js` caseImage) | `0710` (BlitTileMap8x8) | CASE.CHR = 100 8x8 tiles; CASE.MAP = [cols=32][rows=21] + tile indices; the vehicle display case [PROVEN by render]. |
+| `UNKNOWN_channel_exhaustion` | closed | `docs/sound.md` §10 (M3.28) | DRIVER1.BIN `07BE-0803` | All 9 channels busy plus a state-2 slot with id≤7 gives phantom success on channel 0xFF; ported in Sequencer.startSfx. |
+| `UNKNOWN_cheats_type` | closed | §9cf 3 | `[2917]`, `[291B]`, CHEATS.BIN | All 10 effects decoded (§6); `[2917]`/`[291B]` are write-only, so type 6 does nothing [STATIC]. |
+| `UNKNOWN_class8_choppers` | closed | `docs/sound.md` §8 (M3.45) | `DS:002F`, `[9D8]`, `7AC9` | Class 8 = CHOPPERS, from a direct read of the class-name table [STATIC]. Live confirmation is still optional (GOAL Part L). |
+| `UNKNOWN_codecard_cursor_origin` | closed | `docs/intro-and-codecard.md` (M3.30) | - (FONT.BIN) | A live capture shows the cursor frames cell (0,0) correctly [PROVEN]; the ~10px gap is likely a centred 32×22 cursor sprite [STATIC]. |
+| `UNKNOWN_codecard_neutralised` | closed | `docs/intro-and-codecard.md` (FONT.BIN) | FONT.BIN `+0xA8`/`+0x137` | Both code-card compare sites are byte-patched (`MOV AL,DL` plus a jump/NOPs), so any answer passes. |
+| `UNKNOWN_codecard_pristine_bytes` | closed | `docs/intro-and-codecard.md` FONT.BIN section (M3.30) | FONT.BIN `+0xA8`, `+0x13A` | Both patched sites were originally CALL 0x190; CMP AL,DL; Jcc, inferred from the intact +0xE9 site [STATIC]. |
+| `UNKNOWN_col_response_active_state_gate` | closed | §9ae | `5534`/`553E` | The collision function gates on active!=0 && state==0; ported, and `bounceAndCommit` now reads persistent fields [STATIC, gate re-checked live]. |
+| `UNKNOWN_col_response_offtrack_branch` | closed | §9v | `5659-56A3`,`5671` | Past the 0x32 dwell it resets offTrackTicks, sets state 0xD and returns early, skipping hit-box detection; port fixed. |
+| `UNKNOWN_commit_reintegrates_post_bounce` | closed | §9af | `5C70-5D9F` | Fixed: a second integrate inside the wallHitPending&&wallBounceEnable gate, and the hit-flag clear moved inside the same gate [STATIC]. |
+| `UNKNOWN_conveyor_push_formula` | closed | §9cd (M3.84) | `6231-62E2` | The LEV remap applies only with map attribute bit 1; bit 0 reverses; each 2·sin component is clamped to [reverseLimit, maxSpeedCur]. |
+| `UNKNOWN_countdown_hud_digit` | closed | §9co | - | DOS shows 3 during the start countdown, then 4 at the first progress write, the same as the port [PROVEN]. |
+| `UNKNOWN_ct_tile_pixel_layout` | closed | `docs/track-layout.md` .CT section | `448C-4575` | .CT is not pixels: 6×6 little-endian tile-index words per meta-tile [PROVEN] by the live diff. |
+| `UNKNOWN_dir_bucket_source` | closed | §3 / §9 | `5DE6`, `[12E0]`, `5454` | The .DIR remap row is LEV bits 6-5 of the car's current tile, written every committed step for every car [STATIC]. |
+| `UNKNOWN_dir_values` | closed | `docs/track-layout.md` .DIR section | `DS:18FB` | Each byte = a terrain grade/ramp nibble + a direction nibble, resolved through two tables to a 16-point compass [PROVEN] (by render). |
+| `UNKNOWN_drawn_flag_onscreen` | closed | §9ao | `[1250]`,`7D73`,`7D7D`,`7E54`,`4F3C` | `[1250]` is a sticky, clip-tested "on screen at the last draw" flag; the `4F3C` fire gate is ported [PROVEN]. |
+| `UNKNOWN_driver1_device` | closed | PLAN.md §9 | - (DRIVER1.BIN) | DRIVER1.BIN is an OPL2/AdLib driver (Sound Images Gen 2). |
+| `UNKNOWN_drv2_live_fidelity` | closed | `docs/sound.md` §4; §9cq | DRIVER2.BIN `0459` | The DRIVER2 memory model replays two live captures byte for byte; sfx 16-18 are dropped. Speaker audio is rendered, not captured. |
+| `UNKNOWN_elimination_bounce_clip_band` | closed | §9ba | `1767`, `0630`, `04BD` | There is no clip band: `SUB [BX+0x19],AL` shrinks the drawn row count by the wobble offset, so the icon squashes [STATIC]. |
+| `UNKNOWN_engine_high_bend` | closed | `docs/sound.md` §10 (M3.28) | DRIVER1.BIN `0551-0566` | ComputeBendOffset: bend ≥0x40 takes the positive-offset path; the port's bendOffset was already exact. |
+| `UNKNOWN_exit_hold_855a_pass` | closed | §9cm (M3.93) | `855A`, `[2630]`/`[2621]` | Ported with the BX drift. It can pass all 100 iterations, and a cheat exit during P2's deciding blink becomes a loss. |
+| `UNKNOWN_f61_p2_control_word` | closed | §9bg | `DS:0F61`, `DS:265A` | `[0xF61]` really is SETTINGS.DAT's P2 control word; live `[0xF61]`, `[0x265A]` and file word 1 all read 4 [PROVEN]. |
+| `UNKNOWN_f6a_reader` | closed | §9bt/§9bu | `1398-13E0`,`[0xF6A]`,`2916` | The 25011968 cheat's keypad +/- race skip at the race intro moves `[28C1]` by one; ported. |
+| `UNKNOWN_fade_duration` | closed | §9co | `327A`, `32CE`, `[261F]` | [PROVEN] live: exit fade 327A took 16 ticks, fade-up 32CE 17 (CPU-bound, DOSBox numbers); the port uses them. |
+| `UNKNOWN_fallbranch_stale_fields` | closed | §9ar b | `7759-7764`, `8339`, `[12BA]/[12BC]` | The fall branch skips the knockoutX/Y snapshot, so the other car redraws a stale overlay. This is original behaviour, already ported [STATIC]. |
+| `UNKNOWN_fire_gating` | closed | §9an 5a | `4D4B-4D70`, `4F03`, `4EFB`, `[2915]` | Keyboard/mouse fire preempts steering/throttle (`4D70->4F03`); drones and joysticks reach fire only after an accelerate tick. Ported. |
+| `UNKNOWN_frontend_stat_block_0359` | closed | §9t | `DS:0312`,`DS:034B` | Two blocks: `DS:0312` the board's 26 icon positions, `DS:034B` the elimination screen's 17-byte wobble curve. |
+| `UNKNOWN_frontend_submenu_labels` | closed | §9t | descriptors `0xC8A`/`0xCA5` | The ONE PLAYER items are WORDS.CHR sprites (slot 11 frames 1/2) with SELGAM.CHR icons (slot 10 frames 2/3), not strings. |
+| `UNKNOWN_gfx1_header` | closed | §9cf 9 | - (SM.EXE `LoadGfx1File 0BEF`) | Closed as irrelevant: no SM.EXE instruction reads GFX1.GFX bytes 0-3 (`00 01 6B EC`). |
+| `UNKNOWN_h2h_12f1_12f3` | closed | §9y | `[BX+12F1]`/`[BX+12F3]`, `437B`/`4383`, `7838-7868` | These are car.js's already-ported `safeX`/`safeY`; the knockout reset merely reuses them [STATIC]. |
+| `UNKNOWN_h2h_bx_clobber_effects` | closed | §9an 4 | `3098-30B5`,`7429`,`73E7`,`51B2` | `7429` doesn't save BX, so on blink-swap ticks `73E7`/`51B2` act on bar-value offsets; ported in twocar.js. |
+| `UNKNOWN_h2h_knockout_only_ending` | closed | §9x, corrected §9am | `3081`, `7759-78F7`, `76F2`/`772A`/`7742` | Two-car races end only at a knockout exchange's commit (or the instant-win cheat); completing laps never ends one (§9am corrects §9x). |
+| `UNKNOWN_h2h_match_score_writers` | closed | §9ag | `4C08`/`4C64`, `[26B4]`/`[26C4]`, `77F5`, `[26B8]` | Yes, they can disagree: 4C08/4C64 echo 77F5's first verdict once per race, while [26B8] tracks the latest knockout. |
+| `UNKNOWN_handicap_rosterword_link` | closed | §9bk | `0B0E` (after `CALL 0B51`), `DS:1D6+c`, `DS:2668`/`266A` | A YES answer is ORed into the roster word's bit 7 (the bit `3F3B` tests); `0B51` is called for every commit [PROVEN] live. |
+| `UNKNOWN_idle_tick_after_load` | closed | `docs/sound.md` §1 | `0073`,`CS:3279` | The first driver tick is the one after the game's first post-load command (AH=9 at `0073`) [PROVEN]. |
+| `UNKNOWN_intro_key_effect` | closed | §9as; `docs/intro-and-codecard.md` | - (SM.EXE INT 9 hook CS:0CBF) | No key skips the intro; only a mouse click or the timeout. Holding A+B holds it open. |
+| `UNKNOWN_intro_live_timing` | closed | `docs/intro-and-codecard.md` SM.EXE section (M3.30) | - (BIOS `0040:0049`/`006C`) | 86 BIOS ticks = 4.72 s from mode 13h set to mode 0Eh exit, plus ~0.16 s to the code card [PROVEN]. |
+| `UNKNOWN_joystick_calibration_body` | closed | §9cu | `2AB5`,`2B93`,`2FFE` | The F7 calibration is ported and live-checked with no stick attached. |
+| `UNKNOWN_keyboard_fire_preempt_live` | closed | §9aq 3 | `4D70`→`4F03`, `[BX+137B]` | [PROVEN]: keyboard fire freezes car 0's speed and heading while held. |
+| `UNKNOWN_kidmodifier_use` | closed | §9y | `3FBE-4059` (InitRaceCarsFromTables) | The 7-field per-car AI tuning handicap (CX, DroneMaxVelHandicap, two-car/race-23 layer) was unported and is now ported into spawnCars. |
+| `UNKNOWN_lev_format` | closed | `docs/track-layout.md` .LEV section | - | Superseded by the decoded `.LEV` section: bit 7 safe-respawn skip, bits 6-5 respawn heading, bits 4-2 spawn nudge [STATIC/PROVEN render]. |
+| `UNKNOWN_lev_low_bits` | closed | §9cf 1 | `DS:1B5B`,`[28B9]`,`5DE0`,`70C8` | No instruction reads .LEV bits 1–0; they are authoring data [STATIC]. |
+| `UNKNOWN_lev_round2_size` | closed | `docs/track-layout.md` ROUNDnBR.LEV | `3BBA-3BC7` | The loader reads a fixed 128-byte buffer; round 2's 3 extra bytes are never queried. A harmless authoring artifact. |
+| `UNKNOWN_lua_hook_model` | closed | §9f | - | Lua hooks work for per-frame capture; the 64 KB output cap binds first (~100 rows), before the 5 s wall-clock cap. |
+| `UNKNOWN_lvl_reference` | closed | §7 | `SelectGameSetLvl 2BE8` | SelectGameSetLvl finds no GAME?.LVL (INT 21h AH=4Eh) and keeps the defaults. |
+| `UNKNOWN_map_attr_bits` | closed | §9cf 2 | `589C`/`58CD`, `[12DE]`, `DS:191B` | Bit 1 = the cell's flow field mirrored across the tile's LEV axis; bit 0 = rotated 180° [STATIC]. |
+| `UNKNOWN_map_format` | closed | `docs/track-layout.md`; `PLAN.md` §9 | - | .MAP = a 32×32 meta-tile byte grid (bits 0-5 index, 6-7 attribute) plus a track-progress plane. It reproduces a live frame [PROVEN]. |
+| `UNKNOWN_map_plane2` | closed | `docs/track-layout.md` Open items | - | `.MAP` plane 2 is the per-tile track-progress value (wrong-way check, `.BRK` offset) [STATIC]. |
+| `UNKNOWN_microu_runs_standalone` | closed | §9cf 8 | - | Yes: MICROU.EXE alone runs through the code card and options into a race [PROVEN]. |
+| `UNKNOWN_modex` | closed | `docs/track-graphics.md` Video pipeline | - | No sequencer, graphics-controller or CRTC start-address writes: plain mode 13h, no Mode-X, no page flipping [STATIC]. |
+| `UNKNOWN_outcome_screen_timeout` | closed | §9bq (M3.71) | `1C1B`, `17FF`, `[261F]` | SIMPLE path: 17FF CX=15 windows, timeout at tick 704. LIVES path: 30-step slide, poll every 6 ticks, timeout 702. Both ported [STATIC]. |
+| `UNKNOWN_overlay_ranges_other_rounds` | closed | §2; `docs/track-graphics.md` | `397F-39E4`,`[042E]` | Overlay bit-15 ranges are hard-coded for rounds 2 and 3 only, gated on GAME1; no table exists. |
+| `UNKNOWN_pause_banner_position` | closed | §9q | `35F0`, `9289` | The Paused! banner's Y offset is the hand-authored constant 48 (not 89), drawn with a colour-0-transparent blit [PROVEN] (by disassembly). |
+| `UNKNOWN_pause_exact_timing` | closed | §9v, revised §9cl | `[261F]`, `35F0-37FB`, `37ED` | 140 ticks = 2.000 s at 70 Hz [PROVEN], but §9cl found that is only a cheat-only floor/stage-1 timeout; the pause has no minimum. |
+| `UNKNOWN_ph0_0600_1380` | closed | §4; remainder `UNKNOWN_ph0_1140_1380` closed §9cf | `DS:45E3`,`82BE`,`DS:28AB` | 5 state-2/0xD animation frames; the last 576 B are knockout slot 5, which the frame table never selects. |
+| `UNKNOWN_ph0_1140_1380` | closed | §9cf 9 | `DS:28AB`, `DS:5123-5362` | Unused asset: knockout frame slot 5, never chosen by the 28AB frame table; three icon shapes with no consumer [STATIC]. |
+| `UNKNOWN_ph0_layout` | closed | `docs/track-graphics.md` (PLAN.md §9) | `DS:3FE3` (BITSFILE.PH0) | Every PH0 offset from +0x1380 to EOF is mapped; it narrowed into ph0_tail_icons, ph0_light_roles and ph0_1140_1380, since resolved. |
+| `UNKNOWN_ph0_light_roles` | closed | §9p | `8FC2-8FE8`,`[26B4]` | The bottom `[26B4]` lights are red (car slot 0), the top `8-[26B4]` blue (car slot 1). |
+| `UNKNOWN_ph0_tail_icons` | closed | §9q (tail icon ported §9cj) | `8712`, `871F-872D`, `[1396]` | The projectile draw's tail icons; only indices 0/1 are used. |
+| `UNKNOWN_pr0_header_use` | closed | §9cf 5 | `4808`, `DS:3EE3`, `8996` | It is not a header: it is tile 0, copied to DS:3EE3 for the rounds 1/3/5 tile-0 parallax [STATIC]. |
+| `UNKNOWN_puff_slot_fields` | closed | §9q (byte-exact §9ch) | `8083`,`8386` | Each trigger spawns a pair of 8×8 sprites sharing one frame counter and one source (wet/skid/mud). |
+| `UNKNOWN_race_end_commands` | closed | `docs/sound.md` §8 (OPL, §9an.2) + §4 (DRIVER2) | `30DF`, `30EF`, `3102`, `3109` | Sfx 16, 7AF8 (OPL: zeroes speeds only), a 100-tick hold, then AH=8 (wiped) and AH=6. DRIVER2 drops sfx 16 [STATIC]. |
+| `UNKNOWN_race_intro_prehold` | closed | §9co/§9cp | `32CE`,`12B7`,`12DF`,`[26CE]` | `32CE` takes 17 ticks only when `[26CE]==1`, otherwise it is skipped; the race-intro fade-up is ported. |
+| `UNKNOWN_race_reader_low_bits` | closed | §9cf 4 | `2DB1-2DE0`, `4D47`, `37B8-37F5`, `DS:107C` | Nothing reads control-byte bits 0-2. The pause reads [107C] for the cheat-gated F1+F2/F2+F3 combos [STATIC]. |
+| `UNKNOWN_ranking_2670` | closed | §9s | `8E10`, `8E1A-8ECC`, `[2652]` | score=(9-laps)*scale+progress with an 8-bit `MUL CL`, a persistent bubble sort and a freeze on finish or `[26C6]>=2` [STATIC]. |
+| `UNKNOWN_rematch_fail_stale_2682` | closed | §9cm | `[2682]`,`7759`,`7F62` | Double-fall outcomes traced: mid-blink the first point is lost and the second counts; unreachable in play. |
+| `UNKNOWN_respawn_sideways_offset` | closed | §9v | `71A2-721F`, `[1278]` | A 12-unit vector at heading±90°: the camera-target car rotates +90°, the others −90°. Port fixed. |
+| `UNKNOWN_round3_bridge_path` | closed | §9cc | `5740-57F7`, `683C`, `55B4` | It is round 3's whole collision path (open/wall/launch rules plus the CX=12 progress quirk); ported. |
+| `UNKNOWN_rufftrux_timer` | closed | §9y | `[26C8]`,`8683-8710`,`[291D]` | Already correct: §7's rules and tournament.js match a fresh disassembly. |
+| `UNKNOWN_sb_pcm` | closed | PLAN.md §9 | - | There is no Sound Blaster PCM path; BLASTER means OPL2 via DRIVER1.BIN. |
+| `UNKNOWN_scre0_raw` | closed | `docs/track-graphics.md` "Debug leftovers"; `PLAN.md` §9 | `35BF`, `37BF` | SCREn.RAW is a back-buffer dump (0xFFFA bytes) triggered by F12 in the pause, gated by the 25011968 flag [STATIC]. |
+| `UNKNOWN_settings_key_slots` | closed | §6 (also `docs/track-layout.md` SETTINGS.DAT) | `92F0`, `93AF-93BA`, `DS:106C`, `DS:AE4B` | The 5 KEYS1/KEYS2 slots are LEFT, RIGHT, ACCELERATE, BRAKE, SELECT in that order [STATIC]. |
+| `UNKNOWN_setup_unwritten_live` | closed | §9cs | `38FB` | A live marker fill left exactly the SETUP_UNWRITTEN bytes (`setup_marker_records.bin`) [PROVEN]. |
+| `UNKNOWN_sfx_semantics` | closed | §9cf 7 | AH=5 sites (`docs/sound.md` §3b) | Every sfx id's rendered character fits its trigger sites; measured, not listened to. Ids 2 and 15 identical; 11-13 unissued. |
+| `UNKNOWN_sm_handshake` | closed | `docs/intro-and-codecard.md` SM.EXE section | - (SM.EXE) | No handshake: SM.EXE exits with a garbage AL, and MICRO.COM never calls AH=4Dh. |
+| `UNKNOWN_smoothness_label_map` | closed | §9t, corrected §9au | `[0x263A]`,`DS:0F23`,`29CC-29D8`,`2A6E-2A7E` | 1=HIGH, 2=GOOD, 3=MEDIUM, 4=LOW; AUTO is a real 5th value that resolves to HIGH at RETURN. |
+| `UNKNOWN_stale_animtimer_port` | closed | §9cg | `73E7`, `[12B0]`, `82BE`, `309F` | Ported: one 73E7 bump for cars not in state 0, 82BE's one-step cursor; 0→1/0→D entries don't zero [12B0] [PROVEN]. |
+| `UNKNOWN_startup_check_31f0` | closed | `docs/intro-and-codecard.md` FONT.BIN section | `31F0`, `0009-000D` | FONT.BIN returns AX=0 on a pass and 0xFFFF on a fail. real_entry silently exits to DOS when AX≠0. |
+| `UNKNOWN_state1_880a` | closed | §9v (refutation), fixed §9w | `880A-8928` | The port's heading realignment had no basis; the real oscillating heading mechanism is now ported into `stepHazardDeath`. |
+| `UNKNOWN_state1_oscillator_port` | closed | §9w | `880A-8928` | Heading steps ±4/tick toward the nearer of {0,0x80}; the waypoint picks the table; gated by driftSteps; ported. |
+| `UNKNOWN_state4_5_driftsteps_gate` | closed | §9z | `7F62-7FE7`, `7EFA-7F61`, `0x12C2` | Fixed: states 4/5 are draw-only while driftSteps≠0; sfx 8 tests post-increment animStep. |
+| `UNKNOWN_stateE_reach` | closed | §9r | `6AE5-6FEA` | State E is reached only through round 3's lap-progress-gated drop-in/shortcut sequencer (terrain row index 4). Ported in dropin.js. |
+| `UNKNOWN_tick_counter_writers` | closed | §9v | `48D8`,`489C-490C`,`DS:0002`,`DS:261F` | One ISR incrementer bumps `[28F7]`, `[0002]`, `[261F]` and `[26D0]` every tick at 70.0 Hz [PROVEN]. |
+| `UNKNOWN_tile_index_overflow` | closed | §9ac / §9ad | colFileBuf/dirFileBuf, `.BRK` buffer `3B92` | Round 8/9 cases unreachable (flood fill); round 5 tile 56 reachable and fixed, with cross-race stale bytes replicated. |
+| `UNKNOWN_trace_posY_terrain_stop` | closed | §9ab | - | Not an engine bug: a torn Lua capture sample; with that row removed, the replay has zero mismatches [PROVEN]. |
+| `UNKNOWN_track_name_table` | closed | §7 (`src/data/frontend-tables.js`) | `DS:0460` | 36 NUL-walked names indexed (round-1)*4+(race-1); round 2's empty slot is the first (the qualifier). |
+| `UNKNOWN_tune7_unused` | closed | `docs/sound.md` §8 (M3.45) | 15 `AH=4` driver call sites | Tune 7 is never requested (exhaustive search of the driver far-calls). Tune 5 is also unreachable. |
+| `UNKNOWN_twocar_race_end` | closed | §9am | `4AEE-4D10`, `7429`, `5019-51B2`, `76F2`/`772A`/`7742` | The whole two-car match is ported: camera-separation points, 8/0 or bar-leader-at-finish end, Play Off, `[2630]` fix-up [STATIC]. |
+| `UNKNOWN_unp_version` | closed | §9cf | - | UNP.EXE is UNP 4.11 (SHA-1 e034d6fe…), DIET-packed with its tag stripped. |
+| `UNKNOWN_vh0_bank2` | closed | §4 / §9; `docs/track-graphics.md` Vehicles | `DrawSprite24FromSecondBank`, `4676-468F` | Bank 2 = the state 1/4/5 animation frames; round 8 also reuses the buffer for the chopper rotor. |
 
-**Added 2026-09-23 (§9ah).** Resolved: the user-visible "finished first but lost" bug (0-cell
-progress writes, `[PROVEN]` live), the prefix-freeze ranking, the four-car race end (finished-car
-block, `[26C6]` recount, `[26CC]` countdown, result = car 0's order slot), the ROUND21 lead rule, the
-rubber band's slot-0-only scan, the TANKS-only steering modifier, the respawn's progress/cursor
-writes, and the 0xFF knockout site. New open items: `UNKNOWN_twocar_race_end` (Head-to-Head vs CPU
-still ends when car 0 finishes; the real exit is the `[26B4]` match score, `76f2`/`772a`/`7742`) --
-**resolved and ported 2026-09-23 (§9am)**;
-`UNKNOWN_round3_bridge_path` (`5740-57f7` unported, incl. the `683c` ramp path that stores progress
-12) -- **resolved and ported 2026-09-25 (§9cc): it is round 3's whole collision path**; `UNKNOWN_fire_gating` -- **resolved and ported 2026-09-23 (§9an 5a)** -- (a keyboard/mouse human's 0x08 jumps `4d70 -> 4f03` before steering and
-ENDS the tick -- no steering/throttle, in every round -- and `4f03` sends `[26C6]==2`/`[2915]==1` to the
-ground-gated coast `4e2e`; drones and joystick humans reach `4f03` only via `4efb`, after an
-accelerate-without-brake tick; the port fires first and always steers/throttles, so TANKS drones
-fire more often than the original -- needed the P1 device word `[2658]` threaded in, **done in §9an
-5a's own "Port wiring": `controllerTypes` passed from `play.js`/`flow.js`, read via `step.js`'s
-`controllerTypeOf`**);
-`UNKNOWN_countdown_hud_digit` (the port's HUD digit reads 3 during the start countdown and 4 once
-racing -- the original's countdown value not captured); smoothness 2-4 ranking/state cadence (above); `UNKNOWN_drawn_flag_onscreen` -- **narrowed §9an 5i, then resolved and ported §9ao: `[1250]` is "on screen at the last drawn frame" (`7D7D`/`7E54`), the port's `drawnThisFrame` now tracks it, and the `4F3C` fire gate is ported** --
-a live capture of a whole race end (countdown +
-final order) and of the lead rule firing remain open.
+### 10.4 Other spellings
 
-**Added 2026-09-23 (§9am).** Resolved and ported: `UNKNOWN_twocar_race_end` -- the whole two-car match
-(camera separation trigger, knockout reset in both branches, 64-step blink and commit, re-line-up,
-both-cars-down, the finish block with "Play Off", banners, the hidden loser, the light bar, the exit
-fix-up the tournament reads). A two-car race now ends only at an exchange end, as in the original.
-New or carried open items (details in §9am):
-- `UNKNOWN_twocar_live_cycle` (no live capture of an exchange yet) and `UNKNOWN_0f64_speed_zero`
-  (mechanism now fully re-derived, §9ar a; still wants the same live capture);
-- `UNKNOWN_h2h_bx_clobber_effects`;
-- the post-race 100-tick `855A` hold;
-- the flow-side H2H differences (opponent pick, no RESULTS/OUTCOME screens, the qualifier);
-- `game.html`'s unapplied instant-win cheat;
-- the cross-format findings: the keyboard-fire preempt, the car-car BX chain, the camera-init wrap,
-  the `4D0E-4D1F` lock clear, the respawn's missing resets/decrement order/`7008` quirk, the two-car
-  checkpoint overshoot;
-- `UNKNOWN_fallbranch_stale_fields` and `UNKNOWN_rematch_fail_stale_2682` -- mechanism closed, §9ar
-  b/c (the latter's downstream consequence is still open).
-
-**Added 2026-09-23 (§9an).** Resolved and ported: the Head-to-Head vs CPU flow (you pick the CPU
-opponent, PRESS ANY KEY, no intro before the qualifier, no RESULTS in H2H, no OUTCOME after a won
-race -- but ONE LIFE LOST after a lost one, and intros before races 1+), the race exit (sfx 16
-actually heard, 100 ticks of the frozen frame -- no banner -- then the subtractive fade),
-`UNKNOWN_h2h_bx_clobber_effects`, the instant-win cheat on `game.html` (plus the four-car exit
-re-force and `play.js`'s `cheatWin`), `UNKNOWN_fire_gating` (the keyboard/mouse fire preempt, the chord, `[2915]`), the car-car
-BX chain, the camera-init wrap, the lock-release site, the respawn's resets/order/`7008` quirk, the
-two-car checkpoint overshoot; the heading's bit 8 is closed as unobservable. Corrected: the pause
-resumes at the first key click (no 2 s minimum). New or carried open items (details in §9an 8):
-- `UNKNOWN_keyboard_fire_preempt_live` (the DOSBox menu dropped synthetic fire presses);
-- the on-screen `[1250]` gate on firing (`4F3C`) -- **resolved and ported 2026-09-23 (§9ao)**;
-- `UNKNOWN_exit_hold_855a_pass`, `UNKNOWN_exit_banner_live`, `UNKNOWN_fade_duration`;
-- the race-start fade-in (the original shows black, then the first frame at full palette);
-- the pause's `MIN_PAUSE_MS` (port) vs the first key click (original) **(fixed, §9cl)**;
-- the BX-quirk garbage's cross-race carry-over;
-- the Challenge flow's own divergences (final race 2nd = fail, uncapped bonus trigger, no OUTCOME
-  after a passed race, tune 5 unreachable, the main menu's tune 1, OUTCOME 4's screen, the `1A4A`
-  replacement picker, ']' on OUTCOME 2/3);
-- the carousel look of the character select and the H2H race-intro variant -- **the race-intro
-  variant's own mandatory-hold TIMING (the slide loop's own portion; the palette fade before it
-  has no derivable duration, `UNKNOWN_race_intro_prehold`) and its text-only participant list both
-  resolved and ported 2026-09-24 (§9be); its sprite panel itself (and the carousel's own look)
-  remain unported, matching §9az's own precedent**;
-- `UNKNOWN_bc5_high_byte`, `UNKNOWN_93c2_writer`, `UNKNOWN_a329_writer` -- **all three closed, §9ar
-  d/e/f**.
-
-**Added 2026-09-23 (§9ao).** Resolved and ported: `UNKNOWN_drawn_flag_onscreen`. `[1250]` is
-written only by `7D73` (plus race init). It is sticky and clip-tested: 256x224 view, height lifted
-except in round 8, round 9's own box. `[PROVEN]` by one live capture (4 of 4 cars). The `4F3C` fire
-gate is ported, so off-screen tanks do not fire. Via the same flag the rubber band now boosts
-off-screen drones while car 0 leads, and off-screen engines idle and sfx go silent. Corrected: the
-DOSBox menu input was never flaky (§9ao 7). Still open: the state-A blink phase, the smoothness
-cadence, a live edge capture, and `UNKNOWN_keyboard_fire_preempt_live` (now reachable).
-
-**Added 2026-09-23 (§9ap).** Resolved and ported, closing out §9ao 8: the state-A `[26CF]` blink
-gate (car 0 and two-car cars draw only on its on-phase, a free-running 16-physics-tick half-period;
-drones unaffected), and the smoothness 2-4 write cadence for the drawn flag specifically (`markDrawn`
-and the `[2621]` hidden-car write now honour `ctx.drawnTick`, following the same pattern
-`advanceRotorFrame` already used -- the larger state/ranking cadence divergence stays open,
-deliberately). `[PROVEN]` live, solo, across four boots (the first was invalidated by a background
-agent issuing its own DOSBox calls on the same instance; a later attempt's own round-9 restore point
-left the poked byte live too long and visibly disturbed the race, redone restoring earlier instead,
-which disturbed it again for the car-0 case in a way not fully explained -- see 6 for the full,
-unglossed account): 12 cases -- the y/x box edges, the wrap fold, and (by poking the round byte for
-one car's own `7D73` call) round 8's height exemption and round 9's own 40x40 car-0 box plus its
-unconditional cars 1-3 -- all matching exactly.
-Still `[STATIC]` only: the rubber band in action, and whether a "drawn but invisible" car is actually
-absent from the screen (attempted several times, not obtained). Also verified via `npm run build`
-and, in Chrome via the page's own debug fast-forward hook (`forceSteps`, since the tab is backgrounded
-and its `requestAnimationFrame` doesn't run there -- so this bypasses `frame()`/the real render loop
-entirely), that `ctx.drawnTick` follows the exact smoothness-4 pattern with a clean console, and that
-fire works correctly at smoothness 4 through `stepOnce`/`runStep` once car 0 clears its own
-start-of-race drop-in hold (an initial attempt inside that hold correctly produced nothing, at first
-misdiagnosed as a tooling gap).
-
-**Added 2026-09-23 (§9aq).** Resolved live, closing out §9ap 7 in full: the rubber band's accel x6 --
-a first attempt (both cars already at their own speed cap, so the boost fired but was clamped back
-to nothing) was caught and redone with a car forced well below its cap, released from its own
-start-of-race hold, its drawn flag forced off, and car 0 "leading" only through the untouched
-race-start seed order: `speed` `400 -> 544`, exactly `144 = 6x24`, unclamped, confirmed persisting
-into the next tick -- a boost observed with car 0 genuinely leading mid-race is still open; the
-row-200-223 screen cutoff,
-shown visually rather than proven as an absence -- a car forced to straddle the boundary renders only
-its topmost sliver, cut off exactly at row 199, against a full, undistorted sprite at a fully-visible
-control position; and `UNKNOWN_keyboard_fire_preempt_live` -- a keyboard human's speed and heading
-freeze exactly, for as long as fire is held (alone or with accelerate). Heading resumed correctly the
-instant fire was released; speed instead jumped well past what a coastDecel-only reading of the decay
-rule predicts -- **resolved 2026-09-23 (M3.43): not a divergence**, an offline `applySteerAndThrottle`
-replay reproduces it exactly (the already-ported `4DAF/4DDE` minimum-turning-speed floor forces
-speed to `0xff` on the same tick's steer step, immediately ahead of that tick's own no-throttle
-coast decay: `255-20=235`), pinned with a teeth-proven test in `tools/check-step.mjs`. Not pursued: the grip x1.5 rubber-band site (not
-observed reached, reason not established); the larger state-cadence divergence (§9ah), unchanged by
-design; mouse/joystick fire preempt (disassembly only, not live-checked).
-
-**Added 2026-09-25 (§9bp-§9bs).** Closed: `UNKNOWN_outcome_screen_timeout` (§9bq). New open:
-`UNKNOWN_champion_slide_duration` (`ShowChampionScreenTune3 1000:1AAD`, §9bs): the 108 slide
-iterations before the champion screen's first poll wait on nothing, so their DOS duration is
-CPU-bound; the port runs one per tick. A GOAL-DOS-PARITY.md Part L item. PRESS ANY KEY's own wait
-(`FUN_1000_0C15`) is ported in §9bt. `UNKNOWN_f6a_reader` (§9au) is traced in §9bt: the `25011968`
-cheat's keypad `+`/`-` race skip at the race intro -- **ported and closed in §9bu.**
-
-**Added 2026-09-25 (§9bv-§9by).** P4's two-human Head to Head is wired end to end (both modes). New
-open: `UNKNOWN_single_race_28c1` (§9by): `2329` never writes `[0x28C1]`, so a two-human single race
-runs with whatever value the session last left there; the alternate tuning never reads it, and its
-other readers' effect in a single race was not traced (the port passes 1).
-
-**Added 2026-09-25 (§9ca).** ESC during a race is ported the DOS way (P5's first item, closed). One
-new data point for `UNKNOWN_fade_duration`: `327A` took ~0.23s under DOSBox's CPU setting. That is
-not a closure.
-
-**Added 2026-09-26 (§9co).** Closed: `UNKNOWN_fade_duration` (`327A` took 16 ticks of `[261F]` live,
-`32CE` 17 -- CPU-bound, the DOSBox setting's numbers, now the port's), `UNKNOWN_countdown_hud_digit`
-(the original also shows 3 through the countdown and 4 at the first progress write; the port already
-matched, now pinned by a test), and the race-start fade-in (the port now holds black for the fade-up
-and steps nothing, then shows the first frame at full palette). Still unported: the race setup's own
-`395D` fade-out of the screen before the race (the port's front-end screens have no fades at all).
-
-**Added 2026-09-26 (§9cr, live).** The reload's two decrements are live-proven: 30/30/30 at smoothness 1, 40 steps with 40 flight and 20 draw decrements at smoothness 2.
-
-**Added 2026-09-26 (§9cv).** The mouse/joystick fire preempt is live-proven: with fire held a mouse car neither steers nor accelerates, a joystick car does both.
-
-**Added 2026-09-26 (§9cu).** JOY 1/JOY 2 via the Gamepad API with the real F7 calibration, and the
-mouse reader over a model of the untouched INT 33h driver; MOUSE is never offered, because `3A44` has
-no caller (live). New: `UNKNOWN_mouse_host_scale` (pointer pixels to mickeys, taken as 1:1).
-
-**Added 2026-09-26 (§9ct).** The page chrome (P7): the developer toggles appear only with `?dev`.
-
-**Added 2026-09-26 (§9cs).** Race setup leaves 14 byte ranges of every car record alone (`[STATIC]`,
-a call-tree scan of `38FB`), so they carry into the next race, with the BX quirk's garbage in them.
-Ported (`race.js` `createCarRecordCarry`, one per `flow.js` session). Live-proven the same day: the
-marker fill left exactly those bytes (`UNKNOWN_setup_unwritten_live` opened and closed).
-
-**Added 2026-09-26 (§9cr).** The smoothness 2-4 cadence is ported in full: the state handlers, the
-ranking, the puffs, the projectile draw and the engine sounds run once per drawn frame, live-proven
-(breakpoint hit counts at `[263A]` 2 and 4). `8712`'s own reload decrement is ported with it, so TANKS
-shots last half as long at smoothness 1, as in DOS.
-
-**Added 2026-09-26 (§9cq).** SPEAKER (DRIVER2, ported and live-replayed, `docs/sound.md` §4) and NONE
-(DRIVER0) are real driver choices now, with the game's `[0F64]` branches. `UNKNOWN_drv2_live_fidelity`
-is closed for the driver's state. New for the OPL game too: the pause's `7AF8` zeroes every car's speed
-(`3759`/`37A7`), live-proven under both drivers; `UNKNOWN_0f64_speed_zero` closed for the speed.
-
-**Added 2026-09-26 (§9cp).** Both ported: the first front-end screen after a race fades up (17 ticks,
-its logic frozen; the champion holds black), and race setup fades the screen before the race out
-(16 ticks), gated by `[26CE]` as in DOS (`src/frontend/dacFade.js`).
-
-**Added 2026-09-25 (§9bz).** The four two-human screens are now drawn from the original's own draw
-calls and pixel-checked against seven DOSBox frames (`npm run h2hscreens`). They are Part F's first
-front-end refs, under `tools/refs/front/`. Still `[STATIC]` only: the intermediate slide positions,
-and the 4-letter-name padding (no capture had a 4-letter name).
+These appear in the docs only as short forms or file names of the IDs above: `UNKNOWN_0600_1380` → `UNKNOWN_ph0_0600_1380`, `UNKNOWN_6ae5_round3` → `UNKNOWN_6ae5_round3_sequencer`, `UNKNOWN_ph0_1140_1380_24w` → `UNKNOWN_ph0_1140_1380`, `UNKNOWN_puff` → `UNKNOWN_puff_slot_fields`, `UNKNOWN_race_intro` → `UNKNOWN_race_intro_prehold`.
 
 ## 9ar. Six small named globals/writers, chased (2026-09-24)
 
@@ -13120,4 +13055,27 @@ port has had since §9an 5a. `check-devices` pins both with `applySteerAndThrott
 No Ghidra change was needed, so there was nothing to save. §7's flow line now uses the Ghidra names
 (`RunOnePlayerGameMenu 02e0`, `RunTwoItemMenu 0382` as well), and the §9 correction table's row
 says the renames are done.
+
+## 9cx. Part D2: §10 as a table (2026-09-26)
+
+§10 had grown into dated notes, the oldest of them one paragraph thousands of words long, and several
+of its lines still called items open that later notes had closed. It is now one table: every
+`UNKNOWN_*` ID found anywhere in `docs/`, the root `*.md` files, `src/` and `tools/` (163 spellings,
+158 IDs once 5 short forms are folded in), each with its status, the section that answers it, its
+address and a one-line answer or question. Each status was re-read from the ID's latest dated note,
+not from §10's old text. Four items with no ID (the Part L live captures and Part F's pixel parity)
+got rows of their own.
+
+The re-read found one item that was already answered:
+
+- **`UNKNOWN_4be7_twocar_rubberband` is closed `[STATIC]`.** §9bg read `4B45`'s `[2656]==2` branch to
+  `4BE7` as the rubber band's own two-car path. Re-disassembled: `4B1C-4B41` computes the rubber band
+  flag and stores it in `[262F]` for every format; `4B45` then jumps to `4D04` while the car still has
+  laps (`[BX+12ED] > 0`), and only a finished car reaches `4B4F`, where the two-car format jumps to
+  `4BE7`. That is the two-car finish block §9am already ported (`twoCarFinishedCar`). The rubber band
+  has no two-car branch.
+- `UNKNOWN_0160_0192_meaning`, listed open in §9bj-§9bl, was answered earlier, in §9ax/§9az: `[0x160]`
+  is the carousel's "centred" value and `[0x192]` its scroll position.
+
+Every note in the old §10 named the §9 section holding its account, so the history is still there.
 
