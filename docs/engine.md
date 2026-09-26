@@ -6199,6 +6199,14 @@ The port's waits, measured in its own phase log: PRESS ANY KEY 10.0 s, board 10.
 
 Nothing else differed. F3 is done.
 
+## 9dr. Closing §10: the items the bytes can answer (2026-09-26)
+
+With every checkbox of `GOAL-DOS-PARITY.md` ticked, §10.1 still held items that are not category (b). Each one is answered here from `MICROU.EXE`, fixed, or closed with a reason.
+
+1. **`UNKNOWN_0eba_0400_menu_calls`, closed `[STATIC]`.** `ResetTournamentState 0EBA` writes: `[0x160]`=6, `[0x192]`=0, the four lives bytes `[0x406..0x409]`=3, the roster `0x164..0x16E` = 0..10, the four slot words `[0x2668..0x266E]`=0xB, and the four face descriptors' `+0x13` words (`0xC16`/`0xC31`/`0xC4C`/`0xC67`) = 0xB, the "?" face. It does not touch `[0x162]` (§9dq). `initTournament` covers the lives, the roster and the empty opponent slots. `[0x160]` and `[0x192]` are dead writes: every `09E0` caller that follows a reset passes a start index (`0FBF`: `[0x3F4]`/`[0x3F6]` at `0FF6`/`100D`; `102B`: `[0x3F4]` at `1078`; `1E20`: `[0x9A0]`/`[0x9A2]`), so `09E0` rewrites `[0x192]` from `DS:016F` (`09E5-09EE`) and `[0x160]` is recomputed by the grid draw. Only `1A4A` passes 0xFFFF (keep the scroll, `1A71`), and it runs after a pick. `0400` is the header draw (§9bz).
+2. **`UNKNOWN_989_98b_meaning`, closed `[STATIC]`.** Every reference, found both as instructions and as raw bytes (`89 09`, `8B 09`): the zeroing at `1F13`/`1F18` (`RunHeadToHeadChooseGameMenu`) and `INC` at `20F0`/`20E6` inside `ShowHeadToHeadResultUnreferenced`, which has no caller (§9bj). The only table that starts nearby, `SI=0x985` at `2040`, is `1A34`'s two-digit race number and writes `0x985`-`0x986` only. So the two bytes are tally counters of the dead result screen, with no live reader.
+3. **`UNKNOWN_0db0_ch1_frown_trigger`, closed `[STATIC]`.** The writer is the Challenge results screen: `ShowRaceResultsScreenTune8or6` ORs the `+0x13` high byte of 1st place (`[0x3FC]`) with 2 (`1601`, FCHAPPY), of 3rd (`[0x400]`) with **1** (`160A`, FCFROWN) and of 4th (`[0x402]`) with 3 (`1613`, FCSAD), leaves 2nd as it is (FCNORMAL), then blinks 1st and 4th (`1622`/`162A`) and draws all four through `0DB0` (`162E-163B`). The earlier search looked only at `256E` and `09E0`. The port has drawn it this way since §9do (`frontLayouts.js`'s results layout, "3rd FCFROWN"), 0 px against the live capture in `npm run front`.
+
 ## 10. Open items
 
 Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: `open`, `narrowed` (part answered; the rest is the open question), `closed`. **Section** is where the answer (or the question) is written up; the history, wrong turns included, stays in those sections and is not repeated here. **Address** is `MICROU.EXE`'s (`1000:` code, `DS:` data) unless another file is named. This table replaced a run-on paragraph of dated notes on 2026-09-26 (`GOAL-DOS-PARITY.md` D2, §9cx); each ID's status was re-read from its latest dated note. When an item opens or closes, change its row here in the same commit.
@@ -6207,10 +6215,7 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 
 | ID | Status | Section | Address | Answer or open question |
 |---|---|---|---|---|
-| `UNKNOWN_0db0_ch1_frown_trigger` | open | §9bl | `0DB0`, `[BX+0x13]` high byte (CH=1) | What writes CH=1 so that `0DB0` draws the FCFROWN bank; neither `256E` nor `09E0`'s commit-blink writes it (low priority). |
-| `UNKNOWN_0eba_0400_menu_calls` | narrowed | §9aw (callees read §9az/§9bj/§9bz) | `0369`, `0EBA`, `0400` | 0EBA is ResetTournamentState and 0400 is the header draw. [0x160]/[0x192] remain UNKNOWN_0160_0192_meaning. |
 | `UNKNOWN_26cf_prompt_blink` | narrowed | §9dn (§9ax; PRESS ANY KEY §9bt) | `0C96`,`[0x26CF]` | The Challenge carousel's prompt now blinks with the 32-tick `[0x26CF]` toggle; the Head-to-Head carousels (older renderer) still do not. |
-| `UNKNOWN_989_98b_meaning` | open | §9bj (still open §9bl) | `1EF1` zeroing at `1F09-1F18`, `DS:0989`/`DS:098B` | No live reader; only the dead ShowHeadToHeadResultUnreferenced `2099-216B` uses them, as extra tally counters. |
 | `UNKNOWN_dosbox_wait_frames_cadence` | open | §9f | - | What `dosbox.wait_frames(1)` measures (host tick vs retrace) was never pinned down; dedup made it immaterial for M3.4. |
 | `UNKNOWN_intro_loop_vs_total_gap` | open | `docs/intro-and-codecard.md` (§9as) | - (SM.EXE `CS:097F`, `CS:07C6`) | The ~0.23 s gap between the loop's 314 iterations (~4.49 s) and the 4.72 s live total is untimed; plausibly pre-loop setup. |
 | `UNKNOWN_menu_default_persistence` | narrowed | §9aw | `0220`,`02CB`,`0360`,`[0x130]`,`[0x132]` | The asymmetric persistence is explained [PROVEN]; still open: why one fire once seemed to pass both menu levels. |
@@ -6232,7 +6237,9 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 |---|---|---|---|---|
 | `UNKNOWN_0160_0192_meaning` | closed | §9ax/§9az (listed open again in §9bj–§9bl) | `[0x160]`,`[0x192]`,`ResetTournamentState 0EBA` | `[0x160]` is the carousel's "centred" value, `[0x192]` its scroll position. |
 | `UNKNOWN_0400_mode` | closed | §9bz (first read §9bf) | `0400`/`0420`, `DS:[0x156]` | With [0x156]=1 (two-human play only), header 0400 also draws WORDS frame 1 at (0xA2,8) and a divider (rows 0x1E-0x21); pixel-checked [STATIC]+live frames. |
+| `UNKNOWN_0db0_ch1_frown_trigger` | closed | §9dr 3 (raised §9bl) | `160A` in `13E4`, `0DB0` | The Challenge results screen ORs 3rd place's `+0x13` with 0x100 (`160A`): CH=1, FCFROWN; ported since §9do, 0 px [STATIC]. |
 | `UNKNOWN_0db0_descriptor_contents` | closed | §9bl | `0DB0` | The resolver dispatches to chrDescriptorTable slots FCHAPPY/FCSAD/FCFROWN/FCNORMAL, frame = 2·character+bit4 [STATIC]. |
+| `UNKNOWN_0eba_0400_menu_calls` | closed | §9dr 1 (raised §9aw) | `0EBA`, `0400`, `09E0-09EE` | 0EBA resets lives, roster, opponent slots and faces (all in `initTournament`); its `[0x160]`/`[0x192]` writes are always overwritten by the next `09E0`'s start index [STATIC]. |
 | `UNKNOWN_0f64_speed_zero` | closed | §9cq (mechanism §9ar a) | `7AF8`, `DS:0F64`, `[127A]` | Under OPL, 7AF8 zeroes all four car speeds; SPEAKER/NONE keep them and send AH=0x10 [PROVEN]. The OPL pitch itself was not captured. |
 | `UNKNOWN_1082_meaning` | closed | §6 | `DS:1082` | Trivial: `SetupTournamentRace`/`StopMusicRunRaceReloadAssets` set it to 1 around `RunRaceMainLoop` [STATIC]. |
 | `UNKNOWN_1254_1256` | closed | §9v (re-confirmed §9cf) | `CarRecord+0x1254/+0x1256` | Dead per-car static words, 0 references in the image; values follow (car+1)·0x2400 and car·0x3600. |
@@ -6258,6 +6265,7 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_8a2_accel_gate_relevance` | closed | §9bf | `40A0`, `DS:08A2` | Moot: 40A0 lies inside 3FBE-4134, which two-human H2H never reaches, so no [8A2] gate is needed. |
 | `UNKNOWN_8a2_meaning` | closed | §9bg | `DS:08A2` (`CS:9C62`), `3F30` | `[0x8A0]`/`[0x8A2]` hold the CHOOSE GAME pick (tournament/single race), not the handicap answer; the `3F30` fork was read ==1 live [PROVEN]. |
 | `UNKNOWN_93c2_writer` | closed | §9bn/§9bo (reverses §9ar e) | `17D7`,`179B`,`CS:[0x93C2]` | `CS:[0x93C2]` aliases `DS:[0x2]`, the tick counter, so `179B` has a real ~700-tick timeout. |
+| `UNKNOWN_989_98b_meaning` | closed | §9dr 2 (raised §9bj) | `1F13`/`1F18`, `20E6`/`20F0` | Zeroed at CHOOSE GAME and incremented only in the dead `ShowHeadToHeadResultUnreferenced`; no live reader [STATIC]. |
 | `UNKNOWN_a329_writer` | closed | §9bn/§9bo (reversing §9ar f); §9cf 4 | `37BF`, `CS:A329`=`DS:0F69`, `2911` | CS:[A329] is DS:[0F69], the 25011968 cheat flag (writer 2911), so the F12 dump is reachable [STATIC]. The AL==0x58 source is untraced and it was not live-tested. |
 | `UNKNOWN_ai_maxspeedcur_brk_interaction` | closed | §9ab | `4244-4248`, `129E` | `maxSpeedBase` is copied at spawn from the already-CX-adjusted `maxSpeedCur`; `tuningFieldsFor` was fixed and ai.js was already exact [PROVEN] live reads. |
 | `UNKNOWN_alt_tuning_path` | closed | §9bg | `3F3B-3FBD`,`[0x8A2]` | Two-human H2H's alternate tuning is ported (altTuningFieldsFor), live-proven for the bit7=0 case [PROVEN]. |
