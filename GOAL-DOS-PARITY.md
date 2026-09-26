@@ -826,7 +826,7 @@ Commit each item on its own, including any capture file under `tools/refs/`.
 - [x] `UNKNOWN_fade_duration` (**§9co: 16 ticks, the fade-up 17**): the exit fade's length in ticks. This feeds P5.
 - [x] `UNKNOWN_countdown_hud_digit` (**§9co: 3, as the port**): the digit shown during the start countdown. This feeds P5.
 - [ ] A whole race end: the countdown and the final order. The ROUND21 lead rule firing (§10,
-  "Added 2026-09-23 (§9ah)").
+  "Added 2026-09-23 (§9ah)"). **(§9da: the recount, the countdown and the final order are live-proven; the lead rule firing is still open.)**
 - [ ] The rubber band boosting while car 0 genuinely leads mid-race, and the grip ×1.5 site (§9aq 4).
 - [ ] The key-press → control-byte leg for car 0 under real input (§10, `UNKNOWN_live_verification`).
   Also sfx 2 on lap completion, and a longer driving/turning/collision trace. Add the trace to

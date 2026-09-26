@@ -5947,6 +5947,21 @@ The step rate was 2 ticks a step for exchanges 2-4 and ~4.6 for exchange 1, a DO
 
 **Port.** No change: `stepExchange` already does all of this. `tools/refs/twocar_exchanges.json` (3.8 KB) keeps the four exchanges' 64 per-step (`[26BA]`, `[26B4]`, `[26B6]`) triples, the globals right after each commit and the state lifecycle. `check-twocar` replays each exchange through `stepExchange` from the arm and compares every step and the commit; a third check reads the one-step lag of car 0 from the capture. These pin existing behaviour, so there is no failing-first test.
 
+## 9da. Part L: a four-car race end, live (2026-09-26)
+
+`GOAL-DOS-PARITY.md` Part L's race-end item, from §9ah. One live DOSBox run: a Challenge qualifier (`ROUND21`, POWERBOATS), car 0 left idle. A REST sampler logged every change of `[26C6]`, `[26CC]`, the order array `[2678..267E]` and each car's laps, state and speed=0, with `[261F]`. `[PROVEN]`:
+
+- **The recount counts stopped finished cars, not finished ones** (`4B85`): car 2's laps reached 0 at tick 10965, its speed 0 at 11029, and `[26C6]` went 0 → 1 at 11035. Car 3 finished at 11547 and stopped at 11612; the next sample (11618) had `[26C6]`=2.
+- **The countdown starts on the same step** (`3081-3093`): that sample already had `[26CC]`=99, never 2 with 100. `[26CC]` then fell by one per step to 0.
+- **Everyone coasts once `[26C6]>=2`** (`4E0E`): car 1, unfinished (laps 1) at its 1014 cap, read 1014 at `[26CC]`=99 (its own turn ran before car 3's recount in that step), then 994, 974, … one coast decrement (20) per `[26CC]` step.
+- **Two stopped drones end the race with car 0 unfinished**: at `313C` the order was `[712,1068,356,0]`, cars 2, 3, 1, 0; car 0 last, a failed qualifier. (To reach the later items the qualifier was then passed by poking `[2630]`=1 at `313C`, after the order was read.)
+
+The step rate was ~5.7 ticks a step in this run, because a conditional breakpoint at `4900` stopped the emulator at every tick (§9dd); the checks below count steps.
+
+**Not captured: the ROUND21 lead rule firing** (`6024-6054`). It needs car 0 to complete a lap strictly ahead on laps, which an idle car 0 never does. That part of the item stays open.
+
+**Port.** No change. `check-play`'s race-end block has a new replay of the moment car 3 stops: `[26C6]`/`[26CC]`/car 1's speed on the next three steps must be (2,99,1014), (2,98,994), (2,97,974), and the frozen order 2,3,1,0. It passes on the current code (and fails when either expectation is altered).
+
 ## 10. Open items
 
 Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: `open`, `narrowed` (part answered; the rest is the open question), `closed`. **Section** is where the answer (or the question) is written up; the history, wrong turns included, stays in those sections and is not repeated here. **Address** is `MICROU.EXE`'s (`1000:` code, `DS:` data) unless another file is named. This table replaced a run-on paragraph of dated notes on 2026-09-26 (`GOAL-DOS-PARITY.md` D2, §9cx); each ID's status was re-read from its latest dated note. When an item opens or closes, change its row here in the same commit.
@@ -5986,7 +6001,7 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 
 | Item | Status | Section | Address | Open question |
 |---|---|---|---|---|
-| A whole four-car race end, live | open | §9ah; GOAL Part L | `6054`, `[26CC]`, `[26C6]` | The countdown, the final order and the ROUND21 lead rule firing, in one live capture. |
+| A whole four-car race end, live | narrowed | §9da (logic §9ah); GOAL Part L | `6024-6054`, `[26CC]`, `[26C6]` | The recount, the same-step countdown start, the coast and the final order are live-proven (§9da). Still open: the ROUND21 lead rule firing, which needs car 0 ahead on laps. |
 | The rubber band while car 0 really leads | open | §9aq 4; GOAL Part L | `4B1C-4B41`, `[262F]` | The ×6 boost is live-proven only with the race-start seed order; the grip ×1.5 site was never seen reached. |
 | A "drawn but invisible" car | open | §9ap; GOAL Part L | `[1250]`, `7D73` | Is a car whose drawn flag is set really absent from the screen? Tried, not obtained. |
 | The LIVES outcome screen's first poll | open | §9bq (assumptions a-c); GOAL Part L | `1DCD`, `[261F]` | The port's model predicts `[261F]`=156 at the first poll; not read live. |

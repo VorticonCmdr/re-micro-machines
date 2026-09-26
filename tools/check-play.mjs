@@ -2546,6 +2546,25 @@ async function checkRaceEnd() {
     check('...the race ends after the countdown; car 0 finishes 3rd (a lost life in the Challenge)', t.rs.raceOver && t.rs.rankOrder.indexOf(0) + 1 === 3)
   }
 
+  // (ii-live) The live ROUND21 end (docs/engine.md §9da, car 0 idle): car 3 has just stopped with
+  // laps 0 after car 2; car 1 (laps 1) runs at its 1014 cap. Live, the step that makes [26C6] 2 also
+  // takes [26CC] to 99 with car 1 still at 1014 (its own turn ran before car 3's recount); then car 1
+  // coasts 20 a step with each [26CC] decrement: (2,99,1014), (2,98,994), (2,97,974). Order 2,3,1,0.
+  {
+    const t = setup(2, 1)
+    const live = [[2, 99, 1014], [2, 98, 994], [2, 97, 974]]
+    t.cars[0].lapsRemaining = 4
+    t.cars[1].lapsRemaining = 1; t.cars[1].speed = 1014; t.cars[1].maxSpeedCur = 1014; t.cars[1].heading = 0
+    for (const k of [2, 3]) { t.cars[k].lapsRemaining = 0; t.cars[k].speed = 0 }
+    t.rs.rankOrder = [2, 3, 1, 0]
+    t.rs.raceOverCount = 1
+    const got = []
+    for (let i = 0; i < 3; i++) { step(t, [0, 0x20, 0, 0]); got.push([t.rs.raceOverCount, t.rs.raceOverLinger, t.cars[1].speed]) }
+    check(`live race end: [26C6]/[26CC]/car 1 speed per step match the capture (got ${JSON.stringify(got)})`, JSON.stringify(got) === JSON.stringify(live))
+    while (!t.rs.raceOver) step(t, [0, 0x20, 0, 0])
+    check('live race end: the frozen order is 2,3,1,0 -- car 0 last, the lost qualifier', t.rs.rankOrder.join(',') === '2,3,1,0')
+  }
+
   // (iii) [26C6] >= 2 cuts EVERY car's throttle (4e0e), and the recount ASSIGNS from 0 (a cheat's 4
   // is overwritten once a finished car stops).
   {
