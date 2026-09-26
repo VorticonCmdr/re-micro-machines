@@ -5976,6 +5976,18 @@ So entry to the end of the slide took **148 ticks** (2.11 s), about 1.37 ticks a
 
 **Port.** `champion.js`: `CHAMPION_SLIDE_TICKS = 148`. `championStep` counts ticks, spreads the 108 iterations over them (all 108 done at tick 148), and polls from tick 149 on (`1BFE`'s one-tick wait), every tick. Before, the port polled from tick 108. `check-champion`: the slide lasts 148 ticks, both lines are in place at 148, the first poll is on tick 149 and a held key leaves there; on the old code these fail.
 
+## 9dc. Part L: ES through the race exit's hold, live (2026-09-26)
+
+`GOAL-DOS-PARITY.md` Part L, `UNKNOWN_exit_banner_live` (§9an 2/8). The claim was `[STATIC]`: `855A` blits through ES:DI without loading ES, ES is `193C` (DS) in the exit loop, so the hold's `855A` calls draw into DS and add nothing to the frozen frame. A re-read (`[STATIC]`) sharpened the question: `30DF` itself is `CMP [BX+1250],0` through DS; ES matters only inside the loop `30F2-3100` (`3165`, `855A` at `30F9`, `92BC` at `30FC`), and the last ES write before it is `3053` (`ES=AX=193C`).
+
+**Live** (`[PROVEN]`, the §9cz H2H qualifier's natural end, live DS = `0xB7A`):
+- `30DF`: BX=0x164 (car 1, the midpoint camera's gate car), ES=0xB7A=DS;
+- `30F9`, iteration 1: ES=0xB7A;
+- then two conditional breakpoints, at `30F9` and at `30FC`, set to stop only if ES≠0xB7A: 100 and 100 hits, no stop; `3102` was reached once. So ES is DS before every `855A` and every `92BC` call of the hold.
+- The frozen frame (captured at `3102`) shows the "Winner" banner. It is the last race frame's: `855A` slides "Winner" during the deciding blink in normal frames (§9am), and the port's frozen frame is that same last painted frame (§9an 2).
+
+**Port.** No change: `raceEnd.js` holds the last painted frame and draws nothing during the hold.
+
 ## 10. Open items
 
 Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: `open`, `narrowed` (part answered; the rest is the open question), `closed`. **Section** is where the answer (or the question) is written up; the history, wrong turns included, stays in those sections and is not repeated here. **Address** is `MICROU.EXE`'s (`1000:` code, `DS:` data) unless another file is named. This table replaced a run-on paragraph of dated notes on 2026-09-26 (`GOAL-DOS-PARITY.md` D2, §9cx); each ID's status was re-read from its latest dated note. When an item opens or closes, change its row here in the same commit.
@@ -5993,7 +6005,6 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_challenge_qualifier_intro_banner` | open | §9be | `127E-12BA` | What does the Challenge qualifier's separate intro banner (SI=0x35C/0x367, a [BC5]-keyed reveal) do? It is not disassembled or ported. |
 | `UNKNOWN_codecard_pixel_diff` | open | §9at; GOAL Part F | - (FONT.BIN, mode 10h) | No byte-exact diff yet; needs mode 10h's 4 planes combined. Only a visual match to live screenshots so far. |
 | `UNKNOWN_dosbox_wait_frames_cadence` | open | §9f | - | What `dosbox.wait_frames(1)` measures (host tick vs retrace) was never pinned down; dedup made it immaterial for M3.4. |
-| `UNKNOWN_exit_banner_live` | open | §9an 8; GOAL Part L | `30DF`, `855A` | Needs a live check that ES is 193C at 30DF, so the exit-hold 855A calls draw into DS and no banner shows. |
 | `UNKNOWN_intro_loop_vs_total_gap` | open | `docs/intro-and-codecard.md` (§9as) | - (SM.EXE `CS:097F`, `CS:07C6`) | The ~0.23 s gap between the loop's 314 iterations (~4.49 s) and the 4.72 s live total is untimed; plausibly pre-loop setup. |
 | `UNKNOWN_live_verification` | narrowed | §9aa/§9ab/§9aq 3; GOAL Part L | - | Spawn-time car records are live-verified. Still open: car 0's key-press → control-byte leg, sfx 2 on a lap, and a longer driving/collision trace. |
 | `UNKNOWN_menu_default_persistence` | narrowed | §9aw | `0220`,`02CB`,`0360`,`[0x130]`,`[0x132]` | The asymmetric persistence is explained [PROVEN]; still open: why one fire once seemed to pass both menu levels. |
@@ -6086,6 +6097,7 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_drv2_live_fidelity` | closed | `docs/sound.md` §4; §9cq | DRIVER2.BIN `0459` | The DRIVER2 memory model replays two live captures byte for byte; sfx 16-18 are dropped. Speaker audio is rendered, not captured. |
 | `UNKNOWN_elimination_bounce_clip_band` | closed | §9ba | `1767`, `0630`, `04BD` | There is no clip band: `SUB [BX+0x19],AL` shrinks the drawn row count by the wobble offset, so the icon squashes [STATIC]. |
 | `UNKNOWN_engine_high_bend` | closed | `docs/sound.md` §10 (M3.28) | DRIVER1.BIN `0551-0566` | ComputeBendOffset: bend ≥0x40 takes the positive-offset path; the port's bendOffset was already exact. |
+| `UNKNOWN_exit_banner_live` | closed | §9dc (§9an 2/8) | `30DF`, `30F2-3100`, `855A` | ES = DS (0xB7A live) before all 100 `855A` and `92BC` calls of the exit hold [PROVEN]; the hold adds nothing to the frozen frame. |
 | `UNKNOWN_exit_hold_855a_pass` | closed | §9cm (M3.93) | `855A`, `[2630]`/`[2621]` | Ported with the BX drift. It can pass all 100 iterations, and a cheat exit during P2's deciding blink becomes a loss. |
 | `UNKNOWN_f61_p2_control_word` | closed | §9bg | `DS:0F61`, `DS:265A` | `[0xF61]` really is SETTINGS.DAT's P2 control word; live `[0xF61]`, `[0x265A]` and file word 1 all read 4 [PROVEN]. |
 | `UNKNOWN_f6a_reader` | closed | §9bt/§9bu | `1398-13E0`,`[0xF6A]`,`2916` | The 25011968 cheat's keypad +/- race skip at the race intro moves `[28C1]` by one; ported. |
