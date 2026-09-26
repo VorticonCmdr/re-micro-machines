@@ -6148,6 +6148,8 @@ matched, now pinned by a test), and the race-start fade-in (the port now holds b
 and steps nothing, then shows the first frame at full palette). Still unported: the race setup's own
 `395D` fade-out of the screen before the race (the port's front-end screens have no fades at all).
 
+**Added 2026-09-26 (§9cr, live).** The reload's two decrements are live-proven: 30/30/30 at smoothness 1, 40 steps with 40 flight and 20 draw decrements at smoothness 2.
+
 **Added 2026-09-26 (§9cv).** The mouse/joystick fire preempt is live-proven: with fire held a mouse car neither steers nor accelerates, a joystick car does both.
 
 **Added 2026-09-26 (§9cu).** JOY 1/JOY 2 via the Gamepad API with the real F7 calibration, and the
@@ -12759,7 +12761,7 @@ and execute breakpoints whose condition never holds (`CS==0`), so that `hit_coun
 
 `[263A]` was restored to 1 afterwards; nothing was written to `SETTINGS.DAT`.
 
-**`8712` also counts the reload down `[STATIC]`** (`87E6 DEC [BX+13A4]`, `87EC` clears `[1394]` at 0,
+**`8712` also counts the reload down** (`[STATIC]`, live-proven below) (`87E6 DEC [BX+13A4]`, `87EC` clears `[1394]` at 0,
 reached for a car that isn't live too; `7D14` calls it only while `[13A4]!=0`). With `51B2`'s own
 decrement that is two per step at smoothness 1: after the fire (`[13A4]=0x3C`) the shot moves on 10
 steps (`51B2` sees 58..40), which is what the trail counter `[139A]/[139E]=0xA` set at fire runs down
@@ -12769,6 +12771,19 @@ stretched the same way. `51B2` never clears `[1394]`; at smoothness 1 it is alwa
 test also needs `>= 0x28`). §9q's port had one decrement, in physics, deliberately, because the port had
 no render cadence then; its shots flew for 20 steps and reloaded in 60. `8712` draws at the cooldown it
 found, before its own decrement, and at the position the previous step's `51B2` left.
+
+**Live `[PROVEN]` (2026-09-26).** In a Challenge qualifier with car 0 in state 0, `[13A4]` was poked
+to 0x3C. Breakpoints at `4AEE` (physics), `51BC` (the flight's decrement) and `87E6` (the draw's
+decrement) had a condition that never holds, so `hit_count` only counted. The run went on until
+`[13A4]` read 0:
+
+| Smoothness | Steps | `51BC` | `87E6` |
+|---|---|---|---|
+| 1 | 30 | 30 | 30 |
+| 2 | 40 | 40 | 20 |
+
+These are exactly the port's numbers: two decrements per step at smoothness 1, and at smoothness 2
+the draw's decrement on every other step. `check-play` pins these counts.
 
 **Port.**
 - `step.js`: `renderPass` holds what the engine models of `90C5`, in its order (the two-car gate, the

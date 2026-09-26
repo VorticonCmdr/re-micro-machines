@@ -1274,20 +1274,25 @@ async function checkProjectiles() {
     const life = (n) => {
       const car = mk({ heading: 0x40 })
       fireProjectile(car, { round: 7 })
-      let steps = 0, moving = 0, drawn = []
+      let steps = 0, moving = 0, drawn = [], drawDecs = 0, flightDecs = 0
       while (car.reloadCooldown !== 0 && steps < 200) {
-        if (steps % n === n - 1 || n === 1) { projectileDrawTick(car); if (car._projDraw) drawn.push(car._projDraw.cooldown) }
-        const x = car.projX
+        if (steps % n === n - 1 || n === 1) { const r = car.reloadCooldown; projectileDrawTick(car); if (car._projDraw) drawn.push(car._projDraw.cooldown); drawDecs += r - car.reloadCooldown }
+        const x = car.projX, r = car.reloadCooldown
         updateProjectileFlight(car)
+        flightDecs += r - car.reloadCooldown
         if (car.projX !== x) moving++
         steps++
       }
-      return { steps, moving, drawn, stepsA: car.projStepsA }
+      return { steps, moving, drawn, stepsA: car.projStepsA, drawDecs, flightDecs }
     }
     const l1 = life(1), l2 = life(2), l4 = life(4)
     check(`projectile: smoothness 1 -- moves on 10 steps, reload done after 30, trail counter spent (got ${l1.moving}/${l1.steps}/${l1.stepsA})`, l1.moving === 10 && l1.steps === 30 && l1.stepsA === 0)
     check(`projectile: 8712 draws at the cooldown it found, before its own decrement (first draws ${l1.drawn.slice(0, 3)})`, l1.drawn.slice(0, 3).join() === '60,58,56')
     check(`projectile: smoothness 2 and 4 stretch the flight and the reload (got ${l2.moving}/${l2.steps}, ${l4.moving}/${l4.steps})`, l2.steps === 40 && l4.steps === 48 && l2.moving > 10 && l4.moving > l2.moving)
+    // Live (docs/engine.md §9cr): [13A4] poked to 0x3C in a race, hits counted at 4AEE/51BC/87E6 until 0 --
+    // smoothness 1: 30 steps, 30 flight and 30 draw decrements; smoothness 2: 40, 40 and 20.
+    check(`projectile: the live counts -- s1 30/30/30, s2 40/40/20 (got ${l1.steps}/${l1.flightDecs}/${l1.drawDecs}, ${l2.steps}/${l2.flightDecs}/${l2.drawDecs})`,
+      l1.steps === 30 && l1.flightDecs === 30 && l1.drawDecs === 30 && l2.steps === 40 && l2.flightDecs === 40 && l2.drawDecs === 20)
     const last = mk({ projActive: 1, reloadCooldown: 1 })
     projectileDrawTick(last)
     check('projectile: 8712 taking the cooldown to 0 clears projActive (87EC)', last.reloadCooldown === 0 && last.projActive === 0)
