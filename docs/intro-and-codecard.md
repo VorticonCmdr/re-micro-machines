@@ -139,7 +139,7 @@ detection, the two file loads, the one-time copyright-text draw) which this sess
 separately time, so the two figures are not in conflict — one measures a superset of the other's
 span — but the gap itself is not chased further this session (a new, narrower, genuinely open
 question, `UNKNOWN_intro_loop_vs_total_gap`, not blocking: the port paces the loop at the real
-vsync rate, which is the faithful choice regardless of how that pre-loop gap eventually resolves).
+vsync rate, which is the faithful choice regardless of how that pre-loop gap eventually resolves). **Measured 2026-09-26 (`docs/engine.md` §9dr 9, `[PROVEN]`):** it is not pre-loop setup. Setup and teardown each take under one BIOS tick; the loop runs exactly 314 iterations in 86 ticks (4.72 s), i.e. 331 retraces, so 17 iterations wait a second retrace. Which ones depends on the emulated CPU speed.
 
 ## The real code-card screen (P1, GOAL-DOS-PARITY.md, 2026-09-24) `[STATIC]` + `[PROVEN]` (live)
 
