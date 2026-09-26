@@ -773,9 +773,9 @@ docs, (6) commit.
 - [ ] **The BX-quirk garbage carries over between races** in DOS, because car records are not
   fully re-initialised. The port resets it every race (§9an 8). Carry it across races in `flow.js`'s
   session, the same way `createColDirBuffers()` does (§9ad).
-- [ ] **`UNKNOWN_exit_hold_855a_pass`** (§9an 8): the non-drawing `855A` pass on iteration 1 of the
+- [x] **`UNKNOWN_exit_hold_855a_pass`** **Done (§9cm, M3.93): ported with the BX drift; it can pass all 100 iterations, and turns a cheat exit during P2's deciding blink into a loss.** (§9an 8): the non-drawing `855A` pass on iteration 1 of the
   two-car hold. Port it exactly.
-- [ ] **`UNKNOWN_rematch_fail_stale_2682`**, the downstream consequence (§9ar c): build a double-fall
+- [x] **`UNKNOWN_rematch_fail_stale_2682`** **Done (§9cm): mid-blink the first point is lost and the second counts; during the re-appear, a clean second exchange; neither window is reachable in play.**, the downstream consequence (§9ar c): build a double-fall
   scenario on round 3 in `check-twocar.mjs`, trace `stepExchange` and the commit, and record what
   happens.
 - [x] **Puffs and splashes, `8083`/`8386`** **Done (§9ch, M3.88).** (§9cf 6 a–d): frames advance before the spawn, `[12B2]=3`

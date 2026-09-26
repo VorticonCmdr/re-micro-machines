@@ -5140,7 +5140,7 @@ phases, `startNextRace`/`nextAfterOutcome`), `screens.js` (`drawCharacterSelect`
   `193C` (`3053`), because every race-time ES write is paired; byte searches found no other ES=7D78
   load. So even a call that passes the gate draws into DS, not the back buffer. Also, `92BC` clears BL
   every iteration (`92D3`/`92E4`), so in two-car the `856A` gate `BX==[26B8]` can pass on iteration 1
-  at most.
+  at most **(CORRECTED, §9cm: BX with BL cleared is 0 when the camera car is P1, and `[26B8]` is 0 when P1 scores -- then all 100 iterations pass; ported)**.
 - `3102` AH=8 (AL=0x78, left over from `92C3`; dead), then `3109` AH=6 (everything off).
 - The exit fix-ups `3115-3156`, then `315A` -> `327A`, the fade to black. It reads the live DAC, then
   makes 126 uploads, decrementing every nonzero byte on the even calls: shown = max(0, v-k), k =
@@ -5353,7 +5353,7 @@ decided match with `[2630]=1`. `trace` (13/20), `ai` and `live` (0) are unchange
 - *The exit:*
   - `UNKNOWN_exit_hold_855a_pass`: the one non-drawing `855A` pass on iteration 1 of the hold
     (two-car, gate car == `[26B8]`) can set `[2630]`/`[2621]`. It is result-neutral in every traced
-    natural end; only a cheat exit during a deciding blink could turn into a loss.
+    natural end; only a cheat exit during a deciding blink could turn into a loss. **Ported in §9cm.**
   - `UNKNOWN_exit_banner_live` (ES at `30DF`, live).
   - `UNKNOWN_fade_duration` (unpaced).
 - *The race start:* the port still fades the scene in; the original shows black, then the first
@@ -5933,6 +5933,8 @@ TANKS/a cheat spot actually lets a shot fire. The release tick's own speed jump 
 
 ## 10. Open items
 
+**2026-09-26 (§9cm):** `UNKNOWN_exit_hold_855a_pass` ported (the BX drift can pass all 100 iterations); `UNKNOWN_rematch_fail_stale_2682` closed (the forced outcomes traced, unreachable in play).
+
 **2026-09-26 (§9cl):** the pause minimum is fixed -- DOS has none without the `25011968` flag; the pause ends at the first key release through the ISR's gate (live-proven).
 
 **2026-09-25 (§9cf), Part R closed:** `UNKNOWN_lev_low_bits` (no reader), `UNKNOWN_map_attr_bits` (bit 1 = mirrored flow field), `UNKNOWN_cheats_type` (`[2917]`/`[291B]` write-only), `UNKNOWN_race_reader_low_bits` (no control-byte reader; the pause's cheat-gated F1+F2/F2+F3 combos found instead), `UNKNOWN_pr0_header_use` (tile 0), `UNKNOWN_sfx_semantics` (consistent; not yet listened to), `UNKNOWN_microu_runs_standalone` (yes, `[PROVEN]`), `UNKNOWN_gfx1_header`, `UNKNOWN_unp_version` (4.11), `UNKNOWN_ph0_1140_1380` (unused knockout slot 5). The race-draw helpers are all named; four port divergences (puffs/splash, paint order, projectile tail icon) and the pause combos went to GOAL P5.
@@ -6196,7 +6198,7 @@ hole only, `HandleCarState4FallAnimSfx8 7F62-7F69`).
   exchange's window). **What is still open:** the actual downstream consequence -- does the clobbered
   first exchange lose its point, does the bar move twice, does a car get stuck -- nobody has traced
   `stepExchange`/the commit path far enough with a constructed double-fall scenario to say, and no live
-  capture of it exists either. Narrower and more tractable than before this session, not closed.
+  capture of it exists either. Narrower and more tractable than before this session, not closed. **(Closed in §9cm: mid-blink the first point is lost and the second counts; during the re-appear it is a clean second exchange; neither window is reachable in play.)**
 
 **d. `UNKNOWN_bc5_high_byte` -- closed, dead/always-zero.** `[0xBC5]` (word) has exactly two writers,
 both re-disassembled: `RunTitleScreenAttractLoop 016F` initializes it to `0xFFFF` then wraps a 0..8
@@ -12308,3 +12310,94 @@ shorter than a frame isn't missed; DOS samples at 35 Hz. The combos stay unporte
 - the second `AH=8`/`AH=6` at stage 1's timeout.
 
 The old 2-second floor fails three of the cases.
+
+## 9cm. Two-car edge cases: the exit hold's `855A`, and a double fall (2026-09-26)
+
+GOAL-DOS-PARITY.md P5, `UNKNOWN_exit_hold_855a_pass` and `UNKNOWN_rematch_fail_stale_2682`.
+`[STATIC]` from `30DF-315A`, `855A-8633`, `9289`, `8BAB-8C3B`, `92BC-92EA`, `3165` and the
+`[2682]`/`[2911]`/`7759` reference lists. The consequences were run through the port's per-step
+pipeline.
+
+### 1. The exit hold's `855A` (ported)
+
+**What the hold does.**
+- `30F2-3100` runs 100 iterations of `3165` (a tick wait, no BX use), `855A`, then `92BC`.
+- `92BC` sets BL to 0xC8 and counts it down to 0 (`92D3`/`92E4`), so it leaves BL = 0.
+- `855A` saves AX/DI/SI but not BX. Its Winner path sets BX to `[26B8]` (`8606`), but only on a call
+  whose gate `BX == [26B8]` (`856A`) already held, so that write changes nothing.
+- **BX on iteration 1** is 4AEE's camera-table car (the car `30DF`'s sfx gate reads, `raceOverGateCar`).
+- **On iterations 2–100** it is that value with BL cleared: 0, 0x100, 0x200 or 0x400.
+- `[26B8]` is 0 or 0x164, or the literal 1 for "none", which never matches.
+- **So the gate passes:**
+  - on iteration 1 when the camera car is the scorer;
+  - on all 100 when the camera car is P1 (BX 0) and P1 is the scorer. §9an 8 had said "iteration 1
+    at most", which is corrected here.
+
+**What a passing call does** is the ordinary `855A` body:
+- the round-8 spin (+8/256);
+- on a deciding point (`[26B4]+[26B6]` = 15 or 1, or `[26C2]` = 0xC8/2), the Winner slide globals,
+  `[2621]` and **`[2630]`** (1 or 2);
+- otherwise the static "Bonus" path, with no `[2630]` write.
+
+The exit fix-up then reads `[2630]` (`313C-3156`).
+
+**The drawing.** It goes through ES = DS (`193C`, `3053`). `9289`/`8C2A` put it at
+`y·0x110 + x + 0x1110 − [8994]`; for the Winner banner that is about DS 0x8864–0x9F0C, inside
+BITSFILE.PH0's art (DS 0x3FE3–0xA4A3, including the "Paused!" banner's source at 0x9D63). PH0 is
+reloaded by every race's setup (`LoadRaceStartPosCheatsMapAndBanks` → `4838`), and nothing is
+rendered during the hold or the fade, so it is never seen.
+
+**When it matters.**
+- **Natural ends.** The commit returns the camera to the midpoint (`767B`), so the camera car is car
+  1. At most iteration 1 passes, and only for a P2 scorer who still has the spotlight (the finished
+  or `7742` paths). The blink's own post-HUD `855A` calls have usually written the same `[2630]`
+  already. When the point is decided by the bar reaching 8 or 0, `[26B8]` is "none" (`76DD`/`7715`).
+- **The instant-win cheat** (`[26C6]=4`) ending the race mid-exchange, with the camera on the scorer:
+  a P2 deciding point writes `[2630]=2`, and the cheat becomes a loss.
+
+**Port.** `twocar.js`'s `exitHold855a(cars, raceState, ctx, gateCar)` runs the 100 iterations with
+that BX drift, reusing `scorerBanner` (the `855A` port) without sound. The sfx-16 keep-alive is left
+to `raceOverStart`, since the port's driver has no status query. `step.js` calls it at race-over,
+before `twoCarFinalOrder`.
+
+**Tests** (`check-twocar` (g5)):
+- a natural P2 deciding point: one pass, `[2630]=2`;
+- a P1 scorer with camera car 1: no pass;
+- camera car 0 with a P1 scorer: 100 passes, and 100 spins in round 8;
+- the "Bonus" path leaves `[2630]` alone;
+- "none" never passes;
+- through `runStep`, the cheat exit during P2's deciding blink with the camera on P2 ends as a loss
+  (slot 0 = car 2).
+
+Removing the call or the BL clear fails them.
+
+### 2. A double fall (`[2682]`), traced
+
+**The mechanism** (§9ar c). The knockout reset's fall branch (`7759-7772`) takes the scorer from
+`[2682]` and has no guard against an exchange in flight. `7759` has one caller, the render gate
+`9205`, when `[2911]==1`.
+
+**Forced through `runStep` on two-car ROUND31** (P1's fall exchange first, then `[2682]`=P2 and
+`[2911]`=1 again):
+- **Mid-blink.**
+  - The exchange is re-targeted: `[26B8]`=P2, P1 0xC, P2 0xB with a fresh hop.
+  - The blink is **not re-armed** (`[26BA]`≠0). It resumes where it was (40), still swapping P1's
+    shadow (score + 1), so the bar keeps flashing P1's point.
+  - The blink always makes 8 swaps in total, so at the commit the score is back at its
+    pre-exchange value. The commit credits the **current** scorer: 4 → 3.
+  - Net result: P1's point is lost and P2's counts. Nobody gets stuck.
+- **During the re-appear.** A clean second exchange (re-armed, P2's point) that cuts the first
+  exchange's state-2 re-appear short: 4 → 5 → 4. Both points count.
+
+**Neither window is reachable in play.**
+- A double fall needs `[2682]` latched while `[2911]`=1 and an exchange is in flight.
+- `[2682]`'s only writers are the state-4 handler (`7F62-7F69`) and a state-E re-entry (`6C01-6C08`).
+  Its other writes clear it: `3929`, `3CC1`, `6E7E`, `7764`, `77FF`.
+- During a fall exchange's hop and blink, both cars are in 0xB/0xC.
+- During the re-appear `[2911]` is 2 (`7684`), so the gate doesn't call `7759`.
+- `[2911]`=1's writers are the camera separation (`5089`/`50D1`) and a drop-in partner timeout
+  (`6DB4`); neither can make a car fall into the hole in between.
+
+`twocar.js` already ported the branch exactly, so no code change was needed.
+
+**Tests** (`check-twocar` (g6)) pin both forced outcomes as characterisation tests.
