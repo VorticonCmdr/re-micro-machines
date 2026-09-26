@@ -6116,6 +6116,10 @@ So the JS core plays recognisably the same music as DOSBox, clearly set apart fr
 
 **Port.** No change: `sound.js` `raceInstrument` already gives 0x70/3 for round 8, 0x70/0 for round 2 and 0x71/0 otherwise. It was untested; `check-sound` now pins the three live readings.
 
+## 9dl. Part L: the "drawn but invisible" car was already answered (2026-09-26)
+
+`GOAL-DOS-PARITY.md` Part L's last item, "whether a drawn but invisible car is actually absent from the screen (§9ap)", and §10.2's row for it were stale. §9ap 6 could not get a pixel check. §9ap 7 says it was resolved live in §9aq, and §9aq 2 is that check (`[PROVEN]`): car 1's clip box was forced to straddle the screen's bottom (view rows 190-214). The drawn flag read 1, since the clip window is 224 rows (`7D73`). The capture showed only rows 190-199 of the sprite, cut off at row 199, because `92BC` copies 200 rows. So a car drawn wholly in rows 200-223 has its flag set and is absent from the screen. No new capture; the row and the box are closed with this pointer.
+
 ## 10. Open items
 
 Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: `open`, `narrowed` (part answered; the rest is the open question), `closed`. **Section** is where the answer (or the question) is written up; the history, wrong turns included, stays in those sections and is not repeated here. **Address** is `MICROU.EXE`'s (`1000:` code, `DS:` data) unless another file is named. This table replaced a run-on paragraph of dated notes on 2026-09-26 (`GOAL-DOS-PARITY.md` D2, §9cx); each ID's status was re-read from its latest dated note. When an item opens or closes, change its row here in the same commit.
@@ -6149,7 +6153,6 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 
 | Item | Status | Section | Address | Open question |
 |---|---|---|---|---|
-| A "drawn but invisible" car | open | §9ap; GOAL Part L | `[1250]`, `7D73` | Is a car whose drawn flag is set really absent from the screen? Tried, not obtained. |
 | Front-end pixel parity | open | GOAL Part F | `0400` | No byte-exact diff of most front-end screens (the options/F7 header, the carousel's look, the H2H vs CPU race-intro sprite panel); §9bz's four H2H screens and §9cu's options body are the exceptions. |
 
 ### 10.3 Closed

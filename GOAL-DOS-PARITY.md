@@ -843,7 +843,7 @@ Commit each item on its own, including any capture file under `tools/refs/`.
   OPL2 core against DOSBox's own output. **(§9dj: spectral match, tune 4 0.84 against ≤0.63 for other tunes, `npm run oplaudio`; `UNKNOWN_waveform_target` stays open, the metric cannot separate the two waveform modes.)**
 - [x] `UNKNOWN_class8_choppers`, live confirmation (optional; it is already resolved `[STATIC]`). **(§9dk: round 8's engine records get instrument 0x70, delay 3 live.)**
 - [x] Mouse/joystick fire preempt, live (§9aq 4). Do this after P6. **Done (§9cv): live, the mouse pre-empts (4D70 taken with 0xA8, 4DB4 never), the joystick does not (4DB4 reached with 0xA8, it turns and accelerates).**
-- [ ] Whether a "drawn but invisible" car is actually absent from the screen (§9ap).
+- [x] Whether a "drawn but invisible" car is actually absent from the screen (§9ap). **(§9dl: already answered live in §9aq 2.)**
 
 ## Part R: remaining static RE items (Ghidra only; can go to subagents, no DOSBox)
 
