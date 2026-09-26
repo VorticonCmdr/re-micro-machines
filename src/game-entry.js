@@ -1,4 +1,7 @@
 import { bootGame } from './frontend/flow.js'
+import { applyDevFlag } from './devFlag.js'
+
+applyDevFlag() // before the elements are looked up: without ?dev the dev toggles don't exist
 
 const canvas = document.getElementById('game-canvas')
 const statusEl = document.getElementById('game-status')

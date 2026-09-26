@@ -6148,6 +6148,8 @@ matched, now pinned by a test), and the race-start fade-in (the port now holds b
 and steps nothing, then shows the first frame at full palette). Still unported: the race setup's own
 `395D` fade-out of the screen before the race (the port's front-end screens have no fades at all).
 
+**Added 2026-09-26 (§9ct).** The page chrome (P7): the developer toggles appear only with `?dev`.
+
 **Added 2026-09-26 (§9cs).** Race setup leaves 14 byte ranges of every car record alone (`[STATIC]`,
 a call-tree scan of `38FB`), so they carry into the next race, with the BX quirk's garbage in them.
 Ported (`race.js` `createCarRecordCarry`, one per `flow.js` session). New:
@@ -12873,3 +12875,25 @@ fails nothing.
 try filled the records during a race that was already running, because the SPACE meant as "any key"
 paused it. That garbage then hung the game, and the emulator had to be restarted.
 `UNKNOWN_setup_unwritten_live`.
+
+## 9ct. The page chrome: the developer toggles only with `?dev` (2026-09-26)
+
+GOAL-DOS-PARITY.md P7. This is port-only; the original has no page chrome. Since `game.html`'s own
+OPTIONS screen sets the smoothness, the sound and the controls, the header toggles were developer
+tools. `src/devFlag.js` `applyDevFlag()` runs in both entry scripts before any element is looked up.
+Without `dev` in the query string it removes every `.dev-only` element, so `bootGame`/`bootRace` find
+`null` and treat the toggles as off; they read them null-safely. The dev-only elements:
+- on `game.html`, Strict OPL2, Lap line, and the links to the single-race page and the viewer;
+- on `index.html`, Strict OPL2, Projectiles and Lap line. Its Smoothness select stays, because that
+  page has no OPTIONS screen.
+
+`game.html`'s description paragraph now lists the real controls: the logo click, the code card, the
+OPTIONS keys, the default KEYS 2 (arrows, S) and KEYS 1 (J L I M K) bindings, SPACE and ESC.
+
+**Tests.** `npm run pages` (`tools/check-pages.mjs`) checks that the toggles sit in `dev-only`
+elements and the canvas and the folder picker don't, and that `game.html`'s header links are dev-only.
+It checks that both entry scripts call `applyDevFlag()` before their first `getElementById`, and that
+`applyDevFlag` removes the elements without `?dev` and keeps them with it (`?dev`, `?x=1&dev=1`).
+Against the old pages six checks fail. **Browser-checked:** without `?dev`, `game.html` shows only
+the title, the description and the canvas, and boots into the logo with no console error. With
+`?dev` it shows the two toggles and the links. `index.html` shows Smoothness and the links and races.

@@ -133,6 +133,8 @@ and stays local to your machine.
     real Sound Blaster/AWE cards of the era) ignores that and plays each instrument's own waveform
     regardless — a richer, "not strictly accurate" sound that is what the game actually sounded
     like on real, common hardware. This checkbox switches to the stricter, sine-only behaviour.
+  Like the other developer toggles (the lap line, and the single-race page's projectiles), it only
+  appears with `?dev` in the page URL; without it `game.html` is just the game.
 
 ## What's not implemented
 

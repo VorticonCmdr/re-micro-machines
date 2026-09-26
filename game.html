@@ -10,33 +10,21 @@
     <header class="topbar">
       <h1>Micro Machines</h1>
       <div class="topbar-controls">
-        <label><input type="checkbox" id="opl-strict" /> Strict OPL2 (sine only)</label>
-        <label><input type="checkbox" id="lapline-toggle" /> Lap line (dev)</label>
+        <label class="dev-only"><input type="checkbox" id="opl-strict" /> Strict OPL2 (sine only)</label>
+        <label class="dev-only"><input type="checkbox" id="lapline-toggle" /> Lap line (dev)</label>
         <button id="pick-folder" type="button" hidden>Open game folder…</button>
-        <a class="viewer-link" href="index.html">Single race →</a>
-        <a class="viewer-link" href="viewer.html">Asset Viewer →</a>
+        <a class="viewer-link dev-only" href="index.html?dev">Single race →</a>
+        <a class="viewer-link dev-only" href="viewer.html">Asset Viewer →</a>
       </div>
     </header>
     <main id="stage" class="stage">
       <p class="placeholder game-note">
-        Logo intro (a real animation -- click to skip; no key does) → code card (arrows move,
-        ENTER accepts, twice) → GAME OPTIONS (F1/F2 control device, F3 sound, F4 smoothness
-        including AUTO, F5 redefine keys, F6 credits; ENTER plays, ESC quits to DOS) → menu →
-        character select → Challenge/Head-to-Head tournament (pick your 3 Challenge opponents
-        yourself right after the qualifier; a real tournament board screen shows between Challenge
-        races) → champion (M3.9). Arrows navigate
-        menus, Space/Enter confirms (between races -- race intro, board, results, "IS OUT!!",
-        outcome, and PRESS ANY KEY -- any key on release, or ~10 s; the champion screen: any player key
-        key, no timeout); during a race, arrows steer/throttle and S
-        fires (KEYS2, or SETTINGS.DAT's own binding), SPACE pauses, and ESC quits the race back to
-        the title screen. Head-to-Head vs CPU asks who you race; it has no results table and no
-        screen after a won race (docs/engine.md §9an). Two-human head-to-head: both players pick
-        (P2 on J L I M K); TOURNAMENT plays a match to 4 wins; SINGLE RACE picks a track and races it. A lap counts at the
-        start grid (the bath rack in the qualifier; tick "Lap line (dev)" to mark it); finish in the
-        top two, and in the qualifier completing a lap while ahead of everyone on laps wins it
-        outright. If the game files
-        aren't found at <code>/game</code> (a production build), open your own copy with "Open game
-        folder…" or drop it below.
+        Click to skip the logo. On the code card any symbol is accepted: press ENTER twice. On GAME
+        OPTIONS, F1/F2 pick each player's controls, F3 the
+        sound, F4 the smoothness, F5 redefines the keys, F6 shows the credits, RETURN plays and ESC
+        quits. KEYS 2: arrows steer, up accelerates, down brakes, S fires. KEYS 1: J L I M K. In a
+        race, SPACE pauses and ESC quits to the title. The game files load from <code>/game</code>;
+        if they aren't there, use "Open game folder…" or drop the folder on the page.
       </p>
       <canvas id="game-canvas" class="race-canvas"></canvas>
       <p id="game-status" class="race-status">Loading…</p>

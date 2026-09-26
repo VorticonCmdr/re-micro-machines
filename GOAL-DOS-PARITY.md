@@ -121,7 +121,7 @@ Don't read `docs/engine.md` from start to finish. It is 6,000 lines. Jump to sec
 
 ```bash
 for s in catalog lz chrtable tables car intro codecard options title mainmenu charselect board elimination keywait outcomewait windowedwait champion pressanykey raceskip step trace ai play sound rounds finish twocar twohuman h2hscreens escquit tournament \
-         beeper menu screens opl-toggle smoothness si2 live smoke; do npm run -s $s || echo "FAIL $s"; done
+         beeper menu screens opl-toggle smoothness si2 live smoke pages; do npm run -s $s || echo "FAIL $s"; done
 npm run build
 ```
 
@@ -811,7 +811,7 @@ docs, (6) commit.
 - [x] **NONE** (`DRIVER0.BIN`): silence. **Done (§9cq, M3.98): every command answers 0.**
 
 ### P7: page chrome
-- [ ] When the P1 options screen exists, the header's dev toggles ("Lap line (dev)", "Strict
+- [x] **Done (§9ct, M3.101): `?dev` keeps them; without it they and `game.html`'s nav links are removed before boot (`src/devFlag.js`, `npm run pages`); the description is rewritten.** When the P1 options screen exists, the header's dev toggles ("Lap line (dev)", "Strict
   OPL2") move behind a `?dev` URL flag. They are off by default, and the default page shows only
   the game canvas and the folder picker. Rewrite `game.html`'s placeholder paragraph to describe the
   real controls.
