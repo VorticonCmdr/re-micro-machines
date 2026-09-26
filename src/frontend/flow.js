@@ -43,7 +43,7 @@ import { RUFF_TRUCK_TIMES } from '../data/engine-tables.js'
 import { initTournament, createRaceIndexRegister, isInQualifier, applyRaceSkip, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, raceIntroHoldTicks, raceIntroParticipants, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, resultsPassed, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, OUTCOME } from './tournament.js'
 import { CHARACTER_NAMES, OUTCOME_MESSAGES, resolveSmoothnessForPlay } from '../data/frontend-tables.js'
 import { ORDER_TABLE, TRACK_NAMES } from '../data/frontend-tables.js'
-import { layoutOptions, layoutJoyCal, layoutTitle, layoutSelectGame, layoutOnePlayerGame, layoutCharSelect, layoutPicker, layoutQualifierIntro, layoutRaceIntro, layoutResults, layoutOutcome, layoutBoard, layoutEliminated, layoutChampion } from './frontLayouts.js'
+import { layoutOptions, layoutJoyCal, layoutTitle, layoutSelectGame, layoutOnePlayerGame, layoutCharSelect, layoutPicker, layoutQualifierIntro, layoutRaceIntro, layoutResults, layoutOutcome, layoutBoard, layoutEliminated, layoutChampion, pressAnyKeyPrompt } from './frontLayouts.js'
 import { paintOps, layoutChooseGame, layoutTwoPlayerRaceInfo, layoutTwoPlayerResult, layoutSingleRaceSelect, slideIconX } from './h2hScreens.js'
 import { drawTwoPlayerPickLabels, drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawOpponentPanel, drawEliminatedScreen, drawEliminationIcon, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawJoystickCalibrationScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
 import { createSmoothnessGate } from '../engine/smoothness.js'
@@ -730,6 +730,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       pressAnyKeyAcc -= INTRO_TICK_MS
       if (pressAnyKeyWaitTick(readPressAnyKeyInput())) return
     }
+    paintMenu() // the prompt blinks (0C96, every tick)
     pressAnyKeyRafId = requestAnimationFrame(pressAnyKeyTick)
   }
   // NOT startNextRace() directly (a bug an advisor review caught): this PRESS_ANY_KEY is reached
@@ -900,7 +901,20 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     // is what race setup's 395A fade-out then darkens (docs/engine.md §9cp).
     if (phase === 'LOADING') return
     menuBuf.fill(0)
-    if (phase === 'PRESS_ANY_KEY') drawPressAnyKey(menuBuf, arena)
+    if (phase === 'PRESS_ANY_KEY') {
+      // 0C15 has no screen of its own: it blinks its text in the prompt row (0C96) of the carousel
+      // still on screen (docs/engine.md §9dr 7) -- the committed pick, or the filled opponent picker.
+      const promptOn = ((performance.now() * 70 / 1000 / 32) | 0) % 2 === 0 // [0x26CF]&1
+      const text = 'PRESS ANY KEY TO START'
+      if (charSelectState && tournament?.format === 'challenge' && charWho === 'player') {
+        paintOps(menuBuf, arena, layoutCharSelect({ scroll: charSelectState.scroll, roster: rosterBytes(), picked: tournament.playerCharacter, promptText: text, promptOn }))
+      } else if (charSelectState && charWho === 'challenge-opponent') {
+        paintOps(menuBuf, arena, layoutPicker({ slots: [tournament.playerCharacter, ...tournament.opponents.map((o) => (o == null ? 0xb : o))], scroll: charSelectState.scroll, roster: rosterBytes(), promptText: text, promptOn }))
+      } else if (charSelectState) {
+        drawCharacterSelect(menuBuf, arena, { scroll: charSelectState.scroll, cursor: charSelectState.cursor, roster: rosterBytes(), promptOn: false })
+        paintOps(menuBuf, arena, pressAnyKeyPrompt(promptOn))
+      } else drawPressAnyKey(menuBuf, arena)
+    }
     else if (phase === 'RACE_INTRO' && tournament.format === 'challenge' && currentRace(tournament).round !== 9) {
       // The Challenge race intros are pixel-exact layouts (docs/engine.md §9dm): the qualifier's
       // QUALIFYING RACE (127E-12BA), and a normal race's panel/race line/class picture/icons at rest.

@@ -5,7 +5,7 @@
 // border colour 15). All captures' DACs are INTRO.PAL, so indices are compared directly. The
 // captures are tools/refs/front/<name>_a000.bin.gz (64000 B mode-13h frames, gzipped).
 //   node tools/check-front.mjs            (writes tools/out/front_<name>_diff.png on a mismatch)
-import { readFileSync, existsSync, mkdirSync } from 'node:fs'
+import { readFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
@@ -28,6 +28,13 @@ const ctx = { settings: parseSettings(new Uint8Array(readFileSync(join(GAME, 'SE
 
 let bad = 0
 const report = []
+// Every capture here must be checked: a frame with no layout is a screen the port doesn't draw the
+// DOS way yet (the h2h_* frames are check-h2hscreens.mjs's).
+for (const f of readdirSync(REFS)) {
+  const m = /^(.+)_a000\.bin(\.gz)?$/.exec(f)
+  if (!m || m[1].startsWith('h2h_') || only) continue
+  if (!(m[1] in FRONT_SCREENS)) { bad++; report.push(`${m[1]}: captured but no layout checks it`) }
+}
 for (const [name, layout] of Object.entries(FRONT_SCREENS)) {
   if (only && name !== only) continue
   const gz = join(REFS, `${name}_a000.bin.gz`), raw = join(REFS, `${name}_a000.bin`)

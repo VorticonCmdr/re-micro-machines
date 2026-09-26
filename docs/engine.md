@@ -6216,6 +6216,12 @@ With every checkbox of `GOAL-DOS-PARITY.md` ticked, §10.1 still held items that
    - `UNKNOWN_mouse_host_scale` asks how many INT 33h mickeys one browser pixel is worth. On DOS that ratio is the physical mouse's resolution and the driver's settings, not a value the game holds; the game only reads the driver's counts (`2EB3`, §9cu), with the driver's own defaults (`3A44` is never called). The port's 1 mickey per CSS pixel is a choice, recorded as one in `pointerMouse.js`.
    - `UNKNOWN_waveform_target` asks which chip a DOS player had: a YM3812, where waveform select works only once the test register enables it, or an OPL3/emulator that honours it. That is the player's hardware. Both are implemented (the default and the dev-only strict OPL2 toggle), only tunes 6 and 7 use a waveform, and §9dj could not tell them apart in DOSBox's audio.
 
+7. **PRESS ANY KEY and FAILED TO QUALIFY captured (§10.2), one fixed.** Two fresh DOSBox sessions this pass (`tools/refs/front/pressanykey_a000.bin.gz`, `outcome_failed_a000.bin.gz`, both INTRO.PAL):
+   - **PRESS ANY KEY is not a screen.** `0C15` (`0C1B-0C27`) points `0C96`'s prompt at `DS:0241` ("PRESS ANY KEY TO START", FONT1, y 0x62) and calls `0C96` every tick until its wait ends, so the text blinks in the prompt row of the carousel still on screen. After the Challenge player pick that is the committed carousel: the panel shows the pick's face and its name under it (`0B37` wrote the pick into the panel descriptor; `0F3C`, y+0x31), and the pick is marked taken. The port drew the text alone on a blank screen with FONT2. It now draws `layoutCharSelect` with `picked` (or the filled `layoutPicker` after the opponent picks, or the older carousel for Head-to-Head vs CPU) with the prompt row's text swapped, blinking. `npm run front`: 0 px.
+   - **FAILED TO QUALIFY** (outcome code 0, caught with a breakpoint on its `17FF` wait): 0 px with `layoutOutcome` as it was; now in `npm run front`.
+   - `check-front` now also fails when a capture in `tools/refs/front` has no layout checking it (the `h2h_*` frames are `check-h2hscreens`'), which is what makes the PRESS ANY KEY check fail without the fix.
+   - The credits capture failed: `screen_capture` returned frames seconds old in this session, so the credits had already been dismissed when `A000` was read (the frame is the OPTIONS screen). The redefine-keys frame was read directly and differs from `drawRedefineKeysScreen` (§9dr 8).
+
 ## 10. Open items
 
 Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: `open`, `narrowed` (part answered; the rest is the open question), `closed`. **Section** is where the answer (or the question) is written up; the history, wrong turns included, stays in those sections and is not repeated here. **Address** is `MICROU.EXE`'s (`1000:` code, `DS:` data) unless another file is named. This table replaced a run-on paragraph of dated notes on 2026-09-26 (`GOAL-DOS-PARITY.md` D2, §9cx); each ID's status was re-read from its latest dated note. When an item opens or closes, change its row here in the same commit.
@@ -6233,7 +6239,7 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 
 | Item | Status | Section | Address | Open question |
 |---|---|---|---|---|
-| Front-end pixel parity | narrowed | §9dm-§9dp; GOAL Part F | - | All 19 captured screens (and §9bz's six two-human ones) are 0 px in `npm run front`. Not captured, so not checked: the Head-to-Head vs CPU carousel and intro, the round-9 bonus race's intro, PRESS ANY KEY, EXTRA LIFE / NO BONUS / FAILED TO QUALIFY, the credits and redefine-keys screens. |
+| Front-end pixel parity | narrowed | §9dm-§9dp, §9dr 7; GOAL Part F | - | All 21 captured screens (and §9bz's six two-human ones) are 0 px in `npm run front`, PRESS ANY KEY and FAILED TO QUALIFY included (§9dr 7). Not captured, so not checked: the Head-to-Head vs CPU carousel and intro, the round-9 bonus race's intro, EXTRA LIFE / NO BONUS, the credits (a failed attempt, §9dr 7). |
 
 ### 10.3 Closed
 

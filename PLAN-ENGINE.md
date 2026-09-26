@@ -228,6 +228,7 @@ Each has a seeable acceptance test; each records findings with evidence tags bef
 | **M3.129 §10: a single race sees the session's `[0x28C1]` (`UNKNOWN_single_race_28c1`)** — **done 2026-09-26 (`d4f3019`)** | §9dr 4. `2329` never writes it and its only reader there is the respawn's race-0x16 rule (`7008`); the port reset it to 1 at every CHOOSE GAME. `createRaceIndexRegister` tracks the last tournament loop's value (`10AF`/`10F9`, `1FB9`/`207A`, static 1). |
 | **M3.130 §10: the Head-to-Head pickers' prompt blinks (`UNKNOWN_26cf_prompt_blink`)** — **done 2026-09-26 (`119aed0`)** | §9dr 5. `0C96` draws every carousel's prompt only while `[0x26CF]` bit 0 is set; the H2H vs CPU and two-human picks (the older `drawCharacterSelect`) showed it steadily. |
 | **M3.131 §10: three category-(c) closures** — **done 2026-09-26** | §9dr 6. `UNKNOWN_dosbox_wait_frames_cadence` (the bridge's, not the game's), `UNKNOWN_mouse_host_scale` (the host mouse's) and `UNKNOWN_waveform_target` (the player's chip) cannot be answered from the files. |
+| **M3.132 PRESS ANY KEY drawn the DOS way; FAILED TO QUALIFY checked (§10.2)** — **done 2026-09-26** | §9dr 7. `0C15` has no screen of its own: its text blinks in the prompt row of the carousel still on screen. Two new live captures, both 0 px in `npm run front` (21 screens), which now also fails on a capture with no layout. |
 
 ## 6. Reverse-engineering queue (historical — was "what each milestone must still establish" for M3.3-M3.9)
 

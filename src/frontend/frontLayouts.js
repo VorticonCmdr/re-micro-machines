@@ -133,20 +133,28 @@ const prompt = (text, on) => [{ op: 'rows', y: 0x62, count: 8, color: 0 }, ...(o
 /** The Challenge character select (`102B` -> `09E0`): header "Challenge", the single "?" panel at
  * (0x68,0x27) with its border (`105B-1072`), the carousel on `c`, the prompt. */
 export const settledScroll = (c) => ((((5 - c) % 11) + 11) % 11) * 0x40
-export function layoutCharSelect({ scroll, roster, promptOn = true, blinkOn = false }) {
+// `picked`: after the commit (`0B37` writes the pick into the panel's descriptor) the panel shows that
+// face and its name under it (`0F3C`, y+0x31) -- what PRESS ANY KEY (`0C15`) is drawn over.
+export function layoutCharSelect({ scroll, roster, promptOn = true, blinkOn = false, picked = null, promptText = 'WHO DO YOU WANT TO BE ?' }) {
   return [
     ...header({ words: 2 }),
-    { op: 'sprite', chr: 'FCNORMAL.CHR', frame: 11, x: 0x68, y: 0x27, opaque: true },
+    { op: 'sprite', chr: 'FCNORMAL.CHR', frame: picked ?? 11, x: 0x68, y: 0x27, opaque: true },
     { op: 'border', x: 0x67, y: 0x26, w: 50, h: 50, color: 0x0d },
+    ...(picked != null ? [{ op: 'text', font: 'FONT1.CHR', text: PORTRAIT_NAMES[picked], x: 0x68, y: 0x27 + 0x31 }] : []),
     ...carousel(scroll, roster, blinkOn),
-    ...prompt('WHO DO YOU WANT TO BE ?', promptOn),
+    ...prompt(promptText, promptOn),
   ]
 }
 
+/** `0C15` ("PRESS ANY KEY TO START"): no screen of its own. It points `0C96`'s prompt (`[0x19A]`) at
+ * `DS:0241` (FONT1, y 0x62, `0C1B-0C27`) and calls it every tick, so the text blinks in the prompt
+ * row of whatever carousel is still on screen (docs/engine.md §9dr 7). */
+export const pressAnyKeyPrompt = (on) => prompt('PRESS ANY KEY TO START', on)
+
 /** The opponent picker (`1A4A` -> `19F2` -> `09E0`): the four-slot panel, the carousel, "WHO DO YOU
  * WANT TO RACE ?". */
-export function layoutPicker({ slots, scroll, roster, promptOn = true, blinkOn = false }) {
-  return [...header({ words: 2 }), ...panel4(slots), ...carousel(scroll, roster, blinkOn), ...prompt('WHO DO YOU WANT TO RACE ?', promptOn)]
+export function layoutPicker({ slots, scroll, roster, promptOn = true, blinkOn = false, promptText = 'WHO DO YOU WANT TO RACE ?' }) {
+  return [...header({ words: 2 }), ...panel4(slots), ...carousel(scroll, roster, blinkOn), ...prompt(promptText, promptOn)]
 }
 
 /** `01DE` with `[0BB6]` = y: INTRO frame (opaque) at (0x50,y), the 8 rows under it cleared, the
@@ -298,11 +306,13 @@ export const FRONT_SCREENS = {
   results_lost: () => layoutResults({ raceNumber: 1, trackName: 'THE BREAKFAST BENDS', round: 5, places: [{ character: 0, car: 1 }, { character: 1, car: 2 }, { character: 2, car: 3 }, { character: 10, car: 0 }], playerPlace: 3, passed: false, b: 1 }),
   outcome_qualified: () => layoutOutcome({ code: 1, message: 'QUALIFIED FOR CHALLENGE!', character: 10, lives: 3, b: 1 }),
   outcome_lifelost: () => layoutOutcome({ code: 2, message: 'ONE LIFE LOST', character: 10, lives: 2, b: 0 }),
+  outcome_failed: () => layoutOutcome({ code: 0, message: 'FAILED TO QUALIFY!', character: 10, lives: 3, b: 1 }),
   board_a: () => layoutBoard({ raceIndex: 1, iconOn: false }),
   board_b: () => layoutBoard({ raceIndex: 1, iconOn: true }),
   eliminated: () => layoutEliminated({ slots: [10, 0, 1, 2], victimSlot: 1 }),
   champion: () => layoutChampion({ character: 10, b: 0, titleX: 0x26 }),
   charselect: () => layoutCharSelect({ scroll: settledScroll(10), roster: FREE_ROSTER }),
+  pressanykey: () => layoutCharSelect({ scroll: settledScroll(10), roster: FREE_ROSTER.map((v) => (v === 10 ? 0x4a : v)), picked: 10, promptText: 'PRESS ANY KEY TO START' }),
   picker: () => layoutPicker({ slots: [10, 0xb, 0xb, 0xb], scroll: settledScroll(0), roster: FREE_ROSTER.map((v) => (v === 10 ? 0x4a : v)) }),
   qualintro: () => layoutQualifierIntro({ vehicleClass: 2 }),
   raceintro: () => layoutRaceIntro({ slots: [10, 0, 1, 2], raceNumber: 1, trackName: 'THE BREAKFAST BENDS', round: 5 }),
