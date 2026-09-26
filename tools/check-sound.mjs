@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Driver, Sequencer, createEngineJitter } from '../src/formats/si2.js'
-import { asDriver, raceStart, updateEngines, raceOverStart, raceOverEnd, raceOverGateCar, createRaceJitter } from '../src/engine/sound.js'
+import { raceInstrument, asDriver, raceStart, updateEngines, raceOverStart, raceOverEnd, raceOverGateCar, createRaceJitter } from '../src/engine/sound.js'
 import { parseStrtPos } from '../src/formats/globaldata.js'
 import { loadWorld, loadBrk, roundCtx, spawnCars } from '../src/engine/race.js'
 import { runStep } from '../src/engine/step.js'
@@ -344,6 +344,14 @@ function check(name, cond) {
   }
   check('7448: the countdown hitting 0 on car 0\'s slot plays sfx 15 once if car 0 was drawn', oneShot(1, [1, 0, 0, 0]) === 1)
   check('7448: hitting 0 on an undrawn slot (car 2) plays nothing there -- the state-0x10 loop takes over', oneShot(3, [1, 0, 0, 0]) === 0)
+}
+
+// InitEngineSounds 7A97's per-class record bytes, as read live in DRIVER1's engine records right
+// after the call (docs/engine.md §9dk): round 2 instrument 0x70 / delay 0, round 5 0x71 / 0, and round
+// 8 (CHOPPERS, the 7AC9 branch) 0x70 / 3.
+for (const [round, instrument, delay] of [[2, 0x70, 0], [5, 0x71, 0], [8, 0x70, 3]]) {
+  const r = raceInstrument(round)
+  check(`live engine init, round ${round}: instrument 0x${instrument.toString(16)}, delay ${delay}`, r.instrument === instrument && r.delay === delay)
 }
 
 console.log(bad ? `${bad} check(s) failed` : 'check-sound: the race engine drives the sound driver model correctly (jitter checkpoint, race-start AH=7, per-step engine pitch, sfx wiring, race-over, synthetic sfx-site coverage, M3.27\'s six new wire-ups); front-end outcome music matches the real CX-parity rule, no exception for NO_BONUS; race-intro music never plays the unreachable tune 5 (M3.45)')

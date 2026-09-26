@@ -841,7 +841,7 @@ Commit each item on its own, including any capture file under `tools/refs/`.
   model predicts 156.
 - [x] `UNKNOWN_opl_sample_fidelity`/`UNKNOWN_waveform_target`: an audio-level comparison of the JS
   OPL2 core against DOSBox's own output. **(§9dj: spectral match, tune 4 0.84 against ≤0.63 for other tunes, `npm run oplaudio`; `UNKNOWN_waveform_target` stays open, the metric cannot separate the two waveform modes.)**
-- [ ] `UNKNOWN_class8_choppers`, live confirmation (optional; it is already resolved `[STATIC]`).
+- [x] `UNKNOWN_class8_choppers`, live confirmation (optional; it is already resolved `[STATIC]`). **(§9dk: round 8's engine records get instrument 0x70, delay 3 live.)**
 - [x] Mouse/joystick fire preempt, live (§9aq 4). Do this after P6. **Done (§9cv): live, the mouse pre-empts (4D70 taken with 0xA8, 4DB4 never), the joystick does not (4DB4 reached with 0xA8, it turns and accelerates).**
 - [ ] Whether a "drawn but invisible" car is actually absent from the screen (§9ap).
 

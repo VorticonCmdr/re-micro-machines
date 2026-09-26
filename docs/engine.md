@@ -6108,6 +6108,14 @@ So the JS core plays recognisably the same music as DOSBox, clearly set apart fr
 
 **Check.** `tools/refs/si2/dosbox_tune4_intro_features.json` (52 KB: the envelope and the 40 spectra of the intro segment, not the audio). `npm run oplaudio` (`tools/check-opl-audio.mjs`, new, in the regression suite) renders tunes 4, 1, 6 and 8 and requires tune 4 ≥ 0.8 and at least 0.15 above the others (now 0.840 against 0.626 at best).
 
+## 9dk. Part L: CHOPPERS' engine sound set up live (2026-09-26)
+
+`GOAL-DOS-PARITY.md` Part L's optional `UNKNOWN_class8_choppers` item: class 8 = CHOPPERS was `[STATIC]` (`docs/sound.md` §8), with `InitEngineSounds 7A97`'s `7AC9 CMP AL,8` choosing instrument 0x70 and delay 3 for it (BL/BH, stored at `7AE2`/`7AEB` into each engine record's `+2`/`+0xB`).
+
+**Live** (`[PROVEN]`): with the `25011968` cheat on, `[28C1]` was poked to 9 at a race intro. The next race was then `ORDER_TABLE` index 10, `[28BF]`=8 race 1 (round 8's first race; the qualifier was ended with `[26C6]`=2 and passed with `[2630]`=1, which do not touch the sound init). An execute breakpoint at `304E`, right after `RunRaceMainLoop`'s `304B CALL 7A97`, read DRIVER1's four engine records (`+0x08`): each was `00 92 70 00 9C 00 23 7F 01 95 00 03 98 …`, instrument **0x70** and delay **3**. At `39F0`, before the call, they still held the previous race's bytes; `7A97` runs only from `304B`. For comparison, the same records read live in round 2 (§9di's first capture: 0x70, delay 0) and round 5 (0x71, 0) show the other two branches.
+
+**Port.** No change: `sound.js` `raceInstrument` already gives 0x70/3 for round 8, 0x70/0 for round 2 and 0x71/0 otherwise. It was untested; `check-sound` now pins the three live readings.
+
 ## 10. Open items
 
 Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: `open`, `narrowed` (part answered; the rest is the open question), `closed`. **Section** is where the answer (or the question) is written up; the history, wrong turns included, stays in those sections and is not repeated here. **Address** is `MICROU.EXE`'s (`1000:` code, `DS:` data) unless another file is named. This table replaced a run-on paragraph of dated notes on 2026-09-26 (`GOAL-DOS-PARITY.md` D2, §9cx); each ID's status was re-read from its latest dated note. When an item opens or closes, change its row here in the same commit.
@@ -6193,7 +6201,7 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_champion_slide_duration` | closed | §9db (§9bs) | `1AAD`, `1BF4` | 148 ticks from entry to the end of iteration 108 in DOSBox [PROVEN]; the port uses it (first poll on tick 149). |
 | `UNKNOWN_channel_exhaustion` | closed | `docs/sound.md` §10 (M3.28) | DRIVER1.BIN `07BE-0803` | All 9 channels busy plus a state-2 slot with id≤7 gives phantom success on channel 0xFF; ported in Sequencer.startSfx. |
 | `UNKNOWN_cheats_type` | closed | §9cf 3 | `[2917]`, `[291B]`, CHEATS.BIN | All 10 effects decoded (§6); `[2917]`/`[291B]` are write-only, so type 6 does nothing [STATIC]. |
-| `UNKNOWN_class8_choppers` | closed | `docs/sound.md` §8 (M3.45) | `DS:002F`, `[9D8]`, `7AC9` | Class 8 = CHOPPERS, from a direct read of the class-name table [STATIC]. Live confirmation is still optional (GOAL Part L). |
+| `UNKNOWN_class8_choppers` | closed | §9dk; `docs/sound.md` §8 (M3.45) | `DS:002F`, `[9D8]`, `7AC9` | Class 8 = CHOPPERS from the class-name table [STATIC]; live, round 8's engine records get instrument 0x70 and delay 3 at `7A97` [PROVEN]. |
 | `UNKNOWN_codecard_cursor_origin` | closed | `docs/intro-and-codecard.md` (M3.30) | - (FONT.BIN) | A live capture shows the cursor frames cell (0,0) correctly [PROVEN]; the ~10px gap is likely a centred 32×22 cursor sprite [STATIC]. |
 | `UNKNOWN_codecard_neutralised` | closed | `docs/intro-and-codecard.md` (FONT.BIN) | FONT.BIN `+0xA8`/`+0x137` | Both code-card compare sites are byte-patched (`MOV AL,DL` plus a jump/NOPs), so any answer passes. |
 | `UNKNOWN_codecard_pristine_bytes` | closed | `docs/intro-and-codecard.md` FONT.BIN section (M3.30) | FONT.BIN `+0xA8`, `+0x13A` | Both patched sites were originally CALL 0x190; CMP AL,DL; Jcc, inferred from the intact +0xE9 site [STATIC]. |
