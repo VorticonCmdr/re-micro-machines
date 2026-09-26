@@ -607,9 +607,9 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     // The Challenge's own pick and its opponent picker are pixel-exact layouts (docs/engine.md §9dm);
     // the Head-to-Head variants keep the older renderer (no capture of those states yet).
     const challenge = tournament?.format === 'challenge' && (charWho === 'player' || charWho === 'challenge-opponent')
+    const promptOn = ((performance.now() * 70 / 1000 / 32) | 0) % 2 === 0 // 0C96: [0x26CF]&1, the ISR's 32-tick toggle, for every carousel
     if (challenge) {
       const roster = rosterBytes()
-      const promptOn = ((performance.now() * 70 / 1000 / 32) | 0) % 2 === 0 // 0C96: [0x26CF]&1, the ISR's 32-tick toggle
       const layout = charWho === 'player'
         ? layoutCharSelect({ scroll: charSelectState.scroll, roster, promptOn, blinkOn: charSelectState.blinkOn })
         : layoutPicker({ slots: [tournament.playerCharacter, ...tournament.opponents.map((o) => (o == null ? 0xb : o))], scroll: charSelectState.scroll, roster, promptOn, blinkOn: charSelectState.blinkOn })
@@ -620,7 +620,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     }
     if (charWho === 'challenge-opponent') drawOpponentPanel(menuBuf, arena, { slots: [tournament.playerCharacter, ...tournament.opponents], header: false })
     const h2h = charWho.startsWith('h2h')
-    drawCharacterSelect(menuBuf, arena, { scroll: charSelectState.scroll, cursor: charSelectState.cursor, roster: rosterBytes(), blinkOn: charSelectState.blinkOn, prompt: charWho !== 'player' && !h2h ? 'WHO DO YOU WANT TO RACE ?' : 'WHO DO YOU WANT TO BE ?' })
+    drawCharacterSelect(menuBuf, arena, { scroll: charSelectState.scroll, cursor: charSelectState.cursor, roster: rosterBytes(), blinkOn: charSelectState.blinkOn, prompt: charWho !== 'player' && !h2h ? 'WHO DO YOU WANT TO RACE ?' : 'WHO DO YOU WANT TO BE ?', promptOn })
     if (h2h) drawTwoPlayerPickLabels(menuBuf, arena, { slot: charWho === 'h2h-p1' ? 0 : 1, handicap: phase === 'HANDICAP' ? { character: handicapCharacter, answer: handicapState.answer } : null })
     paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
     statusEl.textContent = 'CHAR_SELECT'

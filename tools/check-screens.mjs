@@ -175,6 +175,26 @@ for (const [name, fn] of cases) {
   }
 }
 
+// The Head-to-Head carousels' prompt blinks like the Challenge's: 0C96 draws [0x19A] only while
+// [0x26CF] bit 0 is set, for every 09E0 caller (docs/engine.md §9dr). Off: nothing in the prompt's
+// FONT2 rows (8..23), and nothing else changes.
+{
+  const opts = { scroll: 0x140, cursor: 6, roster: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] }
+  const on = createMenuBuffer(); drawCharacterSelect(on, arena, { ...opts, promptOn: true })
+  const off = createMenuBuffer(); drawCharacterSelect(off, arena, { ...opts, promptOn: false })
+  let promptInk = 0, promptLeft = 0, elsewhere = 0
+  for (let i = 0; i < on.length; i++) {
+    const y = Math.floor(i / MENU_VIEW.w)
+    const inPrompt = y >= 8 && y < 24
+    if (inPrompt && on[i] !== 0) promptInk++
+    if (inPrompt && off[i] !== 0) promptLeft++
+    if (!inPrompt && on[i] !== off[i]) elsewhere++
+  }
+  check('drawCharacterSelect: the prompt is drawn with promptOn', promptInk > 0)
+  check('drawCharacterSelect: promptOn false leaves the prompt rows blank (0C96, [0x26CF]&1 clear)', promptLeft === 0)
+  check('drawCharacterSelect: promptOn changes nothing outside the prompt rows', elsewhere === 0)
+}
+
 // A couple of direct pixel-content checks (not just "didn't throw") against a buffer we keep.
 {
   const buf = createMenuBuffer()

@@ -92,8 +92,10 @@ export function faceFrame(rosterByte) {
   if (rosterByte & 0x40) return 13 // taken
   return rosterByte & 0x1f // the plain 0-10 portrait once the flag bits are stripped
 }
-export function drawCharacterSelect(buf, arena, { scroll = 0, cursor = 0, roster = CHARACTER_NAMES.map((_, i) => i), blinkOn = false, prompt = 'WHO DO YOU WANT TO BE ?' } = {}) {
-  drawStringCentred(buf, arena, rec('FONT2.CHR'), prompt, 8)
+// `promptOn`: 0C96 draws the prompt ([0x19A]) only while the ISR's 32-tick toggle [0x26CF] has
+// bit 0 set, for every 09E0 caller (docs/engine.md §9dr).
+export function drawCharacterSelect(buf, arena, { scroll = 0, cursor = 0, roster = CHARACTER_NAMES.map((_, i) => i), blinkOn = false, prompt = 'WHO DO YOU WANT TO BE ?', promptOn = true } = {}) {
+  if (promptOn) drawStringCentred(buf, arena, rec('FONT2.CHR'), prompt, 8)
   const face = rec('FCNORMAL.CHR')
   let pos = scroll
   for (let i = 0; i < roster.length; i++) {
