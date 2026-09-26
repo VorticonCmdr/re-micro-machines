@@ -19,13 +19,14 @@
 //
 // Line 1 needs (0x28 - -0xB0) / 2 = 108 steps, line 2 (0x100 - 0x68) / 2 = 76, so the 108th
 // iteration is the first to find both in place, and its own tick wait and poll are the first ones.
-// **The slide's DURATION is not derivable** (`UNKNOWN_champion_slide_duration`): its iterations
-// wait on nothing (no `3165`, no `[0x2]` spin, no `0x3DA` poll in any of its calls -- unlike
-// `256E`'s 22-iteration slide, which waits a tick per iteration via `3165` at `2685`), so on DOS
-// they run as fast as the CPU draws them, plus the first iteration's fade (17 ticks live, §9co).
-// The port runs one iteration per tick (~1.5s for the slide), a port choice, not a measurement: an
-// upper bound under the project's own assumption that each draw fits in a tick. Zero would let a
-// held control key skip the screen instantly, which DOS never does.
+// The slide's iterations wait on nothing (no `3165`, no `[0x2]` spin, no `0x3DA` poll in any of its
+// calls -- unlike `256E`'s 22-iteration slide, which waits a tick per iteration via `3165` at
+// `2685`), so on DOS they run as fast as the CPU draws them. Measured live (docs/engine.md §9db,
+// closing `UNKNOWN_champion_slide_duration`): from the entry `1AAD` to `1BF4`, the end of iteration
+// 108, took 148 ticks of `[28F7]` in DOSBox, with no fade (`[26CE]` was 0; the results screen
+// before it had taken the fade-up). That is DOSBox's CPU speed, not a constant in the game; the port
+// uses it, as it uses the fades' measured 16/17 ticks (§9co). The first poll follows `1BFE`'s
+// one-tick wait: tick 149.
 //
 // The blink, the cup, the character's own Y slide (`0x62` down to `0x35`) and both text slides are
 // render items, not drawn by the port (it shows a static screen).
@@ -35,21 +36,30 @@ export const CHAMPION_LINE1_END = 0x28
 export const CHAMPION_LINE2_START = 0x100 // [0x3AC]
 export const CHAMPION_LINE2_END = 0x68
 export const CHAMPION_SLIDE_ITERATIONS = 108 // the iteration whose own poll is the first one
+export const CHAMPION_SLIDE_TICKS = 148 // [PROVEN] live: 1AAD -> 1BF4 ([28F7] 19371 -> 19519), DOSBox's CPU
 
 export function championInitialState() {
-  return { iteration: 0, line1: CHAMPION_LINE1_START, line2: CHAMPION_LINE2_START }
+  return { tick: 0, iteration: 0, line1: CHAMPION_LINE1_START, line2: CHAMPION_LINE2_START }
+}
+
+/** One slide iteration: step each line unless already in place (1B67/1B6E, 1BC2/1BC9). */
+function slideIteration(state) {
+  state.iteration++
+  if (state.line1 !== CHAMPION_LINE1_END) state.line1 += 2
+  if (state.line2 !== CHAMPION_LINE2_END) state.line2 -= 2
 }
 
 /**
- * One iteration (one tick in the port). `readInput()` is called only when the real code polls; it
- * returns `{ controlBits }`, both players' reader bytes ORed (`[0x108B]` with `[0x1080]=0`).
- * Returns `{ exit: null | 'dismiss', polled }`. No timeout exists.
+ * One tick. The 108 slide iterations are spread over the measured 148 ticks; once they are done the
+ * next tick is `1BFE`'s wait and the poll, and every tick after that polls. `readInput()` is called
+ * only when the real code polls; it returns `{ controlBits }`, both players' reader bytes ORed
+ * (`[0x108B]` with `[0x1080]=0`). Returns `{ exit: null | 'dismiss', polled }`. No timeout exists.
  */
 export function championStep(state, readInput) {
-  state.iteration++
-  if (state.line1 !== CHAMPION_LINE1_END) state.line1 += 2 // 1B67/1B6E
-  if (state.line2 !== CHAMPION_LINE2_END) state.line2 -= 2 // 1BC2/1BC9
-  if (state.line1 !== CHAMPION_LINE1_END || state.line2 !== CHAMPION_LINE2_END) return { exit: null, polled: false } // 1BD8-1BF1
+  state.tick++
+  const due = Math.min(CHAMPION_SLIDE_ITERATIONS, Math.floor((state.tick * CHAMPION_SLIDE_ITERATIONS) / CHAMPION_SLIDE_TICKS))
+  while (state.iteration < due) slideIteration(state)
+  if (state.tick <= CHAMPION_SLIDE_TICKS) return { exit: null, polled: false } // 1BD8-1BF1: still sliding
   const { controlBits } = readInput() // 1BF8-1C07: [0x1080]=0, one tick, 2D5B
   return { exit: controlBits !== 0 ? 'dismiss' : null, polled: true } // 1C0B
 }

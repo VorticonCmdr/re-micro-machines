@@ -1579,8 +1579,8 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
 
   /** The champion screen, `ShowChampionScreenTune3 1000:1AAD` (docs/engine.md §9bs,
-   * `champion.js`): a 108-iteration slide-in with no input poll (one iteration per tick here, a
-   * port choice -- `UNKNOWN_champion_slide_duration`), then it leaves when any control bit of
+   * `champion.js`): a 108-iteration slide-in with no input poll (over the 148 ticks it took live,
+   * docs/engine.md §9db), then it leaves when any control bit of
    * either player is held (`1C0B`), with no timeout. Replaces the old Space/Enter keydown wait. */
   let championState = null
   let championRafId = null

@@ -5962,6 +5962,20 @@ The step rate was ~5.7 ticks a step in this run, because a conditional breakpoin
 
 **Port.** No change. `check-play`'s race-end block has a new replay of the moment car 3 stops: `[26C6]`/`[26CC]`/car 1's speed on the next three steps must be (2,99,1014), (2,98,994), (2,97,974), and the frozen order 2,3,1,0. It passes on the current code (and fails when either expectation is altered).
 
+## 9db. Part L: the champion screen's slide, live (2026-09-26)
+
+`GOAL-DOS-PARITY.md` Part L, `UNKNOWN_champion_slide_duration` (§9bs). `ShowChampionScreenTune3 1AAD`'s 108 slide iterations wait on nothing, so their length is CPU-bound. Addresses re-read in Ghidra (`[STATIC]`): the loop head is `1B2B`; the slide ends when `1BD8-1BE4` finds `[3AA]==0x28` and `[3AC]==0x68`, jumping to `1BF4`; `1BF8` is `MOV [0x1080],0` (not a read of `[0x2]`, as GOAL's text had it); the one-tick wait is `1BFE-1C05`, the poll `1C07`/`1C0B`.
+
+**Reaching the screen.** A fresh boot with the `25011968` cheat typed on GAME OPTIONS (`[0F69]`/`[0F6A]`=1 read back; `[0F63]` 0, so nothing was saved). A Challenge; the qualifier and the last race were ended early by poking `[26C6]`=2 at the race start (`39F0`); at the race intro of the first Challenge race `[28C1]` was poked to 0x18 and a real keypad `+` release skipped to race 0x19 (`1398-13E0`); at that race's `313C` `[2630]` was poked to 1. None of this touches `1AAD`.
+
+**Live** (`[PROVEN]`, execute breakpoints at `1AAD` and `1BF4`, no other breakpoint armed, `[28F7]` read at each; a breakpoint freezes the ISR too):
+- entry: `[28F7]`=19371, `[261F]`=705 (the results screen before it had just timed out), `[26CE]`=0, so the `1BCF` fade does nothing here;
+- `1BF4`, first hit: `[28F7]`=19519, `[3AA]`=0x28, `[3AC]`=0x68; the screen showed CHAMPIONSHIP WINNER!!.
+
+So entry to the end of the slide took **148 ticks** (2.11 s), about 1.37 ticks an iteration. Like the fades (§9co), this is DOSBox's CPU speed, not a constant of the game.
+
+**Port.** `champion.js`: `CHAMPION_SLIDE_TICKS = 148`. `championStep` counts ticks, spreads the 108 iterations over them (all 108 done at tick 148), and polls from tick 149 on (`1BFE`'s one-tick wait), every tick. Before, the port polled from tick 108. `check-champion`: the slide lasts 148 ticks, both lines are in place at 148, the first poll is on tick 149 and a held key leaves there; on the old code these fail.
+
 ## 10. Open items
 
 Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: `open`, `narrowed` (part answered; the rest is the open question), `closed`. **Section** is where the answer (or the question) is written up; the history, wrong turns included, stays in those sections and is not repeated here. **Address** is `MICROU.EXE`'s (`1000:` code, `DS:` data) unless another file is named. This table replaced a run-on paragraph of dated notes on 2026-09-26 (`GOAL-DOS-PARITY.md` D2, §9cx); each ID's status was re-read from its latest dated note. When an item opens or closes, change its row here in the same commit.
@@ -5977,7 +5991,6 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_989_98b_meaning` | open | §9bj (still open §9bl) | `1EF1` zeroing at `1F09-1F18`, `DS:0989`/`DS:098B` | No live reader; only the dead ShowHeadToHeadResultUnreferenced `2099-216B` uses them, as extra tally counters. |
 | `UNKNOWN_carousel_pixel_diff` | open | §9ax; GOAL Part F | - | No pixel diff yet of the character-select carousel against a DOSBox capture. |
 | `UNKNOWN_challenge_qualifier_intro_banner` | open | §9be | `127E-12BA` | What does the Challenge qualifier's separate intro banner (SI=0x35C/0x367, a [BC5]-keyed reveal) do? It is not disassembled or ported. |
-| `UNKNOWN_champion_slide_duration` | open | §9bs (GOAL Part L) | `1AAD` | The DOS duration of the 108 poll-free slide iterations is CPU-bound and underivable; the port runs one iteration per tick. |
 | `UNKNOWN_codecard_pixel_diff` | open | §9at; GOAL Part F | - (FONT.BIN, mode 10h) | No byte-exact diff yet; needs mode 10h's 4 planes combined. Only a visual match to live screenshots so far. |
 | `UNKNOWN_dosbox_wait_frames_cadence` | open | §9f | - | What `dosbox.wait_frames(1)` measures (host tick vs retrace) was never pinned down; dedup made it immaterial for M3.4. |
 | `UNKNOWN_exit_banner_live` | open | §9an 8; GOAL Part L | `30DF`, `855A` | Needs a live check that ES is 193C at 30DF, so the exit-hold 855A calls draw into DS and no banner shows. |
@@ -6053,6 +6066,7 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_car_draw_anchor` | closed | §9d (M3.32) | `7D73`, `7CE0`, `7E5C` | The sprite is centred: body at dx-half-z, shadow at dx-half+z from (posX-camX, posY-camY) [STATIC]. |
 | `UNKNOWN_car_draw_wrap_asymmetry` | closed | §9d (M3.44) | `7D73`, `7E5C` | The real one-sided `+0xC00` seam fold (not a symmetric wrapDelta) is ported; the disagreement window was an 11px sliver plus a round-9 case. |
 | `UNKNOWN_case_chr_format` | closed | §9ay (+ `src/formats/chr.js` caseImage) | `0710` (BlitTileMap8x8) | CASE.CHR = 100 8x8 tiles; CASE.MAP = [cols=32][rows=21] + tile indices; the vehicle display case [PROVEN by render]. |
+| `UNKNOWN_champion_slide_duration` | closed | §9db (§9bs) | `1AAD`, `1BF4` | 148 ticks from entry to the end of iteration 108 in DOSBox [PROVEN]; the port uses it (first poll on tick 149). |
 | `UNKNOWN_channel_exhaustion` | closed | `docs/sound.md` §10 (M3.28) | DRIVER1.BIN `07BE-0803` | All 9 channels busy plus a state-2 slot with id≤7 gives phantom success on channel 0xFF; ported in Sequencer.startSfx. |
 | `UNKNOWN_cheats_type` | closed | §9cf 3 | `[2917]`, `[291B]`, CHEATS.BIN | All 10 effects decoded (§6); `[2917]`/`[291B]` are write-only, so type 6 does nothing [STATIC]. |
 | `UNKNOWN_class8_choppers` | closed | `docs/sound.md` §8 (M3.45) | `DS:002F`, `[9D8]`, `7AC9` | Class 8 = CHOPPERS, from a direct read of the class-name table [STATIC]. Live confirmation is still optional (GOAL Part L). |

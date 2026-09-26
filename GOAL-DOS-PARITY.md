@@ -834,7 +834,7 @@ Commit each item on its own, including any capture file under `tools/refs/`.
 - [ ] `UNKNOWN_race_4th_engine_delay` (`docs/sound.md` §8): a fresh race-start capture that logs
   `AH=3`'s return value.
 - [ ] `UNKNOWN_race_live_reverify` (`docs/sound.md` §8).
-- [ ] `UNKNOWN_champion_slide_duration` (docs/engine.md §9bs): how long `1AAD`'s 108 wait-free
+- [x] `UNKNOWN_champion_slide_duration` **(§9db: 148 ticks in DOSBox, entry to `1BF4`; the port now uses it)** (docs/engine.md §9bs): how long `1AAD`'s 108 wait-free
   slide iterations take on DOS (for example, `[0x2]` read at `1BF8` minus its value at entry).
 - [ ] The outcome screen's LIVES-path timing (docs/engine.md §9bq assumptions a-c): a breakpoint at
   `1000:1DCD` on a real ONE LIFE LOST screen, reading `[0x261F]` at the first poll. The port's

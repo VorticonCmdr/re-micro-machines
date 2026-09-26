@@ -11,10 +11,11 @@
 //    (0x8000 >> slot over [0x107C]) puts F1/F2/F3 (slots 5-7) at [0x107D]'s 0x04/0x02/0x01 and
 //    D/SPACE/V (slots 13-15) at [0x107C]'s, consistent with the race's own SPACE pause test
 //    (3074: [0x107C] & 2); createExtraKeysReader reports them there, and SPACE alone exits.
-// The slide's DURATION is UNKNOWN_champion_slide_duration; the port's one-iteration-per-tick pacing
-// is a port choice, not asserted here as a DOS fact.
+//  - the slide's duration, measured live (docs/engine.md §9db): 148 ticks from 1AAD to the end of
+//    iteration 108 (1BF4), so no poll until tick 148 and the first poll, after 1BFE's one-tick
+//    wait, on tick 149 -- DOSBox's CPU speed, which the port uses.
 //   node tools/check-champion.mjs
-import { championInitialState, championStep, CHAMPION_SLIDE_ITERATIONS, CHAMPION_LINE1_START, CHAMPION_LINE1_END, CHAMPION_LINE2_START, CHAMPION_LINE2_END } from '../src/frontend/champion.js'
+import { championInitialState, championStep, CHAMPION_SLIDE_ITERATIONS, CHAMPION_SLIDE_TICKS, CHAMPION_LINE1_START, CHAMPION_LINE1_END, CHAMPION_LINE2_START, CHAMPION_LINE2_END } from '../src/frontend/champion.js'
 import { createExtraKeysReader } from '../src/engine/input.js'
 
 let bad = 0
@@ -43,14 +44,21 @@ check('line 2 starts at 0x100 and stops at 0x68', CHAMPION_LINE2_START === 0x100
   check(`the real loop's first both-in-place iteration is ${n}, and the model agrees`, n === CHAMPION_SLIDE_ITERATIONS && n === 108)
 }
 
-// 2. No poll during the slide; the first poll on iteration 108; then every iteration polls.
+// 2. The live duration: 148 ticks of slide with no poll, both lines in place at its end, the first
+// poll on tick 149, then one every tick.
 {
+  check('the slide lasts the 148 ticks measured live', CHAMPION_SLIDE_TICKS === 148)
   const s = championInitialState()
   const polls = []
-  for (let i = 1; i <= 200; i++) championStep(s, () => { polls.push(i); return { controlBits: 0 } })
-  check('no input read during the 107 slide iterations', polls.every((i) => i >= 108))
-  check('the first poll is on iteration 108', polls[0] === 108)
-  check('then every iteration polls', polls.length === 93 && polls.every((x, k) => x === 108 + k))
+  let atEnd = null
+  for (let i = 1; i <= 200; i++) {
+    championStep(s, () => { polls.push(i); return { controlBits: 0 } })
+    if (i === 148) atEnd = { it: s.iteration, l1: s.line1, l2: s.line2 }
+  }
+  check('all 108 iterations are done at tick 148, both lines in place', atEnd.it === 108 && atEnd.l1 === 0x28 && atEnd.l2 === 0x68)
+  check('no input read during the slide\'s 148 ticks', polls.every((i) => i >= 149))
+  check('the first poll is on tick 149', polls[0] === 149)
+  check('then every tick polls', polls.length === 52 && polls.every((x, k) => x === 149 + k))
 }
 
 // 3. Any control bit exits; a control key held from the start exits at the first poll, not before.
@@ -59,7 +67,7 @@ check('line 2 starts at 0x100 and stops at 0x68', CHAMPION_LINE2_START === 0x100
     const s = championInitialState()
     let at = null
     for (let i = 1; i <= 300 && at == null; i++) if (championStep(s, () => ({ controlBits: bits })).exit === 'dismiss') at = i
-    check(`${name} held from the start: exits at the first poll (108)`, at === 108)
+    check(`${name} held from the start: exits at the first poll (149)`, at === 149)
   }
 }
 
@@ -99,8 +107,8 @@ check('line 2 starts at 0x100 and stops at 0x68', CHAMPION_LINE2_START === 0x100
   const s = championInitialState()
   let at = null
   for (let i = 1; i <= 300 && at == null; i++) if (championStep(s, () => ({ controlBits: 0x02 })).exit === 'dismiss') at = i
-  check('SPACE alone (0x02 in a KEYS2 reader byte) exits at the first poll', at === 108)
+  check('SPACE alone (0x02 in a KEYS2 reader byte) exits at the first poll', at === 149)
 }
 
-console.log(bad ? `${bad} check(s) failed` : 'check-champion: 1AAD\'s own wait -- a 108-iteration silent slide-in (re-simulated independently), then any control bit of either player exits, with no timeout -- matches the disassembly')
+console.log(bad ? `${bad} check(s) failed` : 'check-champion: 1AAD\'s own wait -- a 108-iteration silent slide-in (re-simulated independently) over the 148 ticks measured live, then any control bit of either player exits, with no timeout -- matches the disassembly')
 process.exitCode = bad ? 1 : 0
