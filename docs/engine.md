@@ -5972,7 +5972,7 @@ The step rate was ~5.7 ticks a step in this run, because a conditional breakpoin
 - entry: `[28F7]`=19371, `[261F]`=705 (the results screen before it had just timed out), `[26CE]`=0, so the `1BCF` fade does nothing here;
 - `1BF4`, first hit: `[28F7]`=19519, `[3AA]`=0x28, `[3AC]`=0x68; the screen showed CHAMPIONSHIP WINNER!!.
 
-So entry to the end of the slide took **148 ticks** (2.11 s), about 1.37 ticks an iteration. Like the fades (§9co), this is DOSBox's CPU speed, not a constant of the game.
+So entry to the end of the slide took **148 ticks** (2.11 s), about 1.37 ticks an iteration. Like the fades (§9co), this is DOSBox's CPU speed, not a constant of the game, and it is one sample: the bridge's DOSBox config sets no `cycles` (the build's default applies; the bridge does not report the live value), and this session saw the step rate swing 2-3× under heavy breakpoint load (2 against 4.6 and 5.7 ticks a step, §9cz/§9da). It was taken with only these two cold breakpoints armed.
 
 **Port.** `champion.js`: `CHAMPION_SLIDE_TICKS = 148`. `championStep` counts ticks, spreads the 108 iterations over them (all 108 done at tick 148), and polls from tick 149 on (`1BFE`'s one-tick wait), every tick. Before, the port polled from tick 108. `check-champion`: the slide lasts 148 ticks, both lines are in place at 148, the first poll is on tick 149 and a held key leaves there; on the old code these fail.
 
@@ -6030,7 +6030,7 @@ None of these is read by `6024-6054`. (A first attempt without the drone poke le
 - `6039` with BX=0: `[28BF]`/`[28C0]` passed, laps 2 ≤ 2;
 - afterwards `[26C6]`=2 and `[26CC]` ran to 0 with laps still [2,3,3,3], `[2635]`=0, and the game went on to the opponent picker (the qualifier passed).
 
-The breakpoint meant for `6054` was misplaced (0x6034), so the store itself was not seen. It is the only writer that fits: `[26C6]`=2 otherwise comes from the recount (`4B85`, which needs a finished and stopped car; none had finished), the instant-win cheat (`[2635]` was 0), the round-9 banner (`8702`) or the two-car commits (`76F2`/`772A`/`7742`).
+The breakpoint meant for `6054` was misplaced (0x6034), so the store itself was not seen. It is the only writer that fits; a byte scan for `C6 26` finds 20 references, of which the writes are `3C24` (0, race init), `36A9` (4, the pause's cheat combo), `4B87`-`4BD1` (the recount), `4BE0`, `6056`, `76F4`/`772C`/`7744` and `8704`. `[26C6]`=2 otherwise comes from the recount (`4B85`, which needs a finished and stopped car; none had finished), the instant-win cheat (`[2635]` was 0), the round-9 banner (`8702`) or the two-car commits (`76F2`/`772A`/`7742`).
 
 **Port.** No change; `check-play`'s lead-rule tests (with their negative twins) already pin it.
 

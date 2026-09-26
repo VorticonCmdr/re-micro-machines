@@ -831,7 +831,7 @@ Commit each item on its own, including any capture file under `tools/refs/`.
 - [x] The key-press → control-byte leg for car 0 under real input (§10, `UNKNOWN_live_verification`). **(§9dh: live on 399 steps; sfx 2 on laps; a 400-step driving trace in `check-trace`, replayed exactly after a hazard-entry fix.)**
   Also sfx 2 on lap completion, and a longer driving/turning/collision trace. Add the trace to
   `tools/refs/` and extend `npm run trace` to use it.
-- [x] `UNKNOWN_race_4th_engine_delay` **(§9dd: `AH=3` never returned 0xFFFE in 21,115 ticks; a batch straddled a tick live; closed)** (`docs/sound.md` §8): a fresh race-start capture that logs
+- [x] `UNKNOWN_race_4th_engine_delay` **(§9dd/§9di: `AH=3` never returned 0xFFFE in 21,115 ticks; the late start is the tick IRQ landing inside the `AH=5` call, §9di; closed)** (`docs/sound.md` §8): a fresh race-start capture that logs
   `AH=3`'s return value.
 - [x] `UNKNOWN_race_live_reverify` (`docs/sound.md` §8). **(§9di: a fresh race start replays exactly, 298/298 ticks on the whole OPL shadow.)**
 - [x] `UNKNOWN_champion_slide_duration` **(§9db: 148 ticks in DOSBox, entry to `1BF4`; the port now uses it)** (docs/engine.md §9bs): how long `1AAD`'s 108 wait-free

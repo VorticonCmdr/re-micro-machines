@@ -158,14 +158,15 @@ npm run catalog     # decoded-format catalogue matches the real game/ directory
 npm run tables       # every embedded engine/front-end constant matches MICROU.EXE
 npm run car          # car record round-trips the static memory image byte-exact
 npm run step         # headless physics sanity + the lap/checkpoint rule
-npm run trace        # replay a live-captured DOSBox trace through the physics
+npm run trace        # replay live-captured DOSBox traces through the physics (400 steps of real driving must match exactly)
 npm run ai           # drone AI against the same trace, and a full AI+physics loop
 npm run rounds       # all 9 rounds x every race x both race formats run clean
 npm run tournament   # the one-player tournament state machine's rules
 npm run elimination  # the real elimination-screen bounce animation matches the disassembly
 npm run sound        # the sound driver model, engine pitch, sfx wiring
+npm run oplaudio     # the JS OPL2 core's audio against a live DOSBox recording (spectral match)
 npm run opl-toggle   # the two OPL2 waveform modes actually sound different
-npm run si2          # the JS OPL2 core reproduces every register write DOSBox made
+npm run si2          # the JS OPL2 core reproduces every register write DOSBox made, a race start exactly
 npm run live         # pixel-diffs an assembled track against a real DOSBox frame
 npm run smoke        # every viewer view against the real files, headless
 ```
