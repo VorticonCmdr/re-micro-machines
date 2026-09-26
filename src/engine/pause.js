@@ -31,6 +31,7 @@
 //   restarts the pause from `3753` -- [261F], the latch and the tracked key cleared, stage 1 again.
 
 import { findCheatSpot, applyCheatEffect } from './cheats.js'
+import { stopEngineSounds } from './sound.js'
 
 const CHEAT_MIN_PAUSE_MS = 2000 // 140 ticks of [261F] at 70 Hz (37ED), only with the 25011968 flag
 const CHEAT_FLASH_MS = 100 // the real "near-instantaneous" white flash on a cheat-spot match, given a floor a human can actually perceive
@@ -45,10 +46,12 @@ export function createPauseState() {
  * the key code whose release got through the ISR's gate since the caller's last `clearIsrLatch` (the
  * mirrored `[107E]`, null if none), DS:0F69, and the ISR's 16-key word `[107C]` (the combos). The
  * caller clears the ISR latch whenever `state.latchClearPending` is set (the entry, and each restart). `sound`: optional `{stopSfx(id), muteAll()}` -- `35F0`'s own
- * opening AH=8/AH=6 on entry, and `37AA`/`37B3`'s again at the end of stage 1. Mutates `state`;
+ * opening AH=8/AH=6 on entry, and `37AA`/`37B3`'s again at the end of stage 1. `cars`: every car,
+ * for `StopEngineSounds 7AF8` at `3759` (entry, and each combo restart) and `37A7` (stage 1's end):
+ * under the OPL driver it zeroes every car's speed (sound.js `stopEngineSounds`). Mutates `state`;
  * returns `state.paused`.
  */
-export function updatePause(state, dtMs, input, car, cheats, round, race, globalState, sound) {
+export function updatePause(state, dtMs, input, car, cheats, round, race, globalState, sound, cars = [car]) {
   const { spaceHeld = false, released = null, cheatFlag = false, keyWord = 0 } = input ?? {}
   if (state.cheatFlashMs > 0) state.cheatFlashMs = Math.max(0, state.cheatFlashMs - dtMs)
 
@@ -65,6 +68,7 @@ export function updatePause(state, dtMs, input, car, cheats, round, race, global
         applyCheatEffect(car, spot, globalState)
         state.cheatFlashMs = CHEAT_FLASH_MS
       }
+      stopEngineSounds(cars, sound) // 3759, after the cheat scan: under OPL every car's speed is zeroed
     }
     return state.paused
   }
@@ -72,6 +76,7 @@ export function updatePause(state, dtMs, input, car, cheats, round, race, global
   state.elapsedMs += dtMs
   if (state.stage1 && (released != null || state.elapsedMs >= CHEAT_MIN_PAUSE_MS)) { // 3789-3796
     state.stage1 = false
+    stopEngineSounds(cars, sound) // 37A7
     sound?.stopSfx(0) // 37AA
     sound?.muteAll() // 37B3
   }
@@ -81,6 +86,7 @@ export function updatePause(state, dtMs, input, car, cheats, round, race, global
     if (combo != null) {
       applyCheatEffect(car, { type: combo }, globalState) // 3722 / 36A7
       state.cheatFlashMs = CHEAT_FLASH_MS // 3734: the white fill
+      stopEngineSounds(cars, sound) // 3753 -> 3759 again
       state.elapsedMs = 0 // 3753-3784: the pause again from the top
       state.stage1 = true
       state.latchClearPending = true

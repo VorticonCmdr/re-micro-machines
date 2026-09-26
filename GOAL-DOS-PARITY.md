@@ -121,7 +121,7 @@ Don't read `docs/engine.md` from start to finish. It is 6,000 lines. Jump to sec
 
 ```bash
 for s in catalog lz chrtable tables car intro codecard options title mainmenu charselect board elimination keywait outcomewait windowedwait champion pressanykey raceskip step trace ai play sound rounds finish twocar twohuman h2hscreens escquit tournament \
-         menu screens opl-toggle smoothness si2 live smoke; do npm run -s $s || echo "FAIL $s"; done
+         beeper menu screens opl-toggle smoothness si2 live smoke; do npm run -s $s || echo "FAIL $s"; done
 npm run build
 ```
 
@@ -804,11 +804,11 @@ docs, (6) commit.
 - [ ] **JOY 1/JOY 2/MOUSE** through the Gamepad API and pointer events. They feed the same 5-bit
   control byte. Joysticks fire only after accelerating (§9an 5a). The joystick thresholds come
   from SETTINGS.DAT.
-- [ ] **The SPEAKER driver** (`DRIVER2.BIN`, "Internal Beeper v1.08"): the same command set, played
+- [x] **The SPEAKER driver** (`DRIVER2.BIN`, "Internal Beeper v1.08"): **Done (`docs/sound.md` §4, `docs/engine.md` §9cq, M3.98): ported as a memory-level model, replayed byte for byte against two live captures; sfx 16-18 are dropped by the driver (live); the game's `[0F64]` branches ported, incl. 7AF8's.** the same command set, played
   through the PC speaker. Add a square-wave backend. `UNKNOWN_drv2_live_fidelity` covers this,
   including what sfx 16 does when queued to DRIVER2, whose bank has only 15 entries. Also port
   StopEngineSounds' beeper branch (`7AF8`, `AH=0x10` for voices 0/1).
-- [ ] **NONE** (`DRIVER0.BIN`): silence.
+- [x] **NONE** (`DRIVER0.BIN`): silence. **Done (§9cq, M3.98): every command answers 0.**
 
 ### P7: page chrome
 - [ ] When the P1 options screen exists, the header's dev toggles ("Lap line (dev)", "Strict

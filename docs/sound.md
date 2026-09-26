@@ -25,7 +25,7 @@ Evidence tags as in `CLAUDE.md`. Addresses: `1000:xxxx` = Ghidra program `MICROU
 | 9 | `CmdIsTunePlaying` `+0x8F1` | AL = tune | AL = AL − current (0 = current) | always paired: "if AH=9 ≠ 0 then AH=4" (`PUSH AX; MOV AH,9; …; OR AL,AL; JZ; MOV AH,4`). The title attract loop re-polls tune 1 this way at `1000:0195` on every attract-message change — live period 280.5 ticks = **4.00 s** (`AL=1` → `0901` once, then `0900` forever, so the tune is never restarted) |
 | 10 | `CmdIsSfxActive` `+0x8F6` | AL = sfx id | AL 0 if some slot has that id (any state) | per car and physics step for `0x40+car` — `UpdateEngineSoundsPerFrame 1000:7B46` runs once per iteration of `RunRaceMainLoop` (`1000:3095 → 90C5 → 9281`), and the loop runs **35 Hz physics**: it batches `[263A]` render+physics iterations, then waits until the vsync counter `CS:4ADE` exceeds `[263C + [263A]]` before presenting (`1000:30B7–30D1`); with the file's `[263A] = 1` and table `263C = 00 01 03 05 07` that is 2 vsyncs per step, and the table keeps 2·n vsyncs for n batched steps, so the rate stays 35 Hz for `[263A]` = 1..4. **Closed (`docs/engine.md` §2/§9): `[263A]` is `SETTINGS.DAT` word 2, copied verbatim at `1000:27bc–27bd` (forced to 1 if the file held 0, `1000:3901–3908`)** — the smoothness options screen writes that word directly, there is no separate translation table. The live capture's 5–6-tick batches are the emulator's step rate under the debugger, not the design cadence. Also the banner sites |
 | 11 | `CmdCountSfxVoices` `+0x90D` | — | AL = slots in state 2, AH = 2 | never |
-| 14, 16 | beeper engine tone on/off (`DRIVER2` only; `DRIVER1`'s table has no such entries) | AL = voice, CX = PIT period | | only when `[0F64] ≠ 1` |
+| 14, 15, 16 | beeper engine voice: `0E` on with period CX, `0F` period only, `10` off (`DRIVER2` only, §4; `DRIVER1`'s table has no such entries) | AL = voice 0/1, CX = PIT period | AL 0 | only when `[0F64] ≠ 1`: `7A97` (on, CX=0x32), `7C4E` (every step, cars 0/1), `7AF8` (off) |
 
 Commands 4/6/7 only set a pending byte (`+0x125A/+0x125D/+0x125C`); 5/8 push into 8-entry queues (`+0x13D1`/`+0x13D9`). **The work happens in the next tick**, in this order (`CmdTick`): `DoPendingReset` → `DoPendingStopMusic` → `StartPendingTune` → sfx stop queue → sfx start queue → accumulate → advance the 16 slots → clear the integer parts.
 
@@ -97,9 +97,56 @@ Two internal-consistency notes the fan-out surfaced, not specific to any one id:
 - **The vehicle-class byte `[DS:28BF]` is literally the current round number (1–9), not an abstract enum.** **Correction (`docs/engine.md` §7/§9): it does not have "only" one writer.** All four writers unpack a `round<<2|race-1` byte identically: `SetupTournamentRace 1000:117d/1182` (the main tournament path), the next-race-intro-screen cheat skip `1000:13d7/13dc`, `RunHeadToHeadTournament 1000:2005/2008` (alongside a twin write to `DS:9D8`, which `DrawSelectedVehicleClassName` uses to index the exact same on-screen class-name string table), and `SelectSingleRaceTrack 1000:21df/21cf`. "class == round" is confirmed by every one of these sharing the same unpack arithmetic, not merely by the one race-dump correlation (`[28BF]=2` ↔ POWERBOATS) this document previously rested on. The two "PRO" classes (10 PRO FORMULA ONE, 11 PRO SPORTSCARS) are display-only tournament relabels of rounds 3 and 1; `[28BF]`/`DS:9D8` never actually hold 10 or 11.
 - **Ghidra's own `search_strings`/`list_strings` never surfaces the string `"TANKS"`**, even though it is plainly present as a NUL-terminated string in the file (`193C:0074`, confirmed by `strings -a` and a raw memory read) — the auto-analyzer simply never classified it as a String data item. A re-derivation of the class-name table done only through Ghidra's string-search tools would silently miscount and land one class short from `TANKS` onward. Recorded as a pitfall in `PLAN.md`.
 
-## 4. `DRIVER2.BIN` (PC speaker) `[STATIC]`, container `[PROVEN]`
+## 4. `DRIVER2.BIN` (PC speaker) and `DRIVER0.BIN` (none) — ported, the driver state `[PROVEN]` live
 
-Same dispatcher shape (17 commands, `+0xF7`, table `+0x125`), **same container layout and sequence grammar** (pointers `0x749/0x74B/0x74D` → music `0x074F`, sfx `0x2CBE` (15; the game's ids 16–18 are dropped), instruments `0x2DE5` (6)); every byte of the file is accounted for by the grammar, and both drivers embed the **same 8 tunes as per-driver arrangements** (2–3 channels here; tunes 3–8 one-shot in this arrangement). Output: PIT channel 2 (`43h/42h/61h`), one tone per tick, **round-robin over the sounding channels** (chords arpeggiate at 70 Hz); notes last exactly the instrument's gate (2/4/6/8 ticks; records use only `+8` transpose, `+9` gate); a 96-word divisor table at `0x689`. `AH=0E/0F/10` are direct-tone slots the game drives for engine sounds. Not ported yet (`UNKNOWN_drv2_live_fidelity`).
+Same entry shape (`+0x00`/`+0x04` → dispatcher `+0xF7`, max command `[0x124]` = 0 until `AH=0`, then
+0x10; table `+0x125`, 17 handlers), same container and sequence grammar (bank pointers `0x749/0x74B/0x74D`
+→ music `0x074F` (8 tunes, per-driver arrangements of 2–3 tracks), sfx `0x2CBE` (**15**), instruments
+`0x2DE5` (only `+8` transpose and `+9` gate are read)). Re-disassembled in full (`ndisasm -b16`,
+`0x0F7–0x688`) and ported as `src/formats/beeper.js`, a transcription over the image as memory:
+
+- **Memory**: `0x73` host divisor, `0x75` track count, `0x77` pending tune, `0x78` current tune, `0x79`
+  pending stop-music, `0x7A` pending reset, `0x7B/0x7C` division/tempo, `0x7D` tick guard, `0x7E`/`0x82`
+  music increment/accumulator (16.16; the integer at `0x84`), `0x86`/`0x8A` sfx (`0x8C`), `0x8E` last
+  PIT count, `0x90` round-robin counter + `0x91` slot table, `0x99` engine alternation, `0x9A` engine
+  voice mask, `0x9B/0x9D` the two engine periods, **4 slots** × 0x12 at `0x9F` (`+0` stream, `+2` 32-bit
+  counter, `+6` loop, `+8` channel, `+9` note, `+A` state 0/1/2, `+B` sounding, `+C` instrument ptr,
+  `+E` sfx id, `+F` period, `+11` gate countdown), start queue `0xE7`, stop queue `0xEF` (8 each).
+- **Tick** `0185`: reset → stop-music (both clear **all four** slots, sfx included) → start the pending
+  tune (at most 4 tracks; all slots cleared first) → the **start** queue → the **stop** queue (the reverse
+  of DRIVER1's order) → accumulate → advance the slots → clear the integers → output.
+- **Slot** `01E0`: the gate counts down every tick and silences the slot at 0; events fire on the
+  counter's borrow, as DRIVER1. A note: period from the 96-word table at `0x689` indexed by
+  `note + transpose − 0x18` (out of range keeps the old tone), and it sounds for the instrument's gate in
+  ticks. `90` note-off-if, `91` end, `92` instrument, `93` tempo, `94–97`/`9B` skip 1, `9D` skip 2,
+  `98`/`9C` loop, `99` note off, `9A` sleep; any opcode above `9D` ends the track.
+- **Output** `0307`, one tone per tick on PIT channel 2 (mode 3, `43h ← B6h` at init): while the engine
+  mask is non-zero **and no slot holds an sfx**, the two engine voices alternate tick by tick; otherwise
+  the next sounding slot in round-robin order (chords arpeggiate at 70 Hz); nothing sounding → the gate
+  bit off. The count is written only when it changes (hi byte masked to 5 bits).
+- **Commands**: 0 init, 1 shutdown, 2 divisor (the same rem:quot `DIV` quirk as DRIVER1), 3 tick, 4 tune,
+  5/8 queue (first free byte, no dedupe, no priority), 6/7 pending reset/stop, 9 `AL − current`, `0A`
+  0 if some slot holds the id, `0B` count, `0C`/`0D` constants, `0E/0F/10` the engine voices.
+- **sfx 16–18: dropped.** `0459 CMP AL,[bank]; JA` skips any id past the bank's count before a slot is
+  taken. So the race-over jingle (`30DF`, id 16) is silent under SPEAKER, and `AH=0Ah` reports it "not
+  playing", so the Winner/1 Up! keep-alives re-queue it every call, harmlessly. `[PROVEN]` live below.
+- **`DRIVER0.BIN`**: `MOV AX,0; RETF` at both entries. Every command answers 0, so `AH=9` says every tune
+  is current and `AH=0Ah` every sfx playing: nothing is ever re-queued, nothing sounds.
+
+**Live** (`[PROVEN]`, 2026-09-26): SOUND set to SPEAKER on GAME OPTIONS (the dirty flag `[0F63]` poked to
+0 first so RETURN would not rewrite `game/SETTINGS.DAT`), then a Python sampler read the driver's bytes
+`0x60–0xFF` (live segment `1662`) with the game tick `DS:28F7` on either side, one snapshot per tick:
+- `tools/refs/si2/drv2_title.json`: tune 1 on the title. Seeded from one snapshot, the model reproduces
+  every later one byte for byte (1545/1545 in the full capture, 799 in the committed excerpt).
+- `tools/refs/si2/drv2_poke.json`: sfx 1–18 written into the start queue every 1.3 s, then the engine
+  bytes `0x9A–0x9E`, an sfx during engine mode, and off. 2222 snapshots match; the only differences are
+  the pokes themselves (a snapshot after the driver consumed a poke it never saw queued). Ids 1–15 start,
+  **16–18 never reach a slot**; 384 ticks of engine alternation match.
+
+**Port**: `src/audio/speaker.js` renders the output as a band-limited square wave at `1193182/count`
+(level 0.2, a port choice); `si2-worklet.js` hosts `BeeperDriver`/`NullDriver` by `kind`; `npm run tunes`
+also writes `tools/out/SPEAKER_*.wav`. The game side is `docs/engine.md` §9cq. Not established: how the
+real speaker sounds (the waveform through a PC speaker cone is a render, not a capture).
 
 ## 5. The JS port
 
@@ -154,7 +201,7 @@ Printing the 17 non-zero-delta writes individually (a scratch instrumented copy 
 
 The first mechanism is therefore favored, decisively, by the model itself, not by preference: **car 3's own command was effectively issued two ticks after cars 0-2's, not one.** Separately, `UpdateEngineSoundsPerFrame 1000:7b46-7c4d` (the per-car loop itself, fully disassembled) is a tight, straight-line loop over the 4 (or 2) cars with no waits, no nested calls beyond the jitter PRNG (`7cae`) and the driver far-calls themselves, advancing a car counter (`CS:[7af5]`) by simple `INC`/`CMP`/loop-back with no per-car branch that could cost multiple 70 Hz ticks on real hardware — this statically rules out a genuine per-car game-logic stagger as the cause. Combined, the two-tick gap is very likely a **capture-tool timing artifact specific to this one command's logged tick**, not real game behavior needing a port change, but the exact tracer mechanism (why this one command's timestamp read two ticks stale when its neighbors didn't) is still not established, and this single capture cannot rule out a stranger cause. This 2-tick gap is specific to this one race-init batch — it does not recur in the very next batch (the restart after `1000:39F5`'s `AH=7` wipe, ticks `16936-16938`, which the unforced model already reproduces exactly) or in ordinary steady-state keep-alive polling (the capture's few other single-write `±1` deltas are unrelated, isolated cases). A fresh, independent race-start capture, ideally logging `AH=3`/`CmdTick`'s own return value to see whether `0xFFFE` ever actually occurs, would settle the mechanism (folded into the batched live session below).
 
-Still open: `UNKNOWN_race_4th_engine_delay` (see above — measured exactly, not explained); `UNKNOWN_race_live_reverify` — **narrowed, not closed**: the stated cause was wrong (`docs/engine.md` §7/§9). `RunTitleScreenAttractLoop 1000:0100` itself has **no idle-exit timeout** at all — the `0x2` at `1000:03CE` is inside a *different* function, the two-item menu helper `FUN_1000_0382` used by the main menu / ONE PLAYER GAME / H2H CHOOSE GAME screens (idle ≥ 0x7D0 ticks ≈ 28.6 s cancels there, not on the title). And this copy's P2 = KEYS 1 decodes to `J L I M K` (ordinary keys, `KeyboardIsr` scancode mapping), not an unreachable device — the two-human Head to Head *is* drivable from one keyboard. The race-start replay (c) still rests on one capture; a fresh attempt should budget for the 28.6 s menu windows rather than the title, and can skip the `DS:0130` menu-highlight write this note used to suggest. `UNKNOWN_drv2_live_fidelity` (beeper model never run live), `UNKNOWN_opl_sample_fidelity`, `UNKNOWN_waveform_target` (YM3812 sines vs OPL3/DOSBox waveforms — a hardware choice, both implemented) (JS OPL2 core vs a reference emulator — an audio-level diff has not been done).
+Still open: `UNKNOWN_race_4th_engine_delay` (see above — measured exactly, not explained); `UNKNOWN_race_live_reverify` — **narrowed, not closed**: the stated cause was wrong (`docs/engine.md` §7/§9). `RunTitleScreenAttractLoop 1000:0100` itself has **no idle-exit timeout** at all — the `0x2` at `1000:03CE` is inside a *different* function, the two-item menu helper `FUN_1000_0382` used by the main menu / ONE PLAYER GAME / H2H CHOOSE GAME screens (idle ≥ 0x7D0 ticks ≈ 28.6 s cancels there, not on the title). And this copy's P2 = KEYS 1 decodes to `J L I M K` (ordinary keys, `KeyboardIsr` scancode mapping), not an unreachable device — the two-human Head to Head *is* drivable from one keyboard. The race-start replay (c) still rests on one capture; a fresh attempt should budget for the 28.6 s menu windows rather than the title, and can skip the `DS:0130` menu-highlight write this note used to suggest. `UNKNOWN_drv2_live_fidelity` **(resolved for the driver's state, §4: ported and replayed against two live captures; the speaker's actual sound is rendered, not captured)**, `UNKNOWN_opl_sample_fidelity`, `UNKNOWN_waveform_target` (YM3812 sines vs OPL3/DOSBox waveforms — a hardware choice, both implemented) (JS OPL2 core vs a reference emulator — an audio-level diff has not been done).
 
 **M3.7 (`docs/engine.md` §9i, 2026-09-21): the race engine now drives this driver model live** (`src/engine/sound.js`), not just in isolation via `npm run si2`. This row's own original "7 of 36" figure went stale within a few milestones (M3.8/M3.12/M3.13/M3.16/M3.17 each wired more sites without updating it) and was never the right question anyway -- "is id N used anywhere" isn't the same as "does the port fire id N under *this site's* own predicate". The jitter PRNG (`createEngineJitter`) was ported byte-exact against a live read of `1000:7cae-7cda`, not guessed from the prose above.
 

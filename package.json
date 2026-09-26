@@ -33,6 +33,7 @@
     "ai": "node tools/check-ai.mjs",
     "play": "node tools/check-play.mjs",
     "sound": "node tools/check-sound.mjs",
+    "beeper": "node tools/check-beeper.mjs",
     "rounds": "node tools/check-rounds.mjs",
     "finish": "node tools/check-finish.mjs",
     "twocar": "node tools/check-twocar.mjs",

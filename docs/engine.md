@@ -6146,6 +6146,11 @@ matched, now pinned by a test), and the race-start fade-in (the port now holds b
 and steps nothing, then shows the first frame at full palette). Still unported: the race setup's own
 `395D` fade-out of the screen before the race (the port's front-end screens have no fades at all).
 
+**Added 2026-09-26 (§9cq).** SPEAKER (DRIVER2, ported and live-replayed, `docs/sound.md` §4) and NONE
+(DRIVER0) are real driver choices now, with the game's `[0F64]` branches. `UNKNOWN_drv2_live_fidelity`
+is closed for the driver's state. New for the OPL game too: the pause's `7AF8` zeroes every car's speed
+(`3759`/`37A7`), `[STATIC]`; `UNKNOWN_0f64_speed_zero` still wants the live look.
+
 **Added 2026-09-26 (§9cp).** Both ported: the first front-end screen after a race fades up (17 ticks,
 its logic frozen; the champion holds black), and race setup fades the screen before the race out
 (16 ticks), gated by `[26CE]` as in DOS (`src/frontend/dacFade.js`).
@@ -12643,3 +12648,57 @@ fades and freezes for 16 whole ticks with `onDone` once, the next screen doesn't
 flag already 1 skips its fade-out, the champion holds black). On the old `fade.js` the `'up'` checks
 and the tick-17 release fail. Not browser-checked: the Chrome window was hidden again. The
 `flow.js` side (the `onDone` lambdas, the LOADING paint, the hold wiring) has no headless test.
+
+## 9cq. The SPEAKER and NONE drivers, and the game's `[0F64]` branches (2026-09-26)
+
+GOAL-DOS-PARITY.md P6's two sound items. The driver itself is `docs/sound.md` §4 (DRIVER2 ported and
+replayed against live captures; DRIVER0 answers 0 to everything). This section is the game side:
+every place `MICROU.EXE` tests `[0F64]` (SETTINGS.DAT word 3; 1 = BLASTER/OPL2), found by a byte scan
+of `code.lst` for `0xf64]` plus the two sites the listing misaligned (`7A97`, `7AF8`). `[STATIC]`.
+
+**The branches:**
+- `InitEngineSounds 7A97` (called once, `RunRaceMainLoop 304B`): OPL pokes the four engine records'
+  instrument/delay bytes; otherwise `AH=0Eh` for beeper voices 0 and 1 with `CX=0x32`.
+- `UpdateEngineSoundsPerFrame 7B46`, after the state-0xB test: OPL updates the four records (§9i);
+  otherwise `7C4E` updates **cars 0 and 1 only** (voices 0/1, in every race format):
+  `cx = 2·min(|speed|,0x7FF)`, `+0x7F7` airborne (`[12D4]`), `= 0x100` if `[1382]` or not drawn, then
+  `|cx + (rand & 0xF) − 8|` with the same PRNG (`7CAE`), and `AH=0Eh` with `CX = 0x2000 − cx` (145 Hz
+  idle to ~290 Hz flat out, ~580 Hz airborne).
+- `StopEngineSounds 7AF8`: OPL zeroes the **speed words of all four cars** (`7B18-7B3D`, §9ar a) and
+  sends nothing; otherwise `AH=10h` for voices 0 and 1 and the speeds are left alone. Its ten callers:
+  the title entry `0107`, the race exit `30EF`, **the pause `3759` (entry, and each combo restart) and
+  `37A7` (stage 1's end)**, the knockout reset `7890`, the banners `851F`/`855D`/`8603`, the RUFFTRUX
+  "Failed" handler `86CE` (every call), and the load-failure exit `39FC`.
+- `53F7` (skid, sfx 5), `750A`/`7571` (landing, sfx 4/7): `[0F64]!=1` jumps to `7758`, the function's
+  own `RET` -- only the sound is skipped, not physics.
+- `00E2` (the quit to DOS): `AH=10h` voice 0 when not OPL. Not ported (the port's quit has no sound).
+- `321C` loads `DRIVER<[0F64]>.BIN`: at the options screen's RETURN (`0051`, `0066`), after every race
+  (`26C0` from `11C7`/`2182`), and on F3 (`29B0`, before the setting cycles -- the options screen is
+  silent either way).
+
+**Found on the way, affecting the default OPL game: the pause zeroes every car's speed.** The port's
+pause had no `7AF8`. Under OPL both `3759` and `37A7` zero all four speeds, so a car paused at full speed
+resumes from 0 (under SPEAKER/NONE it keeps its speed). `[STATIC]` from the bytes; still not seen live
+(`UNKNOWN_0f64_speed_zero`, Part L). The "Failed" handler likewise zeroed only car 0 and sent a one-off
+engine-off; it now calls `7AF8` every tick as the original does.
+
+**Port:**
+- `sound.js`: `isOplDriver(driver)` (`driver.kind`, 'opl' when absent, so headless physics stays on the
+  OPL branch), `stopEngineSounds(cars, driver)` (moved from `twocar.js`, now driver-aware and called from
+  every site above except `0107`'s title entry, which `titleMusic` handles, and `39FC`),
+  `updateBeeperEngines`, `raceStart`'s `AH=0Eh` pair, `raceOverStart`'s `30EF`.
+- `pause.js`: `updatePause(..., cars)` calls `stopEngineSounds` at `3759` and `37A7`.
+- `airborne.js`/`step.js`: sfx 4/7/5 only under OPL.
+- `Si2Player`: `kind` ('opl'/'speaker'/'none'), `load()`, `command(ah, al, cx)`; the worklet hosts the
+  beeper through `src/audio/speaker.js`. `flow.js` loads the driver `settings.soundDriver` names at the
+  options RETURN and after every race; `play.js` follows SETTINGS.DAT (the shipped file says 1, OPL).
+
+**Tests.** `npm run beeper` (`tools/check-beeper.mjs`): the two live replays (§4), the id-16 drop, DRIVER0,
+the beeper engine period (all three overrides), `7AF8`'s two branches, `7A97`, the pause's two calls
+under OPL (speeds zeroed at entry and at stage 1's end) and under the beeper (kept, `AH=10h` ×4), a
+landing's sfx 4 only under OPL, and a whole ROUND11 AI race where sfx 4/5 fire under OPL, never under
+the beeper, and every other sfx count is identical. Mutations caught: the gate's silencing tick, the
+round-robin order, the id-past-bank drop, the engine alternation parity, the pause's `37A7`, the skid
+and landing gates, the not-drawn override. Not caught, and not expected to be: dropping `021E`'s gate
+write (`02DD` already wrote the same value unless a note is out of range, which the shipped data never
+is). Not browser-checked (the Chrome window was hidden); nobody has listened to the speaker renders.

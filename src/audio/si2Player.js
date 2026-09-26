@@ -7,6 +7,7 @@ import workletUrl from './si2-worklet.js?worker&url'
 
 export class Si2Player {
   constructor() {
+    this.kind = 'opl' // [0F64]: 'opl' (1, DRIVER1), 'speaker' (2, DRIVER2), 'none' (0, DRIVER0) -- sound.js isOplDriver
     this.ctx = null
     this.node = null
     this.ready = null
@@ -21,23 +22,32 @@ export class Si2Player {
    *   live captures came from (Nuked OPL3 core, honours the 19 instruments' non-zero E0 waveform
    *   bytes regardless of reg 01) -- M3.10's "OPL waveform toggle".
    */
-  async start(driverImage, { strictOpl2 = false } = {}) {
+  async start(driverImage, { strictOpl2 = false, kind = 'opl' } = {}) {
     if (this.ready) return this.ready
+    this.kind = kind
     this.ready = (async () => {
       this.ctx = new AudioContext()
       await this.ctx.audioWorklet.addModule(workletUrl)
       this.node = new AudioWorkletNode(this.ctx, 'si2', { outputChannelCount: [2] })
       this.node.port.onmessage = (e) => { if (e.data.type === 'status') for (const w of this._statusWaiters.splice(0)) w(e.data) }
       this.node.connect(this.ctx.destination)
-      this.node.port.postMessage({ type: 'load', image: driverImage.slice(0), strictOpl2 })
+      this.node.port.postMessage({ type: 'load', image: driverImage.slice(0), strictOpl2, kind })
     })()
     return this.ready
+  }
+
+  /** LoadSoundDriverBinModule 321C: a fresh copy of a driver file into the slot. `kind` 'opl'
+   * (DRIVER1.BIN), 'speaker' (DRIVER2.BIN) or 'none' (DRIVER0.BIN). */
+  async load(driverImage, { strictOpl2 = false, kind = 'opl' } = {}) {
+    await this.ready
+    this.kind = kind
+    this.node?.port.postMessage({ type: 'load', image: driverImage.slice(0), strictOpl2, kind })
   }
 
   async resume() { if (this.ctx && this.ctx.state !== 'running') await this.ctx.resume() }
 
   /** Raw driver command (AH, AL) — the same numbers MICROU.EXE uses. */
-  command(ah, al = 0) { this.node?.port.postMessage({ type: 'cmd', ah, al }) }
+  command(ah, al = 0, cx = 0) { this.node?.port.postMessage({ type: 'cmd', ah, al, cx }) }
 
   // Convenience wrappers named after the driver handlers (docs/sound.md).
   playTune(n) { this.command(4, n) } // CmdPlayTune — starts at the next tick unless already current

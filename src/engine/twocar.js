@@ -23,6 +23,7 @@
 import { toI16 } from './int16.js'
 import { resetDropInSlot } from './dropin.js'
 import { toBytes, fromBytes } from './car.js'
+import { stopEngineSounds } from './sound.js'
 
 const NONE = null // the literal 1 in [26B8]
 
@@ -47,15 +48,6 @@ export function initTwoCarMatch(raceState) {
   return raceState.twoCar
 }
 
-/** `StopEngineSounds 7AF8` on the OPL driver path ([0F64]==1, the only driver this port models):
- * it zeroes the speed of all four car records directly (7B18-7B3D, confirmed at [BX+0x127A] == the
- * struct's `speed` field) rather than issuing a driver command -- the beeper/NONE path instead calls
- * the driver's own AH=0x10 "engine off" (docs/engine.md §9ar a). The engine pitch follows speed, so
- * this is how the OPL2 engines fall silent. `UNKNOWN_0f64_speed_zero`: mechanism re-derived from fresh
- * disassembly 2026-09-24, still not confirmed live. */
-export function stopEngineSounds(cars) {
-  for (const car of cars) car.speed = 0
-}
 
 function zeroMotion(car) {
   car.speed = 0
@@ -125,7 +117,7 @@ export function resetCarsAfterKnockout(cars, raceState, ctx) {
   other.safeY = safeY
   zeroMotion(other)
   other.state = 0xc // 788A
-  stopEngineSounds(cars) // 7890
+  stopEngineSounds(cars, ctx.sound) // 7890
   for (let al = 0; al <= 8; al++) ctx.sound?.stopSfx?.(al) // 7893-78DF, AH=8 AL=0..8
   if (scorer.drawnThisFrame) ctx.sound?.playSfx(0x0a) // 78E7 (after a one-tick 3165 wait, real time only)
 }
@@ -352,7 +344,7 @@ export function twoCarBanners(cars, raceState, ctx) {
 /** `851F`, a state-0xB car: the scorer spins in place (+8/256 per frame) and, on a non-deciding
  * point, "Bonus" shows at centre (0x80,0x7C). The car it was called for is ignored ([26B8] is read). */
 function spinBanner(cars, m, ctx, draws) {
-  stopEngineSounds(cars) // 851F CALL 7AF8
+  stopEngineSounds(cars, ctx.sound) // 851F CALL 7AF8
   if (ctx.round === 9 || m.spotlight === NONE) return // 8526
   const s = cars[m.spotlight]
   s.heading = (s.heading + 8) & 0xff // 852D
@@ -369,7 +361,7 @@ function spinBanner(cars, m, ctx, draws) {
  * the keep-alive the driver answers synchronously in its worklet (docs/engine.md §9cn).
  */
 function scorerBanner(carIndex, cars, m, ctx, draws) {
-  stopEngineSounds(cars) // 855D
+  stopEngineSounds(cars, ctx.sound) // 855D
   if (ctx.round === 9 || m.spotlight !== carIndex) return // 8560/856A
   const car = cars[carIndex]
   if (ctx.round === 8) car.heading = (car.heading + 8) & 0xff // 8573
@@ -387,7 +379,7 @@ function scorerBanner(carIndex, cars, m, ctx, draws) {
   m.bannerX = 0x80 // 85D3
   m.bannerY = Math.min(m.bannerY + 8, 0x7c) // 85D9-85E5
   ctx.sound?.keepAliveSfx?.(0x10) // 85EB-85FF: AH=0Ah, then AH=5 if sfx 16 isn't playing (docs/engine.md §9cn)
-  stopEngineSounds(cars) // 8603
+  stopEngineSounds(cars, ctx.sound) // 8603
   m.hiddenCar = carIndex === 0 ? 1 : 0 // 8606-861C
   m.winnerSide = carIndex === 0 ? 1 : 2 // 8620
   draws.push({ index: 1, cx: m.bannerX, cy: m.bannerY }) // 8623-862D

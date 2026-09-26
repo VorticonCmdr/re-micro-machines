@@ -4,6 +4,7 @@
 
 import { DECAY_BOUNCE } from '../data/engine-tables.js'
 import { sar16, toI16 } from './int16.js'
+import { isOplDriver } from './sound.js'
 
 /** `ctx.round`. Mutates car.height (z), car.zVel, car.bounceOnLand, car.rampJumpActive,
  * car.splashTrigger, car.state (ramp landings can send the car to state 0xD), car.knockoutX/Y.
@@ -44,7 +45,7 @@ export function updateCarAirborneLanding(car, ctx) {
       // repeat) vs id4 "569e"/"752d"/"7553"/"7594"/"75ba" (every other round's landing thud,
       // including class 5 FOUR BY FOUR at its own separate site 7553 -- same id, same round!=2
       // test) -- one call here covers this function's own touchdown (Path A, "7514") sites.
-      if (car.drawnThisFrame) ctx.sound?.playSfx(ctx.round === 2 ? 7 : 4)
+      if (car.drawnThisFrame && isOplDriver(ctx.sound)) ctx.sound?.playSfx(ctx.round === 2 ? 7 : 4) // 750A: [0F64]!=1 skips the sfx
     }
     return false
   }
@@ -56,7 +57,7 @@ export function updateCarAirborneLanding(car, ctx) {
   if (car.zVel > 0) {
     car.height = toI16(car.height + (car.zVel >> 2))
     car.zVel = toI16(car.zVel - 1)
-    if (car.drawnThisFrame) ctx.sound?.playSfx(ctx.round === 2 ? 7 : 4)
+    if (car.drawnThisFrame && isOplDriver(ctx.sound)) ctx.sound?.playSfx(ctx.round === 2 ? 7 : 4) // 7571: [0F64]!=1 skips the sfx
     return false
   }
   car.height = 0 // 75C2

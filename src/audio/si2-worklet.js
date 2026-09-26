@@ -3,13 +3,18 @@
 // Runs on the audio thread so the driver's 70.06 Hz tick is clocked by samples, not by the main
 // thread. The OPL2 renders at its native 49716 Hz and is linearly resampled to the context rate.
 // Messages from the main thread (see si2Player.js):
-//   { type: 'load', image: ArrayBuffer }             DRIVER1.BIN bytes → new Driver/Sequencer/Opl2
-//   { type: 'cmd', ah, al }                          a driver command, exactly as MICROU.EXE issues them
+//   { type: 'load', image: ArrayBuffer, kind }       the driver file's bytes: kind 'opl' (DRIVER1.BIN →
+//                                                    Driver/Sequencer/Opl2), 'speaker' (DRIVER2.BIN →
+//                                                    BeeperDriver, a PC-speaker square wave) or 'none'
+//                                                    (DRIVER0.BIN → silence); docs/sound.md §4b
+//   { type: 'cmd', ah, al, cx }                      a driver command, exactly as MICROU.EXE issues them
 //   { type: 'engine', car, bend, instrument?, delay? }  the game's per-step engine update for one car
 //                                                    (UpdateEngineSoundsPerFrame 1000:7BEE–7C24, see #engine)
 //   { type: 'status' }                               → posts { type: 'status', opl, tune, slots, tick }
 import { Driver, Sequencer, HOST_HZ } from '../formats/si2.js'
 import { Opl2, OPL_RATE } from './opl2.js'
+import { BeeperDriver, NullDriver } from '../formats/beeper.js'
+import { createSpeaker } from './speaker.js'
 
 class Si2Processor extends AudioWorkletProcessor {
   constructor() {
@@ -27,6 +32,17 @@ class Si2Processor extends AudioWorkletProcessor {
   #message(m) {
     switch (m.type) {
       case 'load': {
+        this.kind = m.kind ?? 'opl'
+        this.tickAcc = 0
+        if (this.kind !== 'opl') {
+          // LoadSoundDriverBinModule 321C: AH=0, then AH=2 CX=4287h until AL=0 (the null driver answers 0)
+          this.seq = this.kind === 'speaker' ? new BeeperDriver(new Uint8Array(m.image)) : new NullDriver()
+          this.seq.command(0, 0, 0)
+          while (this.seq.command(2, 0, 0x4287) & 0xff) {}
+          this.opl = null
+          this.speaker = createSpeaker(this.seq, sampleRate)
+          break
+        }
         const drv = new Driver(new Uint8Array(m.image))
         this.seq = new Sequencer(drv)
         this.opl = new Opl2({ strictOpl2: !!m.strictOpl2 }) // M3.10 OPL waveform toggle (si2Player.js)
@@ -34,10 +50,11 @@ class Si2Processor extends AudioWorkletProcessor {
         this.seq.command(6) // mute-all, as the game does before its first tune
         break
       }
-      case 'cmd': if (this.seq) this.seq.command(m.ah, m.al ?? 0); break
-      case 'keepalive': if (this.seq && this.seq.command(10, m.id) !== 0) this.seq.command(5, m.id); break // AH=0Ah then AH=5
-      case 'engine': if (this.seq) this.#engine(m); break
-      case 'status': if (this.seq) this.port.postMessage({ type: 'status', opl: this.opl.status(), tune: this.seq.currentTune, tick: this.seq.tick, slots: this.seq.slots.map((s) => ({ state: s.state, channel: s.channel, note: s.note, inst: s.instNum, sfx: s.sfxId })) }); break
+      case 'cmd': if (this.seq) this.seq.command(m.ah, m.al ?? 0, m.cx ?? 0); break
+      case 'keepalive': if (this.seq && (this.seq.command(10, m.id) & 0xff) !== 0) this.seq.command(5, m.id); break // AH=0Ah then AH=5
+      case 'engine': if (this.seq && this.kind === 'opl') this.#engine(m); break
+      case 'status': if (this.seq && this.kind !== 'opl') { this.port.postMessage({ type: 'status', kind: this.kind, tick: this.seq.tick, frequency: this.seq.frequency }); break }
+        if (this.seq) this.port.postMessage({ type: 'status', opl: this.opl.status(), tune: this.seq.currentTune, tick: this.seq.tick, slots: this.seq.slots.map((s) => ({ state: s.state, channel: s.channel, note: s.note, inst: s.instNum, sfx: s.sfxId })) }); break
     }
   }
 
@@ -60,7 +77,12 @@ class Si2Processor extends AudioWorkletProcessor {
 
   process(inputs, outputs) {
     const out = outputs[0][0]
-    if (!this.seq) { out.fill(0); return true }
+    if (!this.seq || this.kind === 'none') { out.fill(0); return true }
+    if (this.kind === 'speaker') {
+      this.speaker.render(out)
+      for (let c = 1; c < outputs[0].length; c++) outputs[0][c].set(out)
+      return true
+    }
     const step = OPL_RATE / sampleRate
     for (let i = 0; i < out.length; i++) {
       this.resampleAcc += step

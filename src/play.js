@@ -54,7 +54,7 @@ export async function bootRace({ canvas, statusEl, pickButton, dropZone, oplStri
     read('GAME1/CHEATS.BIN'),
     loadWorld(read, ROUND, RACE),
     loadBrk(read, ROUND, RACE),
-    read('DRIVER1.BIN'),
+    Promise.all(['DRIVER0.BIN', 'DRIVER1.BIN', 'DRIVER2.BIN'].map((n) => read(n))), // [0F64] 0/1/2
   ])
   const cheats = parseCheats(cheatsBytes)
 
@@ -62,7 +62,11 @@ export async function bootRace({ canvas, statusEl, pickButton, dropZone, oplStri
   // (docs/sound.md §5), so the game logic here only ever sends it commands, never `hostTick()`.
   // `AudioContext` needs a user gesture to actually produce sound -- resumed on the first keydown.
   const sound = new Si2Player()
-  await sound.start(driverBytes.buffer ?? driverBytes, { strictOpl2: !!oplStrictCheckbox?.checked }) // M3.10 OPL waveform toggle
+  // SETTINGS.DAT word 3 ([0F64]) picks the driver: 0 DRIVER0 (none), 1 DRIVER1 (OPL2), 2 DRIVER2 (PC
+  // speaker) -- docs/sound.md §4b. The shipped file says 1.
+  const soundDriver = settingsBytes ? parseSettings(settingsBytes).soundDriver : 1
+  const driverFile = driverBytes[soundDriver] ?? driverBytes[1]
+  await sound.start(driverFile.buffer ?? driverFile, { kind: ['none', 'opl', 'speaker'][soundDriver] ?? 'opl', strictOpl2: !!oplStrictCheckbox?.checked }) // M3.10 OPL waveform toggle
   // Kept attached (not removed after one attempt): the first keydown after page load is often a
   // synthetic/untrusted event in automated testing, which Chrome's autoplay gate silently ignores
   // -- a real trusted keypress must still be able to unlock audio on a later attempt. resume() is
@@ -189,7 +193,7 @@ export async function bootRace({ canvas, statusEl, pickButton, dropZone, oplStri
     }
 
     const { pressed, held } = pauseKey.read() // a press since the last frame counts as held: 3074 samples at 35 Hz, a frame can miss a short tap
-    const paused = updatePause(pauseState, dtMs, { spaceHeld: held || pressed, released: releaseTracker.isrState().latch }, cars[0], cheats, ROUND, RACE, globalState, sound)
+    const paused = updatePause(pauseState, dtMs, { spaceHeld: held || pressed, released: releaseTracker.isrState().latch }, cars[0], cheats, ROUND, RACE, globalState, sound, cars)
     if (pauseState.latchClearPending) { pauseState.latchClearPending = false; releaseTracker.clearIsrLatch() } // 377F/3784
 
     let shouldRender = paused

@@ -94,7 +94,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     buildArena(read),
     read('INTRO.PAL'),
     read('SETTINGS.DAT').catch(() => null),
-    read('DRIVER1.BIN'),
+    Promise.all(['DRIVER0.BIN', 'DRIVER1.BIN', 'DRIVER2.BIN'].map((n) => read(n))), // [0F64] 0/1/2 (docs/sound.md §4b)
     parseStrtPos(await read('GAME1/STRT_POS.BIN')),
     read('GFX1.GFX').catch(() => null), // the Codemasters logo intro (M3.10, "optional, cheap") --
     read('SM.EXE').catch(() => null),   // missing either one just skips straight to the title screen
@@ -165,8 +165,14 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     return { fireHeld: (bits & 0x08) !== 0, anyKeyReleased: escReleased || otherReleased, releasedCode: code } // releasedCode: [0x107E]'s own scancode, for the race skip
   }
 
+  // LoadSoundDriverBinModule 321C: SETTINGS.DAT word 3 ([0F64]) picks DRIVER0 (none), DRIVER1 (the OPL2
+  // "BLASTER") or DRIVER2 (the PC-speaker "SPEAKER"), reloaded fresh at the options screen's RETURN
+  // (0051/0066) and after every race (26C0 -> 321C); the options screen itself is silent.
+  const DRIVER_KINDS = ['none', 'opl', 'speaker']
+  const driverImage = (n) => { const b = driverBytes[n] ?? driverBytes[1]; return b.buffer ?? b }
+  const loadSoundDriver = () => sound.load(driverImage(settings.soundDriver), { kind: DRIVER_KINDS[settings.soundDriver] ?? 'opl', strictOpl2: !!oplStrictCheckbox?.checked })
   const sound = new Si2Player()
-  await sound.start(driverBytes.buffer ?? driverBytes, { strictOpl2: !!oplStrictCheckbox?.checked }) // M3.10 OPL waveform toggle
+  await sound.start(driverImage(settings.soundDriver), { kind: DRIVER_KINDS[settings.soundDriver] ?? 'opl', strictOpl2: !!oplStrictCheckbox?.checked }) // M3.10 OPL waveform toggle
   window.addEventListener('keydown', () => sound.resume()) // see play.js's own comment on this pattern
 
   // M3.10 smoothness (src/engine/smoothness.js): n=1 is the smoothest/most-often-drawn setting,
@@ -336,6 +342,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     refreshWaitReaders() // new bindings -> new 179B readers (a no-op if nothing changed)
     persistSettingsIfDirty()
     options = null
+    loadSoundDriver() // 0051/0066: the driver the new setting names
     enterTitle()
   }
   function optionsEscape() {
@@ -954,6 +961,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       function finishRace() {
         cleanup()
         raceExitFade(dac) // 315A's 327A (the ESC exit's too) set [26CE]
+        loadSoundDriver() // 11C7/2182 -> 26C0 -> 321C: a fresh copy of the driver after every race
         // 11CA/2185: [0x1096]==1 -> JMP 00CC -> 0054 -> the title (tune 1), whether the ESC ended the
         // race itself or was released during the normal race end's hold or fade.
         if (escLatched()) { resolve({ aborted: true }); return }
@@ -1002,7 +1010,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
         // its step and draw, and the next loop head quits.
         const wasPaused = pauseState.paused
         const { pressed, held } = pauseKey.read() // a press since the last frame counts as held: 3074 samples at 35 Hz, a frame can miss a short tap
-        const paused = updatePause(pauseState, dtMs, { spaceHeld: held || pressed, released: menuReleaseTracker.isrState().latch, cheatFlag: cheatActive, keyWord: keyWord.read() }, cars[0], cheats, round, race, globalState, sound)
+        const paused = updatePause(pauseState, dtMs, { spaceHeld: held || pressed, released: menuReleaseTracker.isrState().latch, cheatFlag: cheatActive, keyWord: keyWord.read() }, cars[0], cheats, round, race, globalState, sound, cars)
         if (wasPaused && !paused && escLatched()) escGraceSteps = 1
         if (pauseState.latchClearPending) { // the entry and each combo restart
           pauseState.latchClearPending = false

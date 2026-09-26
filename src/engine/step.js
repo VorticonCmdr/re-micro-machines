@@ -24,7 +24,7 @@ import { applyScriptedDrift } from './dropin.js'
 import { runStates } from './states.js'
 import { updateCamera } from './camera.js'
 import { initTwoCarMatch, twoCarFinishedCar, checkBothDown, twoCarRenderGate, twoCarBanners, stepExchange, twoCarFinalOrder, applyScoreSlotGarbage, exitHold855a } from './twocar.js'
-import { raceOverGateCar } from './sound.js'
+import { raceOverGateCar, isOplDriver } from './sound.js'
 import { sar16 } from './int16.js'
 
 const bit = (controlBits, mask) => (controlBits & mask) !== 0
@@ -298,7 +298,7 @@ export function runStep(world, cars, controls, raceState, ctx) {
       // docs/sound.md §3b id5 "5423": car slot 0 only, class not POWERBOATS(2)/CHOPPERS(8) (M3.7).
       // WARRIORS(6)'s own ~1/50-frame decay throttle ([28FB]) is not modelled -- an unthrottled
       // approximation, not the exact rate.
-      if (i === 0 && car.skidding && ctx.round !== 2 && ctx.round !== 8) ctx.sound?.playSfx(5)
+      if (i === 0 && car.skidding && ctx.round !== 2 && ctx.round !== 8 && isOplDriver(ctx.sound)) ctx.sound?.playSfx(5) // 53F7: [0F64]==1 only
     }
   }
 

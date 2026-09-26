@@ -16,6 +16,7 @@ import { queryWorldAt } from './collide.js'
 import { stepDropIn, resetDropInSlot } from './dropin.js'
 import { cursorForProgress } from './checkpoints.js'
 import { markDrawn } from './drawn.js'
+import { stopEngineSounds } from './sound.js'
 
 /** State 0: normal driving. The physics itself (velocity/collide/terrain/checkpoints) already ran
  * this step for state-0 cars; its handler IS the body draw `7D73` (`DS:278F` entry 0), which writes
@@ -432,13 +433,9 @@ function stepRuffTruxOneUp(car, ctx) {
  * way (`86A9-86BA`, docs/engine.md §9cn) -- the countdown's own one-shot (`7448`) is in `runStates`
  * below -- then `StopEngineSounds` (`86CE`; pitch 0 for car 0, the only car this state targets). */
 function stepRuffTruxFailed(car, ctx) {
-  car.speed = 0
   ctx.sound?.keepAliveSfx?.(15)
-  if (!car._ruffTruxFailedFired) {
-    ctx.sound?.engine(0, { bend: 0 })
-    car._ruffTruxFailedFired = true
-  }
   markDrawn(car, ctx) // 86D3
+  stopEngineSounds(ctx.cars ?? [car], ctx.sound) // 86CE, every call: OPL zeroes every car's speed, the beeper gets AH=10h
   advanceBannerSlide(car)
 }
 

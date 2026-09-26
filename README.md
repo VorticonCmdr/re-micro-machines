@@ -99,7 +99,11 @@ and stays local to your machine.
   the same carousel) — see `docs/engine.md`'s front-end section for exactly which parts are still
   simplified and why.
 - **Sound**: real OPL2 synthesis running in an `AudioWorklet`, ticked off the audio clock the way
-  the original driver was, with an optional strict-YM3812 mode (see below).
+  the original driver was, with an optional strict-YM3812 mode (see below). The options screen's
+  SOUND setting also offers the original's other two drivers: SPEAKER (the PC-speaker driver, one
+  square-wave tone per tick with chords arpeggiated, two beeper engines for cars 0 and 1, and no
+  race-over jingle, which that driver's sound bank lacks) and NONE (silence). The choice changes a
+  little gameplay too, as in the original: with BLASTER, pausing stops every car.
 - **The real GAME OPTIONS screen** (`game.html`, shown after the code card, before the title): F1/
   F2 cycle the control device (P1 can never reach JOY2/MOUSE, a real, live-confirmed asymmetry —
   both currently only ever reach KEYS1/KEYS2, since no joystick/mouse input is wired up yet), F3

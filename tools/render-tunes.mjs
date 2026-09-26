@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url'
 import { Driver, Sequencer, HOST_HZ, oplFreqHz } from '../src/formats/si2.js'
 import { Opl2, OPL_RATE } from '../src/audio/opl2.js'
 import { saveWav } from './wav.mjs'
+import { BeeperDriver } from '../src/formats/beeper.js'
+import { createSpeaker } from '../src/audio/speaker.js'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const OUT = join(ROOT, 'tools', 'out')
@@ -98,4 +100,28 @@ for (const id of sfxIds) {
   const path = join(OUT, `SFX${id}.wav`)
   saveWav(path, out, OPL_RATE)
   console.log(`sfx ${id}: ${seq.writes.length} writes -> ${path}`)
+}
+
+// The same tunes/sfx through DRIVER2.BIN (the PC-speaker "SPEAKER" driver, src/formats/beeper.js)
+// and the square-wave speaker (src/audio/speaker.js), docs/sound.md §4b: tools/out/SPEAKER_*.wav.
+const SPK_RATE = 48000
+function renderSpeaker(setup, secs) {
+  const d = new BeeperDriver(new Uint8Array(readFileSync(join(ROOT, 'game', 'DRIVER2.BIN'))))
+  d.command(0, 0, 0)
+  while (d.command(2, 0, 0x4287) & 0xff) {}
+  setup(d)
+  const out = new Float32Array(Math.round(secs * SPK_RATE))
+  createSpeaker(d, SPK_RATE).render(out)
+  return out
+}
+for (const t of list) {
+  const out = renderSpeaker((d) => d.command(4, t), seconds)
+  const path = join(OUT, `SPEAKER_TUNE${t}.wav`)
+  saveWav(path, out, SPK_RATE)
+  console.log(`speaker tune ${t}: ${seconds}s, ${out.filter((v) => v !== 0).length} non-silent samples -> ${path}`)
+}
+for (const id of sfxIds) {
+  const path = join(OUT, `SPEAKER_SFX${id}.wav`)
+  saveWav(path, renderSpeaker((d) => d.command(5, id), 3), SPK_RATE)
+  console.log(`speaker sfx ${id} -> ${path}${id > 15 ? ' (DRIVER2 drops ids past 15: silence)' : ''}`)
 }

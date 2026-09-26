@@ -13,16 +13,23 @@
 // physics step (35 Hz physics, 70.06 Hz driver tick).
 import { createEngineJitter } from '../formats/si2.js'
 
-/** Adapts a raw `Sequencer` to the same call shape as `Si2Player`, for headless use. */
-export function asDriver(seq) {
+/** `[0F64]==1`, the BLASTER/OPL2 driver (`driver.kind` 'opl'; also the default with no driver at
+ * all, headless). SPEAKER ('speaker', DRIVER2.BIN) and NONE ('none', DRIVER0.BIN) take the game's
+ * other branch at every `[0F64]` test (docs/sound.md §4b). */
+export const isOplDriver = (driver) => (driver?.kind ?? 'opl') === 'opl'
+
+/** Adapts a raw `Sequencer` (or, with `kind` 'speaker'/'none', a `BeeperDriver`/`NullDriver`,
+ * src/formats/beeper.js) to the same call shape as `Si2Player`, for headless use. */
+export function asDriver(seq, kind = 'opl') {
   return {
+    kind,
     playSfx: (id) => seq.command(5, id),
     stopSfx: (id) => seq.command(8, id),
     engine: (car, opts) => seq.engineUpdate(car, opts),
     stopMusic: () => seq.command(7),
     muteAll: () => seq.command(6),
-    command: (ah, al) => seq.command(ah, al),
-    keepAliveSfx: (id) => { if (seq.command(10, id) !== 0) seq.command(5, id) }, // AH=0Ah, then AH=5 if it isn't playing
+    command: (ah, al, cx) => seq.command(ah, al, cx),
+    keepAliveSfx: (id) => { if ((seq.command(10, id) & 0xff) !== 0) seq.command(5, id) }, // AH=0Ah, then AH=5 if it isn't playing
   }
 }
 
@@ -30,6 +37,22 @@ export function asDriver(seq) {
  * ("every race start... races have no music", `1000:11AA`/`2173`/`39F5`). */
 export function raceStart(driver) {
   driver.stopMusic()
+  // InitEngineSounds 7A97 (from RunRaceMainLoop 304B), the [0F64]!=1 branch: both beeper engine
+  // voices on at period 0x32 until the first per-step update (the OPL branch pokes the records'
+  // instrument bytes instead, which `updateEngines` passes on every call).
+  if (!isOplDriver(driver)) { driver.command(0x0e, 0, 0x32); driver.command(0x0e, 1, 0x32) }
+}
+
+/** `StopEngineSounds 7AF8` (docs/engine.md §9ar a, docs/sound.md §4b). `[0F64]==1`: no driver
+ * command, the four car records' speed words are zeroed (`7B18-7B3D`), so the engines fall to their
+ * idle pitch through the per-step update -- a physics write. Otherwise: `AH=10h` for beeper voices
+ * 0 and 1 (`7AFF-7B12`) and the speeds are left alone. Called at the title entry (`0107`), the pause
+ * (`3759`, `37A7`), the race exit (`30EF`), the knockout reset (`7890`), the two-car banners (`851F`,
+ * `855D`, `8603`) and the RUFFTRUX "Failed" handler (`86CE`). */
+export function stopEngineSounds(cars, driver) {
+  if (isOplDriver(driver)) { for (const car of cars) car.speed = 0; return }
+  driver.command(0x10, 0, 0)
+  driver.command(0x10, 1, 0)
 }
 
 /** `InitEngineSounds 1000:7A97`'s per-class bytes: instrument 0x70 for POWERBOATS(2)/CHOPPERS(8)
@@ -57,6 +80,7 @@ export function raceInstrument(round) {
  */
 export function updateEngines(driver, cars, ctx, jitter) {
   if (cars.some((c) => c.state === 0xb)) return
+  if (!isOplDriver(driver)) { updateBeeperEngines(driver, cars, jitter); return } // 7B73 -> 7C4E
   const { instrument, delay } = raceInstrument(ctx.round)
   for (let i = 0; i < cars.length; i++) {
     const car = cars[i]
@@ -66,6 +90,23 @@ export function updateEngines(driver, cars, ctx, jitter) {
     if (!car.drawnThisFrame) bend = 0x0a
     bend = Math.abs(Math.trunc(bend) + ((jitter() & 3) - 2))
     driver.engine(i, { bend, instrument, delay })
+  }
+}
+
+/** `7C4E-7CAD`, the `[0F64]!=1` engine update: cars 0 and 1 only (beeper voices 0/1), in every race
+ * format. `cx = 2*min(|speed|,0x7FF)`, `+0x7F7` airborne (`[12D4]`), `= 0x100` when `[1382]` is set or
+ * the car was not drawn, then `|cx + (rand&0xF) - 8|`, and the period is `0x2000 - cx` (`AH=0Eh`, which
+ * also switches the voice on). The same shared PRNG as the OPL branch, called twice per step. */
+export function updateBeeperEngines(driver, cars, jitter) {
+  for (let i = 0; i < 2; i++) {
+    const car = cars[i]
+    if (!car) continue
+    let cx = Math.min(Math.abs(car.speed ?? 0), 0x7ff) * 2
+    if (car.zVel) cx += 0x7f7
+    if (car.subState) cx = 0x100
+    if (!car.drawnThisFrame) cx = 0x100
+    cx = Math.abs(cx + ((jitter() & 0xf) - 8))
+    driver.command(0x0e, i, (0x2000 - cx) & 0xffff)
   }
 }
 
@@ -90,7 +131,8 @@ export function raceOverGateCar(raceState, raceFormat) {
  * `raceOverEnd`. Then comes the 100-tick hold (`30F2-3100`, the page's job).
  */
 export function raceOverStart(driver, cars, gateCar = 0) {
-  if (cars[gateCar]?.drawnThisFrame) driver.playSfx(16)
+  if (cars[gateCar]?.drawnThisFrame) driver.playSfx(16) // DRIVER2 drops id 16 (its bank has 15, 0459)
+  stopEngineSounds(cars, driver) // 30EF
 }
 
 /** After the hold, `3102`/`3109`: AH=8 with AL=0x78 (a leftover of 92C3's `MOV AX,0x7D78`; dead, the
@@ -118,6 +160,7 @@ export function raceOverEnd(driver) {
  * restarted"), so reissuing `playTune(1)` on an already-current tune is a proven no-op.
  */
 export function titleMusic(driver) {
+  stopEngineSounds([], driver) // 0107: under DRIVER2 the engine voices are still on after an ESC quit (3115 skips 30EF)
   driver.playTune(1)
   driver.stopMusic() // AH=7
   driver.stopSfx(0) // AH=8, leftover AL (docs/sound.md's own precedent for this argument)
