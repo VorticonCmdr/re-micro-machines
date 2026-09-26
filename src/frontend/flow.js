@@ -42,6 +42,7 @@ import { Si2Player } from '../audio/si2Player.js'
 import { RUFF_TRUCK_TIMES } from '../data/engine-tables.js'
 import { initTournament, isInQualifier, applyRaceSkip, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, raceIntroHoldTicks, raceIntroParticipants, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, resultsPassed, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, OUTCOME } from './tournament.js'
 import { CHARACTER_NAMES, OUTCOME_MESSAGES, resolveSmoothnessForPlay } from '../data/frontend-tables.js'
+import { layoutOptions, layoutJoyCal, layoutTitle, layoutSelectGame, layoutOnePlayerGame } from './frontLayouts.js'
 import { paintOps, layoutChooseGame, layoutTwoPlayerRaceInfo, layoutTwoPlayerResult, layoutSingleRaceSelect, slideIconX } from './h2hScreens.js'
 import { drawTwoPlayerPickLabels, drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawOpponentPanel, drawEliminatedScreen, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawJoystickCalibrationScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
 import { createSmoothnessGate } from '../engine/smoothness.js'
@@ -365,8 +366,11 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     menuBuf.fill(0)
     if (options.sub === 'credits') drawCreditsScreen(menuBuf, arena)
     else if (options.sub === 'redefine') drawRedefineKeysScreen(menuBuf, arena, { slots: options.redefineScratch, slotIndex: options.redefineSlotIndex })
-    else if (options.sub === 'joycal') drawJoystickCalibrationScreen(menuBuf, arena, { columns: options.cal.columns, prompt: options.cal.phase === 'wait' })
-    else drawOptionsScreen(menuBuf, arena, { settings, cheatActive, joystick: sticks !== 0 })
+    else if (options.sub === 'joycal') paintOps(menuBuf, arena, layoutJoyCal({ columns: options.cal.columns, prompt: options.cal.phase === 'wait' }))
+    else {
+      paintOps(menuBuf, arena, layoutOptions({ settings, joystick: sticks !== 0 })) // pixel-exact with 0400's header (docs/engine.md §9dm)
+      if (cheatActive) drawOptionsScreen(menuBuf, arena, { settings, cheatActive, joystick: sticks !== 0 }) // the '!' mark (position not measured)
+    }
     paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
     statusEl.textContent = 'GAME OPTIONS'
   }
@@ -470,7 +474,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
   function paintTitle() {
     menuBuf.fill(0)
-    drawTitleScreen(menuBuf, arena, { classIndex: titleState.classIndex })
+    paintOps(menuBuf, arena, layoutTitle({ classIndex: titleState.classIndex })) // pixel-exact (docs/engine.md §9dm)
     paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
     statusEl.textContent = 'MicroMachines'
   }
@@ -555,7 +559,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
   function paintSelectGame() {
     menuBuf.fill(0)
-    drawSelectGame(menuBuf, arena, { selection: twoItemState.selection })
+    paintOps(menuBuf, arena, layoutSelectGame({ selection: twoItemState.selection })) // pixel-exact (§9dm)
     paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
     statusEl.textContent = 'SELECT GAME'
   }
@@ -569,7 +573,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
   function paintOnePlayerGame() {
     menuBuf.fill(0)
-    drawOnePlayerGameMenu(menuBuf, arena, { selection: twoItemState.selection })
+    paintOps(menuBuf, arena, layoutOnePlayerGame({ selection: twoItemState.selection })) // pixel-exact (§9dm)
     paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
     statusEl.textContent = 'ONE PLAYER GAME'
   }

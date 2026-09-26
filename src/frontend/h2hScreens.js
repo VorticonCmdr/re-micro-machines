@@ -8,8 +8,8 @@
 //
 // The shared routines, all `[STATIC]`:
 // - `0400` (the header): clear to 0 (`0876`); BADGE (record `0xB7C`, opaque `053A`) at (0,0);
-//   WORDS frame 0 (record `0xCA5`) at (0x48,8); with `[0x156]`=1 (two-human play) WORDS frame 1 at
-//   (0xA2,8) and a divider: row 0x1E colour 0x12, rows 0x1F-0x20 colour 0x0E, row 0x21 colour 0x12
+//   WORDS frame 0 (record `0xCA5`) at (0x48,8); with `[0x156]` nonzero, WORDS frame `[0x156]` at
+//   (0xA2,8) -- 1 "Head to Head" here (two-human play), 2 "Challenge" -- and a divider: row 0x1E colour 0x12, rows 0x1F-0x20 colour 0x0E, row 0x21 colour 0x12
 //   (`0862`, full width).
 // - A portrait (`0DB0`): the record's `+0x13` high byte picks the bank -- 0 FCNORMAL (frame =
 //   character, or 12/13 for the eliminated/taken bits), 2 FCHAPPY and 3+ FCSAD (the win/lose poses,
@@ -72,19 +72,26 @@ export function raceInfoIconX(smoothness) {
   return [x, 0xe0 - x]
 }
 
-function header() {
-  return [
+/** `0400`, the shared header. `words`: `[0x156]`, a WORDS.CHR frame number (docs/engine.md §9dm):
+ * nonzero draws that frame at (0xA2,8) and the divider rows -- 1 "Head to Head" (two-human play,
+ * `1E4A`; H2H vs CPU, `0364`), 2 "Challenge" (`0364`); 0 (`0238`/`27F0`/`2BE8`) draws neither. */
+export function header({ words = 1 } = {}) {
+  const ops = [
     { op: 'clear', color: 0 }, // 0876
     { op: 'sprite', chr: 'BADGE.CHR', frame: 0, x: 0, y: 0, opaque: true }, // 0405: record 0xB7C
     { op: 'sprite', chr: 'WORDS.CHR', frame: 0, x: 0x48, y: 8, opaque: true }, // 040B-041D: record 0xCA5
-    { op: 'sprite', chr: 'WORDS.CHR', frame: 1, x: 0x48 + 0x5a, y: 8, opaque: true }, // 0420-0433: [0x156]=1
+  ]
+  if (!words) return ops
+  ops.push(
+    { op: 'sprite', chr: 'WORDS.CHR', frame: words, x: 0x48 + 0x5a, y: 8, opaque: true }, // 0420-0433: frame [0x156]
     { op: 'rows', y: 0x1e, count: 1, color: 0x12 }, // 0436-043F
     { op: 'rows', y: 0x1f, count: 2, color: 0x0e }, // 0442-044B
     { op: 'rows', y: 0x21, count: 1, color: 0x12 }, // 044E-0457
-  ]
+  )
+  return ops
 }
 
-function portrait(x, y, character) {
+export function portrait(x, y, character) {
   const s = portraitSprite(character, 0)
   return [
     { op: 'sprite', ...s, x, y, opaque: true }, // 0DB0 -> 053A
@@ -205,6 +212,8 @@ export function paintOps(buf, arena, ops) {
       for (let y = o.y; y < o.y + o.h; y++) { put(o.x, y); put(o.x + o.w - 1, y) }
     } else if (o.op === 'sprite') {
       blitTransparent(buf, w, h, o.x, o.y, chrFrame(arena, rec(o.chr), o.frame), { colorKey: o.opaque ? -1 : 0, flip: !!o.flip })
+    } else if (o.op === 'call') {
+      o.fn(buf, arena) // a renderer that is already exact on its own (e.g. drawOptionsScreen's body)
     } else if (o.op === 'text') {
       const x = o.centre ? 0x7f - 4 * o.text.length : o.x
       drawString(buf, arena, rec(o.font), o.text, x, o.y)

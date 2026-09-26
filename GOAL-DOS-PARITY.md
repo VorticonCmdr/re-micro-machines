@@ -116,7 +116,7 @@ disagree with it -- `README.md`'s fades, `docs/track-graphics.md`'s "Still open"
 
 ```bash
 for s in catalog lz chrtable tables car intro codecard options title mainmenu charselect board elimination keywait outcomewait windowedwait champion pressanykey raceskip step trace ai play sound rounds finish twocar twohuman h2hscreens escquit tournament \
-         beeper menu screens oplaudio opl-toggle smoothness si2 live smoke pages devices; do npm run -s $s || echo "FAIL $s"; done
+         beeper menu screens front oplaudio opl-toggle smoothness si2 live smoke pages devices; do npm run -s $s || echo "FAIL $s"; done
 npm run build
 ```
 
@@ -894,7 +894,7 @@ commits.
 `PLAN-ENGINE.md`'s acceptance line "each static screen pixel-diffs against a DOSBox screenshot"
 was carried forward and never met. Meet it now:
 
-- [ ] F1. In DOSBox, capture each static screen with `screen_capture` and read the DAC palette (as
+- [x] F1. **(§9dm: 15 frames + the code card in `tools/refs/front/`; every DAC is INTRO.PAL.)** In DOSBox, capture each static screen with `screen_capture` and read the DAC palette (as
   `tools/refs/race_R21_dac.bin` was done). Capture: code card, OPTIONS, title (first showcase frame),
   SELECT GAME, ONE PLAYER GAME, character select (settled), board, race intro, results, outcome,
   eliminated, champion, and the H2H WON/LOST screens. Save the captures to `tools/refs/front/`

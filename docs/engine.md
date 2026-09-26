@@ -6120,6 +6120,26 @@ So the JS core plays recognisably the same music as DOSBox, clearly set apart fr
 
 `GOAL-DOS-PARITY.md` Part L's last item, "whether a drawn but invisible car is actually absent from the screen (§9ap)", and §10.2's row for it were stale. §9ap 6 could not get a pixel check. §9ap 7 says it was resolved live in §9aq, and §9aq 2 is that check (`[PROVEN]`): car 1's clip box was forced to straddle the screen's bottom (view rows 190-214). The drawn flag read 1, since the clip window is 224 rows (`7D73`). The capture showed only rows 190-199 of the sprite, cut off at row 199, because `92BC` copies 200 rows. So a car drawn wholly in rows 200-223 has its flag set and is absent from the screen. No new capture; the row and the box are closed with this pointer.
 
+## 9dm. Part F: the front-end captures and `npm run front` (2026-09-26)
+
+`GOAL-DOS-PARITY.md` Part F, F1 and the start of F2.
+
+**F1, the captures** (`[PROVEN]`, two fresh DOSBox boots): 64000-byte mode-13h frames read from `A000` over REST, and the DAC through ports `3C7`/`3C9`; every DAC equals `INTRO.PAL`, so only the frames are kept, gzipped (2-6 KB each), in `tools/refs/front/<name>_a000.bin.gz`:
+- `title` (class 1, POWERBOATS), `selectgame` (`[0x130]`=1), `oneplayer` (`[0x132]`=0 at entry), `options` (no F7, the whole screen);
+- `charselect` (Challenge, SPIDER centred, `[0x160]`=10), `qualintro` (the qualifier's race intro at its `179B` wait, called from `1398`), `picker` (the opponent carousel, WALTER centred, `[0x160]`=0), `raceintro` (race 1, THE BREAKFAST BENDS, at `179B`);
+- `outcome_qualified` (`1C1B` SIMPLE, at its first `17FF`, from `1E0F`), `results_lost` (`13E4` at `17FF`, from `164E`, car 0 last), `outcome_lifelost` (`1C1B` LIVES at `1DCD`), `board_a`/`board_b` (`18D8`, `[28C1]`=1, the newest icon off and on, consecutive `17FF` windows), `eliminated` (`16DE` at `179B`, from `1796`), `champion` (`1AAD` at `1BF4`);
+- `codecard.png` (FONT.BIN's screen: mode 10h, 640x350, taken as RGB from the bridge's frame endpoint since `A000` does not hold a planar screen; target COLUMN O, ROW 4).
+
+The screens were reached with breakpoints on each screen's own wait (`179B`, `17FF`, `1DCD`, `1BF4`), races ended with `[26C6]`=2 at `39F0`, one race lost by setting the order at `313C`, and the cheat-free Challenge driven to its champion. Two traps met on the way: the MCP screenshot lags the emulation by seconds (a first "code card" and "title" were really OPTIONS and SELECT GAME), so every capture was checked by rendering the frame itself; and SELECT GAME/ONE PLAYER GAME confirm a persisted pick with the fire held from the previous screen.
+
+**F2, the check.** `tools/check-front.mjs` (`npm run front`, now in the suite) paints each screen's layout into the 256x200 work buffer and compares it with the capture's columns 32-287 (`08BC` presents at X+32; the other columns must be the border colour 15). The layouts are op lists in `src/frontend/frontLayouts.js`, the same form as §9bz's `h2hScreens.js` (whose `header()` now takes `[0x156]`, which is a WORDS frame number -- 1 "Head to Head", 2 "Challenge" (`0364`), 0 none -- not a two-player flag as §9bz read it, and whose `paintOps` gained a `call` op for renderers that are already exact). Exact now (0 px), from a read-only disassembly of each routine (`[STATIC]`) checked against the captures (`[PROVEN]`):
+- **GAME OPTIONS** (and the F7 line and the two calibration frames): `0400` with `[0x156]`=0 is `0876` clear, BADGE opaque at (0,0), WORDS frame 0 at (0x48,8), no divider; the body was already exact (§9cu).
+- **The title** (`0100`/`01DE`): LOGO transparent at its static (8,0) (not centred), the copyright line FONT2 centred at y 0xB7, INTRO opaque at (0x50,0x64) frame `[0BC5]`, rows 0xA4-0xAB cleared, the class name FONT1 centred at y 0xA4.
+- **SELECT GAME** (`0220`, no `0400`): LOGO, "SELECT GAME" FONT2 centred at 0x5E, "ONE PLAYER"/"TWO PLAYER" FONT1 at (0x18,0x6F)/(0x9C,0x6F), SELGAM frames 0/1 opaque at (0x10,0x76)/(0x94,0x76), WORDS frames 2 ("Challenge") / 1 ("Head to Head") at (0x18,0xB7)/(0x9C,0xB7), and `0382`'s THUMB at (0x68,0x80) with frame = the selection (it is drawn with save-under, presented and restored, so it is on screen only).
+- **ONE PLAYER GAME** (`02E0`): `0400`, "ONE PLAYER"/"GAME"/"SELECT GAME" FONT2 at (0x58,0x32)/(0x70,0x44)/(0x58,0xB6), SELGAM frames 2/3 at (0x10,0x58)/(0x94,0x58), WORDS 1/2 at (0x18,0x99)/(0xA4,0x99) (the second clipped at x 0x100), THUMB at (0x68,0x6E).
+
+`game.html` now draws these four screens from the layouts. `UNKNOWN_thumb_frame1_invisible` is answered: at selection 1 THUMB frame 1 (the pointing finger) is drawn at (0x68,0x80), and it matches the capture.
+
 ## 10. Open items
 
 Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: `open`, `narrowed` (part answered; the rest is the open question), `closed`. **Section** is where the answer (or the question) is written up; the history, wrong turns included, stays in those sections and is not repeated here. **Address** is `MICROU.EXE`'s (`1000:` code, `DS:` data) unless another file is named. This table replaced a run-on paragraph of dated notes on 2026-09-26 (`GOAL-DOS-PARITY.md` D2, §9cx); each ID's status was re-read from its latest dated note. When an item opens or closes, change its row here in the same commit.
@@ -6139,14 +6159,10 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_dosbox_wait_frames_cadence` | open | §9f | - | What `dosbox.wait_frames(1)` measures (host tick vs retrace) was never pinned down; dedup made it immaterial for M3.4. |
 | `UNKNOWN_intro_loop_vs_total_gap` | open | `docs/intro-and-codecard.md` (§9as) | - (SM.EXE `CS:097F`, `CS:07C6`) | The ~0.23 s gap between the loop's 314 iterations (~4.49 s) and the 4.72 s live total is untimed; plausibly pre-loop setup. |
 | `UNKNOWN_menu_default_persistence` | narrowed | §9aw | `0220`,`02CB`,`0360`,`[0x130]`,`[0x132]` | The asymmetric persistence is explained [PROVEN]; still open: why one fire once seemed to pass both menu levels. |
-| `UNKNOWN_menu_pixel_diff` | open | §9aw; GOAL Part F | - | No DOSBox pixel diff yet of SELECT GAME / ONE PLAYER GAME. |
 | `UNKNOWN_mouse_host_scale` | open | §9cu | - | Browser pointer pixels to INT 33h mickeys is taken as 1:1 per CSS pixel; the true scale is not established. |
-| `UNKNOWN_options_pixel_diff` | narrowed | §9cu | `0400`, `DS:0E88` | The options/F7 body (rows 30-199) is 0 px off against three live frames. The `0400` logo-header background is still undrawn (GOAL Part F). |
 | `UNKNOWN_overlay_tile_191` | open | `docs/track-graphics.md` overlay tiles; §9d | `9214-9237` | Round 2 overlay index 191's +12 variant differs from its base; how it looks with a car under it is unverified. |
 | `UNKNOWN_replay_determinism` | open | PLAN-ENGINE.md §4 | - | Is a replay deterministic across DOSBox sessions? Matters only for human-tape replays; never investigated. |
 | `UNKNOWN_single_race_28c1` | open | §9by | `2329`, `DS:28C1` | 2329 never writes [28C1], so a two-human single race runs on a stale value. Effect via its non-tuning readers untraced (port passes 1). |
-| `UNKNOWN_thumb_frame1_invisible` | open | §9av (from §9ao 7) | `0382`, `[130]` | Why SELECT GAME's THUMB frame 1 renders no visible highlight live while frame 2 does (a sprite-art question). |
-| `UNKNOWN_title_pixel_diff` | open | §9av; GOAL Part F | - | LOGO's exact y position on the title screen was never re-read live, and no title pixel diff exists. |
 | `UNKNOWN_waveform_target` | open | §9dj; `docs/sound.md` §8 | - | YM3812 sines vs OPL3/DOSBox waveforms: both are implemented. DOSBox's audio was compared (§9dj), but only tunes 6/7 use a waveform and the spectral metric cannot tell the modes apart; which chip a DOS player had is not in the binary. |
 
 ### 10.2 Open, without an ID
@@ -6251,9 +6267,11 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_map_attr_bits` | closed | §9cf 2 | `589C`/`58CD`, `[12DE]`, `DS:191B` | Bit 1 = the cell's flow field mirrored across the tile's LEV axis; bit 0 = rotated 180° [STATIC]. |
 | `UNKNOWN_map_format` | closed | `docs/track-layout.md`; `PLAN.md` §9 | - | .MAP = a 32×32 meta-tile byte grid (bits 0-5 index, 6-7 attribute) plus a track-progress plane. It reproduces a live frame [PROVEN]. |
 | `UNKNOWN_map_plane2` | closed | `docs/track-layout.md` Open items | - | `.MAP` plane 2 is the per-tile track-progress value (wrong-way check, `.BRK` offset) [STATIC]. |
+| `UNKNOWN_menu_pixel_diff` | closed | §9dm (§9aw) | `0220`, `02E0`, `0382` | SELECT GAME and ONE PLAYER GAME are pixel-exact (SELGAM, WORDS, THUMB) [PROVEN]; `npm run front`. |
 | `UNKNOWN_microu_runs_standalone` | closed | §9cf 8 | - | Yes: MICROU.EXE alone runs through the code card and options into a race [PROVEN]. |
 | `UNKNOWN_modex` | closed | `docs/track-graphics.md` Video pipeline | - | No sequencer, graphics-controller or CRTC start-address writes: plain mode 13h, no Mode-X, no page flipping [STATIC]. |
 | `UNKNOWN_opl_sample_fidelity` | closed | §9dj (`docs/sound.md` §6-§8) | - | The JS core's audio matches DOSBox's spectrally (tune 4 0.84, tune 6 0.76 against ≤0.63 for any other tune) [PROVEN]; sample-exactness is not a goal; `npm run oplaudio`. |
+| `UNKNOWN_options_pixel_diff` | closed | §9dm (§9cu) | `0400`, `2770` | OPTIONS, its F7 line and both calibration frames are pixel-exact over the whole screen with `0400`'s header [PROVEN]; `npm run front`. |
 | `UNKNOWN_outcome_screen_timeout` | closed | §9bq (M3.71) | `1C1B`, `17FF`, `[261F]` | SIMPLE path: 17FF CX=15 windows, timeout at tick 704. LIVES path: 30-step slide, poll every 6 ticks, timeout 702. Both ported [STATIC]. |
 | `UNKNOWN_overlay_ranges_other_rounds` | closed | §2; `docs/track-graphics.md` | `397F-39E4`,`[042E]` | Overlay bit-15 ranges are hard-coded for rounds 2 and 3 only, gated on GAME1; no table exists. |
 | `UNKNOWN_pause_banner_position` | closed | §9q | `35F0`, `9289` | The Paused! banner's Y offset is the hand-authored constant 48 (not 89), drawn with a colour-0-transparent blit [PROVEN] (by disassembly). |
@@ -6288,8 +6306,10 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_state1_oscillator_port` | closed | §9w | `880A-8928` | Heading steps ±4/tick toward the nearer of {0,0x80}; the waypoint picks the table; gated by driftSteps; ported. |
 | `UNKNOWN_state4_5_driftsteps_gate` | closed | §9z | `7F62-7FE7`, `7EFA-7F61`, `0x12C2` | Fixed: states 4/5 are draw-only while driftSteps≠0; sfx 8 tests post-increment animStep. |
 | `UNKNOWN_stateE_reach` | closed | §9r | `6AE5-6FEA` | State E is reached only through round 3's lap-progress-gated drop-in/shortcut sequencer (terrain row index 4). Ported in dropin.js. |
+| `UNKNOWN_thumb_frame1_invisible` | closed | §9dm (§9av) | `0382`, `[130]` | THUMB frame 1 (the pointing finger) is drawn at (0x68,0x80) at selection 1 and matches the capture [PROVEN]. |
 | `UNKNOWN_tick_counter_writers` | closed | §9v | `48D8`,`489C-490C`,`DS:0002`,`DS:261F` | One ISR incrementer bumps `[28F7]`, `[0002]`, `[261F]` and `[26D0]` every tick at 70.0 Hz [PROVEN]. |
 | `UNKNOWN_tile_index_overflow` | closed | §9ac / §9ad | colFileBuf/dirFileBuf, `.BRK` buffer `3B92` | Round 8/9 cases unreachable (flood fill); round 5 tile 56 reachable and fixed, with cross-race stale bytes replicated. |
+| `UNKNOWN_title_pixel_diff` | closed | §9dm (§9av) | `0100`, `01DE` | The title is pixel-exact (LOGO at its static (8,0)) [PROVEN]; `npm run front`. |
 | `UNKNOWN_trace_posY_terrain_stop` | closed | §9ab | - | Not an engine bug: a torn Lua capture sample; with that row removed, the replay has zero mismatches [PROVEN]. |
 | `UNKNOWN_track_name_table` | closed | §7 (`src/data/frontend-tables.js`) | `DS:0460` | 36 NUL-walked names indexed (round-1)*4+(race-1); round 2's empty slot is the first (the qualifier). |
 | `UNKNOWN_tune7_unused` | closed | `docs/sound.md` §8 (M3.45) | 15 `AH=4` driver call sites | Tune 7 is never requested (exhaustive search of the driver far-calls). Tune 5 is also unreachable. |
