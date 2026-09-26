@@ -10,6 +10,7 @@
 //      (53F7/750A/7571), and the pause's two 7AF8 calls (3759/37A7).
 //   node tools/check-beeper.mjs
 import { readFileSync } from 'node:fs'
+import { register } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { BeeperDriver, NullDriver } from '../src/formats/beeper.js'
@@ -86,6 +87,22 @@ function replay(samples, explained = () => false) {
   const liveIds = new Set()
   for (const [, hex] of samples) { const b = Buffer.from(hex, 'hex'); for (let k = 0; k < 4; k++) if (b[slotAt(k) + 0xa - 0x60]) liveIds.add(b[slotAt(k) + 0xe - 0x60]) }
   check('live: ids 16-18 never reach a slot (0459 drops them)', ![16, 17, 18].some((i) => liveIds.has(i)))
+}
+
+// 1c. The sfx starts, strictly: each id was queued with the emulator paused and a snapshot taken
+// with it in the queue, so the model's own start routine (bank lookup, slot, first delay) runs on
+// every one. A re-seed is allowed only where the live snapshot differs by the queued byte alone.
+{
+  const { samples, events } = ref('drv2_sfx.json')
+  const queueOnly = (live, d) => {
+    const diff = []
+    for (let a = 0x73; a < 0xf7; a++) if (a !== 0x7d && d.m[a] !== live[a - 0x60]) diff.push(a)
+    return diff.every((a) => a >= 0xe7 && a < 0xef)
+  }
+  const r = replay(samples, queueOnly)
+  check(`sfx starts: ${r.match} snapshots match, none unexplained (${r.unexplained.slice(0, 2).join(' | ')})`, r.unexplained.length === 0 && r.match > 1800)
+  check(`sfx starts: exactly one re-seed per poke, each only the queued id (${r.reseeds} for ${events.length})`, r.reseeds === events.length)
+  check(`sfx starts: the model itself started ids 1-15 (${[...r.ids].sort((a, b) => a - b)})`, r.ids.size === 15)
 }
 
 // 2. The id-16 question in the model, from a clean start.
@@ -197,6 +214,22 @@ const logDriver = (kind) => { const log = []; return { log, drv: asDriver({ comm
   const others = (c) => JSON.stringify(Object.entries(c).filter(([id]) => ![4, 5, 7].includes(+id)))
   check(`ROUND11: sfx 4/5 fire under OPL (${opl[4]}/${opl[5]}), never under the beeper (${spk[4] ?? 0}/${spk[5] ?? 0}/${spk[7] ?? 0})`, opl[4] > 0 && opl[5] > 0 && !spk[4] && !spk[5] && !spk[7])
   check(`ROUND11: every other sfx is the same under both (${others(opl)} vs ${others(spk)})`, others(opl) === others(spk))
+}
+
+{
+  // Si2Player.load(): the driver must reach the worklet before the commands sent right after it
+  // (optionsConfirm loads, then enterTitle's titleMusic plays tune 1). The worklet chunk's Vite
+  // `?worker&url` import is stubbed so the module loads in Node.
+  register('data:text/javascript,' + encodeURIComponent("export async function resolve(s,c,n){return s.endsWith('?worker&url')?{url:'data:text/javascript,export default %22%22',shortCircuit:true}:n(s,c)}"))
+  const { Si2Player } = await import('../src/audio/si2Player.js')
+  const p = new Si2Player()
+  const posted = []
+  p.node = { port: { postMessage: (m) => posted.push(m.type === 'cmd' ? `cmd${m.ah}` : m.type) } }
+  p.ready = Promise.resolve()
+  p.load(DRIVER2.buffer, { kind: 'speaker' })
+  const kindNow = p.kind
+  p.playTune(1)
+  check(`Si2Player.load posts the driver before the next command, synchronously (${posted.join(',')}; kind ${kindNow})`, posted.join(',') === 'load,cmd4' && kindNow === 'speaker')
 }
 
 console.log(bad ? `${bad} check(s) failed` : 'check-beeper: the DRIVER2 model reproduces the live driver\'s memory tick for tick (tune 1, sfx 1-15, engine mode), drops sfx 16-18 as the live driver does, DRIVER0 answers 0, and the game\'s [0F64]!=1 branches (beeper engines, StopEngineSounds, the OPL-only sfx, the pause) follow 7A97/7AF8/7C4E/53F7/750A')

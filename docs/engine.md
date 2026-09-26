@@ -6149,7 +6149,7 @@ and steps nothing, then shows the first frame at full palette). Still unported: 
 **Added 2026-09-26 (§9cq).** SPEAKER (DRIVER2, ported and live-replayed, `docs/sound.md` §4) and NONE
 (DRIVER0) are real driver choices now, with the game's `[0F64]` branches. `UNKNOWN_drv2_live_fidelity`
 is closed for the driver's state. New for the OPL game too: the pause's `7AF8` zeroes every car's speed
-(`3759`/`37A7`), `[STATIC]`; `UNKNOWN_0f64_speed_zero` still wants the live look.
+(`3759`/`37A7`), live-proven under both drivers; `UNKNOWN_0f64_speed_zero` closed for the speed.
 
 **Added 2026-09-26 (§9cp).** Both ported: the first front-end screen after a race fades up (17 ticks,
 its logic frozen; the champion holds black), and race setup fades the screen before the race out
@@ -12678,8 +12678,11 @@ of `code.lst` for `0xf64]` plus the two sites the listing misaligned (`7A97`, `7
 
 **Found on the way, affecting the default OPL game: the pause zeroes every car's speed.** The port's
 pause had no `7AF8`. Under OPL both `3759` and `37A7` zero all four speeds, so a car paused at full speed
-resumes from 0 (under SPEAKER/NONE it keeps its speed). `[STATIC]` from the bytes; still not seen live
-(`UNKNOWN_0f64_speed_zero`, Part L). The "Failed" handler likewise zeroed only car 0 and sent a one-off
+resumes from 0 (under SPEAKER/NONE it keeps its speed). **Live `[PROVEN]`** (a ROUND21 qualifier, UP held,
+SPACE tapped, a 50 ms sampler of the four `[127A]` words and `[2633]`): under SPEAKER, `[2633]` went 1 then
+2 and the speeds stayed (car 0 256, drones 1014/1146/1080); under BLASTER, the sample that first showed
+`[2633]=1` read all four speeds 0 (car 0 from 1536). Closes `UNKNOWN_0f64_speed_zero` for the speed; the
+OPL pitch was not captured (it follows speed through the §9i update). The "Failed" handler likewise zeroed only car 0 and sent a one-off
 engine-off; it now calls `7AF8` every tick as the original does.
 
 **Port:**
@@ -12689,11 +12692,15 @@ engine-off; it now calls `7AF8` every tick as the original does.
   `updateBeeperEngines`, `raceStart`'s `AH=0Eh` pair, `raceOverStart`'s `30EF`.
 - `pause.js`: `updatePause(..., cars)` calls `stopEngineSounds` at `3759` and `37A7`.
 - `airborne.js`/`step.js`: sfx 4/7/5 only under OPL.
-- `Si2Player`: `kind` ('opl'/'speaker'/'none'), `load()`, `command(ah, al, cx)`; the worklet hosts the
-  beeper through `src/audio/speaker.js`. `flow.js` loads the driver `settings.soundDriver` names at the
-  options RETURN and after every race; `play.js` follows SETTINGS.DAT (the shipped file says 1, OPL).
+- `Si2Player`: `kind` ('opl'/'speaker'/'none'), `load()` (posted synchronously, so the title's tune
+  after an options RETURN reaches the worklet after the new driver), `command(ah, al, cx)`; the worklet
+  hosts the beeper through `src/audio/speaker.js`. `flow.js` loads the driver `settings.soundDriver`
+  names at the options RETURN and after every race -- also a change for the OPL path, which the port
+  never reloaded after a race before (a fresh Sequencer and OPL core each time, as `26C0` does);
+  `play.js` follows SETTINGS.DAT (the shipped file says 1, OPL).
 
-**Tests.** `npm run beeper` (`tools/check-beeper.mjs`): the two live replays (§4), the id-16 drop, DRIVER0,
+**Tests.** `npm run beeper` (`tools/check-beeper.mjs`): the three live replays (§4), the id-16 drop, DRIVER0,
+`Si2Player.load`'s ordering (its `?worker&url` import stubbed with a Node module hook),
 the beeper engine period (all three overrides), `7AF8`'s two branches, `7A97`, the pause's two calls
 under OPL (speeds zeroed at entry and at stage 1's end) and under the beeper (kept, `AH=10h` ×4), a
 landing's sfx 4 only under OPL, and a whole ROUND11 AI race where sfx 4/5 fire under OPL, never under

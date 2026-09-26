@@ -38,10 +38,12 @@ export class Si2Player {
 
   /** LoadSoundDriverBinModule 321C: a fresh copy of a driver file into the slot. `kind` 'opl'
    * (DRIVER1.BIN), 'speaker' (DRIVER2.BIN) or 'none' (DRIVER0.BIN). */
-  async load(driverImage, { strictOpl2 = false, kind = 'opl' } = {}) {
-    await this.ready
-    this.kind = kind
-    this.node?.port.postMessage({ type: 'load', image: driverImage.slice(0), strictOpl2, kind })
+  load(driverImage, { strictOpl2 = false, kind = 'opl' } = {}) {
+    // Posted synchronously once the node exists: the commands the caller sends right after (the
+    // title's tune) must reach the worklet after the new driver, not before it.
+    const post = () => { this.kind = kind; this.node?.port.postMessage({ type: 'load', image: driverImage.slice(0), strictOpl2, kind }) }
+    if (this.node) { post(); return Promise.resolve() }
+    return (this.ready ?? Promise.resolve()).then(post)
   }
 
   async resume() { if (this.ctx && this.ctx.state !== 'running') await this.ctx.resume() }

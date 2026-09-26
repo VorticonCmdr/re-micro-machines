@@ -138,10 +138,14 @@ Same entry shape (`+0x00`/`+0x04` → dispatcher `+0xF7`, max command `[0x124]` 
 `0x60–0xFF` (live segment `1662`) with the game tick `DS:28F7` on either side, one snapshot per tick:
 - `tools/refs/si2/drv2_title.json`: tune 1 on the title. Seeded from one snapshot, the model reproduces
   every later one byte for byte (1545/1545 in the full capture, 799 in the committed excerpt).
-- `tools/refs/si2/drv2_poke.json`: sfx 1–18 written into the start queue every 1.3 s, then the engine
-  bytes `0x9A–0x9E`, an sfx during engine mode, and off. 2222 snapshots match; the only differences are
-  the pokes themselves (a snapshot after the driver consumed a poke it never saw queued). Ids 1–15 start,
-  **16–18 never reach a slot**; 384 ticks of engine alternation match.
+- `tools/refs/si2/drv2_poke.json`: sfx 1–18 written into the start queue every 1.3 s while running,
+  then the engine bytes `0x9A–0x9E`, an sfx during engine mode, and off. 2222 snapshots match; the only
+  differences are the pokes themselves. Here most starts were consumed between two snapshots, so this
+  capture proves the playback after each start and the 384 ticks of engine alternation, not the start.
+- `tools/refs/si2/drv2_sfx.json`: the start routine itself -- ids 1–18 queued with the emulator paused
+  (`debug/pause`, the tick guard `[7D]` checked 0), a snapshot taken with the id in the queue, then
+  resumed. 1884 snapshots match with no unexplained difference; the model's own start routine started
+  ids 1–15 from the queue, and **16–18 never reach a slot**.
 
 **Port**: `src/audio/speaker.js` renders the output as a band-limited square wave at `1193182/count`
 (level 0.2, a port choice); `si2-worklet.js` hosts `BeeperDriver`/`NullDriver` by `kind`; `npm run tunes`
