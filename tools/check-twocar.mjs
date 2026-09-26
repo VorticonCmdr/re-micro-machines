@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseStrtPos } from '../src/formats/globaldata.js'
-import { loadWorld, loadBrk, roundCtx, spawnCars } from '../src/engine/race.js'
+import { loadWorld, loadBrk, roundCtx, spawnCars, createCarRecordCarry, SETUP_UNWRITTEN } from '../src/engine/race.js'
 import { runStep, applySteerAndThrottle, animTimerPass } from '../src/engine/step.js'
 import { droneControlByte } from '../src/engine/ai.js'
 import { initCameraState, updateCamera } from '../src/engine/camera.js'
@@ -673,6 +673,31 @@ async function settled(round, race) {
   // agree by construction) -- proven by checking the normal path is still reachable and distinct.
   const normalCars = spawnCars(strt, 7, 1, { raceFormat: 2, controllerTypes: [5, 4, 6, 6] })
   check('altTuning defaults to false: the normal tuningFieldsFor path is untouched (car 1, a drone by default tuning math, keeps its own DRONE_MAX_VEL_HANDICAP-adjusted maxSpeedCur, not the alt path\'s raw 931)', normalCars[1].maxSpeedCur !== 931 || normalCars[1].accel !== 16)
+}
+
+// The BX-quirk garbage carries into the next race (docs/engine.md §9cs): race setup never writes
+// SETUP_UNWRITTEN, so the next race starts with what the last one left there -- here a swap tick on
+// k=8, whose 73E7 INC lands on car 0's [12B8] (animStep2), plus ordinary leftovers.
+{
+  const prev = spawnCars(strt, 7, 1, { raceFormat: 2 })
+  Object.assign(prev[0], { state: 0xc, animStep: 1, animStep2: 5, knockoutX: 1234, knockoutY: 777, reloadCooldown: 7, posX: 999, speed: 300, animTimer: 40 })
+  applyScoreSlotGarbage(prev[0], 8, { round: 7 })
+  check('carry: the k=8 swap tick bumps car 0\'s [12B8] (guard [12B6]=1)', prev[0].animStep2 === 6)
+  const carry = createCarRecordCarry()
+  const first = spawnCars(strt, 2, 1)
+  const pristine = first.map((c) => toBytes(c))
+  carry.apply(first)
+  check('carry: before any race ends, apply leaves the static-image records alone', first.every((c, i) => toBytes(c).every((v, j) => v === pristine[i][j])))
+  carry.save(prev)
+  const next = spawnCars(strt, 2, 1)
+  const fresh = next.map((c) => toBytes(c))
+  carry.apply(next)
+  check('carry: the garbage in [12B8] and the other leftovers (knockout point, reload) reach the next race', next[0].animStep2 === 6 && next[0].knockoutX === 1234 && next[0].knockoutY === 777 && next[0].reloadCooldown === 7)
+  check('carry: what setup writes is the new race\'s (position, state A, speed, [12B0], [12B6])', next[0].posX === first[0].posX && next[0].state === 0xa && next[0].speed === first[0].speed && next[0].animTimer === 0 && next[0].animStep === 0)
+  const inRange = (o) => SETUP_UNWRITTEN.some(([a, n]) => o >= a && o < a + n)
+  const prevBytes = prev.map((c) => toBytes(c))
+  check('carry: byte for byte, every car is the previous race\'s record inside SETUP_UNWRITTEN and the fresh spawn outside it',
+    next.every((c, i) => toBytes(c).every((v, o) => v === (inRange(o) ? prevBytes[i][o] : fresh[i][o]))))
 }
 
 console.log(bad ? `${bad} of ${asserted} executed check(s) failed` : `check-twocar: ${distinct.size} distinct assertions (${asserted} executed) pass -- the two-car match matches the disassembly -- camera trigger, knockout reset (both branches), 64-step blink and commit, finish block and Play Off, banners, double death, and the exit fix-up; real races end at 8, at 0, on a finish while ahead or behind, and in sudden death after a tied finish; car.isDrone now reflects controllerType, not car index, proven against the real keyboard fire-preempt (GOAL-DOS-PARITY.md P4, docs/engine.md §9bf); two-human H2H's own alternate tuning path (altTuning) is ported and live-DOSBox-proven byte-exact against a real race's own car 0/car 1 tuning (docs/engine.md §9bg)`)

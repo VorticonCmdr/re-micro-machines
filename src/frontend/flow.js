@@ -22,7 +22,7 @@ import { buildArena } from '../formats/chr.js'
 import { indexedToRgba, paint } from '../render/raster.js'
 import { composeRaceView, bannerBlinkPhase } from '../render/raceView.js'
 import { createMenuBuffer, MENU_VIEW } from '../render/menuView.js'
-import { loadWorld, loadBrk, roundCtx, spawnCars } from '../engine/race.js'
+import { loadWorld, loadBrk, roundCtx, spawnCars, createCarRecordCarry } from '../engine/race.js'
 import { createColDirBuffers } from '../engine/collide.js'
 import { createBrkBuffer } from '../formats/levbrk.js'
 import { runStep, runPreLoopRender } from '../engine/step.js'
@@ -87,6 +87,9 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   // genuinely represents that (a real tournament run, one race after another), so it's the one
   // place this opts in.
   const colDirBuffers = createColDirBuffers()
+  // The car records' bytes race setup never writes carry from one race into the next, BX-quirk
+  // garbage included (docs/engine.md §9cs) -- once per session too.
+  const carRecordCarry = createCarRecordCarry()
   const brkBuffer = createBrkBuffer()
 
   statusEl.textContent = 'Loading front-end assets…'
@@ -890,6 +893,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     const cars = twoHuman
       ? spawnCars(strtList, round, race, { raceFormat, tournamentIndex: tIndex, controllerTypes, altTuning: true, rosterWords: twoHuman.rosterWords })
       : spawnCars(strtList, round, race, { raceFormat, tournamentIndex: tIndex, opponentCharacters: opponentCharactersFor(tournament) })
+    carRecordCarry.apply(cars) // what the last race left in the bytes setup doesn't write (§9cs)
     currentCars = cars
     const camera = initCameraState(strt)
     // controllerTypes [2658..265E]: P1's real chosen device (settings.p1Control, 1000:2D00's own
@@ -960,6 +964,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       let lastIndexed = null // the last painted frame: the hold re-shows it, and the fade-out darkens it
       function finishRace() {
         cleanup()
+        carRecordCarry.save(cars) // the records as the race (and its exit hold) left them
         raceExitFade(dac) // 315A's 327A (the ESC exit's too) set [26CE]
         loadSoundDriver() // 11C7/2182 -> 26C0 -> 321C: a fresh copy of the driver after every race
         // 11CA/2185: [0x1096]==1 -> JMP 00CC -> 0054 -> the title (tune 1), whether the ESC ended the

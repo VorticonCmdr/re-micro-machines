@@ -324,3 +324,33 @@ export function spawnCars(strtPosEntries, round, race, { raceFormat = 1, tournam
     return fromBytes(toBytes(partial))
   })
 }
+
+/**
+ * The bytes of a car record that race setup (`38FB-39FB` and everything it calls, the pre-loop
+ * render aside) never writes, as `[offset, length]` -- the same for all four cars (docs/engine.md
+ * §9cs). Every other writer of them is race-time code, so in DOS each race starts with the previous
+ * race's values there: the knockout point, `[12B8]`, the reload and the trail counters, the splash
+ * cursor and trigger, the off-track counter, the camera half-sizes, the spawn target, and whatever
+ * the two-car BX quirk (`applyScoreSlotGarbage`, §9an 4) wrote into them. Before the first race after
+ * boot they hold the static image, which `spawnCars` reproduces.
+ */
+export const SETUP_UNWRITTEN = [[0x0, 2], [0x8, 6], [0x16, 4], [0x22, 4], [0x36, 2], [0x42, 2], [0x4e, 2], [0x60, 2], [0x6e, 6], [0xaf, 4], [0x150, 2], [0x154, 2], [0x15a, 2], [0x15e, 6]]
+
+/** A session's car records between races: `save(cars)` when a race ends, `apply(cars)` right after
+ * `spawnCars` for the next one, which copies `SETUP_UNWRITTEN` over from the saved records. The
+ * caller keeps one per continuous session, like `createColDirBuffers()` (docs/engine.md §9ad). */
+export function createCarRecordCarry() {
+  let saved = null
+  return {
+    save(cars) { saved = cars.map((c) => toBytes(c)) },
+    apply(cars) {
+      if (!saved) return cars
+      cars.forEach((car, i) => {
+        const b = toBytes(car)
+        for (const [o, n] of SETUP_UNWRITTEN) b.set(saved[i].subarray(o, o + n), o)
+        Object.assign(car, fromBytes(b))
+      })
+      return cars
+    },
+  }
+}

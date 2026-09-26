@@ -5363,7 +5363,7 @@ decided match with `[2630]=1`. `trace` (13/20), `ai` and `live` (0) are unchange
   menu "dropping" fire presses was a wrong diagnosis, see §9ao 7; the live preempt check itself is
   `[PROVEN]` in §9aq 3**.
 - *The BX quirk:* the k-garbage carries over between races in the original (car records are not
-  fully re-initialised), which the port resets per race; smoothness 2-4 cadence as before (§9ah).
+  fully re-initialised -- **established and ported in §9cs**), which the port resets per race; smoothness 2-4 cadence as before (§9ah).
 - *The Challenge flow (same spec, not requested, not ported):*
   - the final race's 2nd place is a fail (`15B7`, `1658`);
   - the bonus trigger has no cap (`1123-113A`; `[342]` counts wins only, `1A92-1AA5`);
@@ -6147,6 +6147,11 @@ not a closure.
 matched, now pinned by a test), and the race-start fade-in (the port now holds black for the fade-up
 and steps nothing, then shows the first frame at full palette). Still unported: the race setup's own
 `395D` fade-out of the screen before the race (the port's front-end screens have no fades at all).
+
+**Added 2026-09-26 (§9cs).** Race setup leaves 14 byte ranges of every car record alone (`[STATIC]`,
+a call-tree scan of `38FB`), so they carry into the next race, with the BX quirk's garbage in them.
+Ported (`race.js` `createCarRecordCarry`, one per `flow.js` session). New:
+`UNKNOWN_setup_unwritten_live`, the marker-fill proof not yet run.
 
 **Added 2026-09-26 (§9cr).** The smoothness 2-4 cadence is ported in full: the state handlers, the
 ranking, the puffs, the projectile draw and the engine sounds run once per drawn frame, live-proven
@@ -12789,3 +12794,66 @@ change. The engines are updated 6000/3000/1500 times in 1500 steps, and the jitt
 (49/47). Against the old `step.js` the countdown reads 95/95/95 and the frozen-step check fails. Against
 the old `sound.js` the engines read 6000 each. Against the old `projectile.js` five projectile checks
 fail (20 moving/60 steps at every setting).
+
+## 9cs. What race setup doesn't reset: the BX-quirk garbage and the other leftovers carry into the next race (2026-09-26)
+
+GOAL-DOS-PARITY.md P5. §9an 4 said the two-car BX quirk's garbage "carries over between races in the
+original (car records are not fully re-initialised)" without evidence. This section establishes it,
+field by field. It is `[STATIC]` throughout.
+
+**Method.** Race setup is `38FB-39FB` (`RunRaceMainLoop 3043 CALL 37FC`, a NOP sled into `38FB`). A
+script over the ndisasm listing of `MICROU.EXE` followed every jump and call from `38FB` to each RET,
+leaving out the pre-loop render `90C5`, which runs only when `[2638]==1`. It collected every
+instruction that writes into the car records (`DS:124A`, 4 × 0x164). The callees are `319F`, `3B50`,
+`InitRaceCarsFromTables 3C09`, `458B`, `482F`, `4611`, `45E5`, `4758` and their subroutines. Three
+callees, `327A`, `7AF8` and `3547`, sit at addresses the linear listing misaligns, so they were
+checked by hand: the fade, the engine stop (it writes only the speed words, `+0x30`) and the file
+loader. `3C09`'s per-car block `423E-4450` runs for `BX` = 0 to 0x42C and writes nearly every field,
+plus `rep stosw 0xFFFF` over the puff and splash slots (`4435`, `4442`). A second scan over the whole
+program found the writers of the bytes it leaves alone. All of them are race-time code: the physics,
+the state handlers, the render, and the pause's cheat combo at `3712`. None is front-end code.
+
+**The bytes setup never writes**, the same in all four records (`race.js` `SETUP_UNWRITTEN`):
+
+| Offset | Field | Race-time writers |
+|---|---|---|
+| `0x00` | playerSlot | none (static image) |
+| `0x08-0x0D` | colourOffset, `unk1254`, `unk1256` | none |
+| `0x16`, `0x22` | spawnTargetX/Y | `6C6E`, `6C73` |
+| `0x18`, `0x24` | camHalfW/H | `53BC` (0x80), `53C2` (0x64) |
+| `0x36` | slipEnable | none |
+| `0x42` | splashTrigger | `6D1C`, `72AA`, `74A3`, `8402` |
+| `0x4E` | splashSlotCursor | `6D4C`, `7330`, `841E`, `842A` |
+| `0x60` | droneWallStuck | `5C8B`, `8332` |
+| `0x6E` | `[12B8]` animStep2 | `6CFE`, `727A`, `769E`, `76B6`, `8301`, `8308` |
+| `0x70`, `0x72` | knockoutX/Y | 11 sites (`5846`, `5B46`, ...) |
+| `0xAF-0xB2` | hazardVulnerable, wallBounceEnable | `3712` (the pause's cheat combo) |
+| `0x150`, `0x154` | projStepsA/B | `4F69`/`4F6F`, `5255`/`5259` |
+| `0x15A` | `[13A4]` reloadCooldown | `4F63`, `51BC`, `87E6` |
+| `0x15E-0x163` | `pad13A6` tail, offTrackTicks | `5660`, `566B`, `5674` |
+
+So every race starts with the previous race's values in these bytes. That includes whatever
+`applyScoreSlotGarbage`'s swap-tick pass on `BX = k` wrote: on car 0, `0x66+k` (the `73E7` INC; for k=8
+that is `[12B8]`), `0x78+k`/`0x12+k`/`0x1E+k` (the drift), `0x15A+k`... (the `51B2` flight). It also
+includes ordinary leftovers. For example, a TANKS shot still reloading at the race end is still
+reloading at the next start, and the `3712` hazard cheat stays in force. Before the first race after
+boot the static image is there, which `spawnCars` reproduces.
+
+**Port.** `race.js`: `SETUP_UNWRITTEN` and `createCarRecordCarry()` (`save(cars)` at the race end,
+`apply(cars)` right after `spawnCars`, copying those bytes through `car.js`'s byte layout). `flow.js`
+keeps one per session, like `createColDirBuffers()` (§9ad). It saves in `finishRace` (the normal end
+and the ESC exit, after the exit hold) and applies before the pre-loop render. `index.html`'s R restart
+stays a clean port-only reload.
+
+**Tests.** `check-twocar`: a k=8 swap tick bumps car 0's `[12B8]` 5→6, and the next race's car 0
+starts with 6, the knockout point and the reload. Position, state A, speed, `[12B0]` and `[12B6]` are
+the new race's. Byte for byte, each record equals the previous one inside `SETUP_UNWRITTEN` and the
+fresh spawn outside it. Before any save, `apply` changes nothing. A no-op `apply` fails two checks.
+Dropping `0x6E` from the list fails the `[12B8]` check. The byte-for-byte check reads the list itself,
+so it cannot catch a wrong list entry; the list rests on the scan above.
+
+**Not live-proven.** The planned proof is to fill the records with a marker at `RunRaceMainLoop`'s entry
+`3039`, break at `3055` and read back which bytes kept the marker. It was not done this session. A first
+try filled the records during a race that was already running, because the SPACE meant as "any key"
+paused it. That garbage then hung the game, and the emulator had to be restarted.
+`UNKNOWN_setup_unwritten_live`.
