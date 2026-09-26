@@ -6158,8 +6158,8 @@ no caller (live). New: `UNKNOWN_mouse_host_scale` (pointer pixels to mickeys, ta
 
 **Added 2026-09-26 (§9cs).** Race setup leaves 14 byte ranges of every car record alone (`[STATIC]`,
 a call-tree scan of `38FB`), so they carry into the next race, with the BX quirk's garbage in them.
-Ported (`race.js` `createCarRecordCarry`, one per `flow.js` session). New:
-`UNKNOWN_setup_unwritten_live`, the marker-fill proof not yet run.
+Ported (`race.js` `createCarRecordCarry`, one per `flow.js` session). Live-proven the same day: the
+marker fill left exactly those bytes (`UNKNOWN_setup_unwritten_live` opened and closed).
 
 **Added 2026-09-26 (§9cr).** The smoothness 2-4 cadence is ported in full: the state handlers, the
 ranking, the puffs, the projectile draw and the engine sounds run once per drawn frame, live-proven
@@ -12876,11 +12876,22 @@ engine update with 4 jitter draws, and the ranking. It fails without the call. T
 `flow.js` wiring with no headless test, like the record carry itself: removing either `flow.js` line
 fails nothing.
 
-**Not live-proven.** The planned proof is to fill the records with a marker at `RunRaceMainLoop`'s entry
-`3039`, break at `3055` and read back which bytes kept the marker. It was not done this session. A first
-try filled the records during a race that was already running, because the SPACE meant as "any key"
-paused it. That garbage then hung the game, and the emulator had to be restarted.
-`UNKNOWN_setup_unwritten_live`.
+**Live `[PROVEN]` (2026-09-26, a fresh DOSBox).** The procedure:
+- A once-breakpoint at `RunRaceMainLoop`'s entry `3039` was armed from the title and hit when a
+  Challenge qualifier started, which the breakpoint confirmed, not the screen.
+- There the four records were saved, and `[2638]` was confirmed 0 (the first race since boot, so the
+  pre-loop render doesn't run).
+- The records were filled with 0xA5, and the emulator ran to a once-breakpoint at `304B`, just after
+  the setup call returns.
+
+In every one of the four records exactly 46 bytes still held the marker, and they are exactly
+`SETUP_UNWRITTEN`, with none extra and none missing. The saved values were then written back into
+those bytes, and the race ran on normally. The capture is `tools/refs/setup_marker_records.bin`, and
+`check-twocar` now checks the list against it, which closes the gap noted above.
+`UNKNOWN_setup_unwritten_live` is closed.
+
+An earlier attempt the same day filled the records while a race was already running (the SPACE meant
+as "any key" had paused it). That garbage hung the game, and the emulator had to be restarted.
 
 ## 9ct. The page chrome: the developer toggles only with `?dev` (2026-09-26)
 

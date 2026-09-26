@@ -696,6 +696,12 @@ async function settled(round, race) {
   check('carry: what setup writes is the new race\'s (position, state A, speed, [12B0], [12B6])', next[0].posX === first[0].posX && next[0].state === 0xa && next[0].speed === first[0].speed && next[0].animTimer === 0 && next[0].animStep === 0)
   const inRange = (o) => SETUP_UNWRITTEN.some(([a, n]) => o >= a && o < a + n)
   const prevBytes = prev.map((c) => toBytes(c))
+  // The live proof (docs/engine.md §9cs): the four records filled with 0xA5 at 3039, read back at
+  // 304B after race setup -- exactly the bytes still holding the marker are SETUP_UNWRITTEN.
+  const live = readFileSync(join(ROOT, 'tools', 'refs', 'setup_marker_records.bin'))
+  let liveOk = live.length === 4 * 0x164
+  for (let c = 0; c < 4 && liveOk; c++) for (let o = 0; o < 0x164; o++) if ((live[c * 0x164 + o] === 0xa5) !== inRange(o)) liveOk = false
+  check('carry: SETUP_UNWRITTEN is exactly the bytes race setup left holding the live marker, all four cars', liveOk)
   check('carry: byte for byte, every car is the previous race\'s record inside SETUP_UNWRITTEN and the fresh spawn outside it',
     next.every((c, i) => toBytes(c).every((v, o) => v === (inRange(o) ? prevBytes[i][o] : fresh[i][o]))))
 }

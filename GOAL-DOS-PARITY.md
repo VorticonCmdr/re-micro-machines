@@ -776,7 +776,7 @@ docs, (6) commit.
   tournament flow.
 - [x] **The smoothness 2–4 state/ranking cadence** **Done (§9cr, M3.99): the whole render -- state handlers, ranking, puffs, projectile draw (with its own reload decrement), engine sounds -- runs once per drawn frame; live-proven by breakpoint hit counts.** (§9ah): only the drawn-flag write honours
   `ctx.drawnTick` today. Port the full cadence.
-- [x] **The BX-quirk garbage carries over between races** **Done (§9cs, M3.100): race setup leaves 14 byte ranges of every record alone ([STATIC] call-tree scan); `flow.js` carries them from race to race; the live marker proof is still owed (`UNKNOWN_setup_unwritten_live`).** in DOS, because car records are not
+- [x] **The BX-quirk garbage carries over between races** **Done (§9cs, M3.100): race setup leaves 14 byte ranges of every record alone ([STATIC] call-tree scan); `flow.js` carries them from race to race; live-proven by a marker fill at race setup.** in DOS, because car records are not
   fully re-initialised. The port resets it every race (§9an 8). Carry it across races in `flow.js`'s
   session, the same way `createColDirBuffers()` does (§9ad).
 - [x] **`UNKNOWN_exit_hold_855a_pass`** **Done (§9cm, M3.93): ported with the BX drift; it can pass all 100 iterations, and turns a cheat exit during P2's deciding blink into a loss.** (§9an 8): the non-drawing `855A` pass on iteration 1 of the
