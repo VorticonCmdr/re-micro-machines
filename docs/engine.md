@@ -6034,6 +6034,20 @@ The breakpoint meant for `6054` was misplaced (0x6034), so the store itself was 
 
 **Port.** No change; `check-play`'s lead-rule tests (with their negative twins) already pin it.
 
+## 9dg. Part L: the rubber band during a real lead, and the grip ×1.5 site, live (2026-09-26)
+
+`GOAL-DOS-PARITY.md` Part L, from §9aq 4. §9aq proved the ×6 throttle gain live, but only with the race-start seed order (car 0 "leading" before anyone moved), and never saw the grip ×1.5 site reached. The same race as §9df (car 0 on the AI, the drones capped at 600) gave a real lead.
+
+**Where** (`[STATIC]`, re-read): `[262F]` is computed at `4B1C-4B41` and again at `5286-52AB`. Throttle: `4E8E CMP [262F],1 / JNZ 4EA9`, then five `ADD [BX+127A],AX` at `4E95-4EA5` plus the sixth at `4EA9`; `4EAD-4EB5` clamp to `[BX+129C]`. Grip: `52F9`/`52FD` load the rate `[BX+127E]` and threshold `[BX+127C]`, `5301 CMP [262F],0 / JZ 5314`, `5308-5312` add half of each; `5314-5338` replace both only while `[BX+1286]` or `[BX+1284]` runs.
+
+**Live** (`[PROVEN]`, once-only execute breakpoints at `4E95` and `5308`, both first hit on the same step, tick 2451):
+- order `[0,712,1068,356]` (cars 0, 2, 3, 1), all four on laps 3, car 0's progress 5 against 2-4: a mid-race lead. `[262F]`=1; car 1 not drawn (`[1250]`=0).
+- `4E95`, BX=0x164 (car 1), AX=24 (its accel); car 1 at its 600 cap. Stepped to `4EAD`: speed **744 = 600 + 6×24**; `4EAD-4EB5` then clamp it to 600.
+- `5308`, BX=0x164: CX=56, DX=71. Stepped to `5314`: **CX=84, DX=106** (floor ×1.5 of each); `[1284]`=`[1286]`=0, so these are the values used from `533C`.
+- A further `4E95` breakpoint conditioned on car 1's speed below 580 never stopped: under the AI at a 600 cap the drones stayed at it. The persisting gain below the cap is §9aq's (400 → 544).
+
+**Port.** No change: `applySteerAndThrottle` adds `accel × 6` and clamps, `updateCarVelocityTowardHeading` takes floor ×1.5 of both grip values. `check-play` replays the live step: car 1 stays at 600, and a velocity far from its target moves by 84 (56 with car 0 not leading). The checks fail when their expectations are altered; they pin existing behaviour.
+
 ## 10. Open items
 
 Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: `open`, `narrowed` (part answered; the rest is the open question), `closed`. **Section** is where the answer (or the question) is written up; the history, wrong turns included, stays in those sections and is not repeated here. **Address** is `MICROU.EXE`'s (`1000:` code, `DS:` data) unless another file is named. This table replaced a run-on paragraph of dated notes on 2026-09-26 (`GOAL-DOS-PARITY.md` D2, §9cx); each ID's status was re-read from its latest dated note. When an item opens or closes, change its row here in the same commit.
@@ -6070,7 +6084,6 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 
 | Item | Status | Section | Address | Open question |
 |---|---|---|---|---|
-| The rubber band while car 0 really leads | open | §9aq 4; GOAL Part L | `4B1C-4B41`, `[262F]` | The ×6 boost is live-proven only with the race-start seed order; the grip ×1.5 site was never seen reached. |
 | A "drawn but invisible" car | open | §9ap; GOAL Part L | `[1250]`, `7D73` | Is a car whose drawn flag is set really absent from the screen? Tried, not obtained. |
 | Front-end pixel parity | open | GOAL Part F | `0400` | No byte-exact diff of most front-end screens (the options/F7 header, the carousel's look, the H2H vs CPU race-intro sprite panel); §9bz's four H2H screens and §9cu's options body are the exceptions. |
 

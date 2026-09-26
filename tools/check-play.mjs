@@ -2613,6 +2613,24 @@ async function checkRaceEnd() {
     check('rubber band on while car 0 leads (accel x6)', leading.cars[1].speed === 6 * leading.cars[1].accel)
     check('rubber band OFF while car 0 is 2nd, even for a drone behind it', trailing.cars[1].speed === trailing.cars[1].accel)
   }
+  // (vi-live) The live mid-race lead (docs/engine.md §9dg, ROUND21, tick 2451): order [0,2,3,1], car 1
+  // off screen at its 600 cap with accel 24, gripStep 56, slipThreshold 71. Live, 4E95-4EA9 took
+  // its speed to 744 (6 x 24) and 4EAD clamped it back to 600; 5308-5312 made the grip 84/106,
+  // used as is ([1284]=[1286]=0). A velocity far from its target moves by the rate, 84 (56 unboosted).
+  {
+    const live = (lead) => {
+      const t = setup(2, 1)
+      t.rs.rankOrder = lead ? [0, 2, 3, 1] : [2, 0, 3, 1]
+      if (!lead) t.cars[2].progress = 50
+      const c = t.cars[1]
+      Object.assign(c, { drawnThisFrame: 0, speed: 600, maxSpeedCur: 600, accel: 24, gripStep: 56, slipThreshold: 71, velX: 2000, velY: 2000, lowGripTimerA: 0, lowGripTimerB: 0 })
+      step(t, [0, 0x20, 0, 0])
+      return c
+    }
+    const on = live(true), off = live(false)
+    check(`live rubber band: a boosted car at its cap stays at 600 (744 clamped at 4EAD), got ${on.speed}`, on.speed === 600)
+    check(`live rubber band: the grip rate is 84 (x1.5 of 56) while car 0 leads, 56 when not (got ${2000 - on.velX}/${2000 - off.velX})`, 2000 - on.velX === 84 && 2000 - on.velY === 84 && 2000 - off.velX === 56)
+  }
 
   // (vii) TANKS-only steering modifier (4edc-4efa): a fast human's steer step is NOT halved outside
   // round 7.
