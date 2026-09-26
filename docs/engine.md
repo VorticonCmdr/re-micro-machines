@@ -206,7 +206,7 @@ Handlers (`s = vxi² + vyi²`): `35BE`/`683B` RET · `60CB` normal: `[1390]=0`; 
 
 ## 7. Front end and tournament rules `[STATIC]`
 
-**Flow.** `real_entry 0006` → code card `31f0` (≠ 0 → exit) → mode 13h → `InitLoadAssets 26c0` → `HookKeyboardInt09` → `AH=7` → `RunOptionsScreenWithSettingsDat 2770` (ESC → exit path `0097`) → `SelectGameSetLvl 2be8` (no `GAME?.LVL` → defaults) → `LoadSoundDriverBinModule` ×2 → tune 1 → **`RunTitleScreenAttractLoop 0100`** (LOGO, copyright, 9 `INTRO.CHR` showcase frames every 0x118 ticks of `DS:0002` with the class name; exits on fire → main menu, ESC release → options, any other release → main menu; **no idle timeout**) → `RunMainMenuKeepTitleTune 0220` (LOGO, "SELECT GAME", ONE PLAYER / TWO PLAYER via `FUN_0382`) → `FUN_02e0` ONE PLAYER GAME (item 1 → `0fbf`, item 2 → `102b`) or `FUN_1e20` TWO PLAYER. **`FUN_1000_0382` is the two-item menu helper** (THUMB highlight, LEFT/RIGHT/FIRE/ESC, **idle ≥ 0x7D0 ticks = 28.6 s → cancel at `03CE`**) — the timeout `docs/sound.md` §8 attributed to the attract loop lives here. **Ghidra names to fix**: `0fbf` "StartTwoPlayerTournament" is the **one-player Head-to-Head vs CPU** (`[3f8]=1, [2656]=2, [265a]=6`); `102b` "StartOnePlayerTournament" is the **one-player 4-car Challenge**; the two-human Head to Head is `FUN_1000_1e20` → `1ef1`/`1faf`/`2329`.
+**Flow.** `real_entry 0006` → code card `31f0` (≠ 0 → exit) → mode 13h → `InitLoadAssets 26c0` → `HookKeyboardInt09` → `AH=7` → `RunOptionsScreenWithSettingsDat 2770` (ESC → exit path `0097`) → `SelectGameSetLvl 2be8` (no `GAME?.LVL` → defaults) → `LoadSoundDriverBinModule` ×2 → tune 1 → **`RunTitleScreenAttractLoop 0100`** (LOGO, copyright, 9 `INTRO.CHR` showcase frames every 0x118 ticks of `DS:0002` with the class name; exits on fire → main menu, ESC release → options, any other release → main menu; **no idle timeout**) → `RunMainMenuKeepTitleTune 0220` (LOGO, "SELECT GAME", ONE PLAYER / TWO PLAYER via `FUN_0382`) → `RunOnePlayerGameMenu 02e0` ONE PLAYER GAME (item 1 → `RunOnePlayerHeadToHeadVsCpu 0fbf`, item 2 → `RunOnePlayerChallenge 102b`) or `RunTwoPlayerHeadToHeadSetup 1e20` TWO PLAYER. **`RunTwoItemMenu 0382` is the two-item menu helper** (THUMB highlight, LEFT/RIGHT/FIRE/ESC, **idle ≥ 0x7D0 ticks = 28.6 s → cancel at `03CE`**) — the timeout `docs/sound.md` §8 attributed to the attract loop lives here. **Ghidra names (fixed in §9b, re-checked with `get_function_by_address` 2026-09-26, §9cw)**: `0fbf` (once "StartTwoPlayerTournament") is `RunOnePlayerHeadToHeadVsCpu`, the **one-player Head-to-Head vs CPU** (`[3f8]=1, [2656]=2, [265a]=6`); `102b` (once "StartOnePlayerTournament") is `RunOnePlayerChallenge`, the **one-player 4-car Challenge**; the two-human Head to Head is `RunTwoPlayerHeadToHeadSetup 1e20` → `1ef1`/`1faf`/`2329`.
 
 **`[2656]` is the race-format selector (1 = four-car race, 2 = two-car race), not the human count** — `0fbf` has one human and writes 2. Its complete write-set: `0fc9`, `103a`, `1e52`, `1f88` (closes `UNKNOWN_2656_valueset`; 23 read sites all compare with 1 or 2). `[28BF]` (round) and `[28C0]` (race) each have **four** writers (`117d/1182` SetupTournamentRace, `13d7/13dc` intro-screen cheat skip, `2005/2008` H2H tournament, `21df/21cf` single-race select), all unpacking `round<<2 | race−1` — so "class == round" stands but "one writer" does not.
 
@@ -244,7 +244,7 @@ Every engine constant is in the data segment (file offset = `0x9840 + DS offset`
 | `sound.md` §8 `UNKNOWN_race_live_reverify` | attract-loop idle timeout at `03CE`; P2 = KEYS 1 makes H2H unreachable | `03CE` is in `FUN_0382` (menus, 28.6 s); KEYS1 = J L I M K — reachable |
 | `sound.md` §2, §8 | which smoothness writes `[263A]` untraced; `UNKNOWN_bx_at_30df`; `UNKNOWN_2656_valueset` | `[263A]` = SETTINGS word 2 verbatim; BX = camera-target car; `[2656]` ∈ {1,2}, 4 writers |
 | `sound.md` §3b, task briefs | state 1 = "scripted start sequence"; 0xA "drop-in" | state 1 = hazard death; 0xA = race-start hold; the drop-in is state 0xE substate 4 |
-| Ghidra names | `StartTwoPlayerTournament 0fbf`, `StartOnePlayerTournament 102b` | one-player H2H vs CPU; one-player Challenge; two-human H2H = `FUN_1000_1e20` |
+| Ghidra names | `StartTwoPlayerTournament 0fbf`, `StartOnePlayerTournament 102b` | one-player H2H vs CPU; one-player Challenge; two-human H2H = `FUN_1000_1e20` — **renamed in §9b** to `RunOnePlayerHeadToHeadVsCpu`, `RunOnePlayerChallenge`, `RunTwoPlayerHeadToHeadSetup` |
 | Ghidra listing | instructions at `5461, 6100–610a, 6440, 6580–6582, 6630, 6abc–6ac0, 704d–7050, 885e` | stale mid-instruction decodes; clear and re-disassemble from `read_memory` |
 | §3 checkpoints (2026-09-23, §9ah) | forward wrap "backs up to the last entry"; body runs every step | rewinds to entry 0 and tests its `hi`, else penalty; body gated on state 0 (`5e8f`) and `[12E5]` (`5f1b`); `[12E3]` never written from a 0 cell (`[PROVEN]`); cursor `[12E7]` in bytes |
 | §9s / §9o ranking | uniform freeze the instant any car finishes; loop-order effect cadence-dependent, not ported; `[26C6]>=2` provably redundant | prefix freeze through the last finished slot, deterministic, ported; `[26C6]>=2` is set with nobody finished by `6054`, `36a7`, `76f2/772a/7742`, `8702` |
@@ -5934,6 +5934,8 @@ TANKS/a cheat spot actually lets a shot fire. The release tick's own speed jump 
   wasn't re-examined against this explanation.)
 
 ## 10. Open items
+
+**2026-09-26 (§9cw), Part D3:** the §7 "Ghidra names to fix" were already renamed in §9b; §7 now says so and uses the names.
 
 **2026-09-26 (§9cn):** the banners' sfx keep-alive and the pause's cheat key combos are ported; the combos are live-proven.
 
@@ -13101,3 +13103,21 @@ type `4D5E` read), and a second later the heading was 253 (turned left) and the 
 So with fire held, a mouse car neither steers nor accelerates, and a joystick car does both, as the
 port has had since §9an 5a. `check-devices` pins both with `applySteerAndThrottle`
 (controller types 3 and 1, byte 0xA8).
+
+## 9cw. Part D3: the Ghidra function names in §7 (2026-09-26)
+
+§7 still listed `0fbf` and `102b` under "Ghidra names to fix", with their old names
+"StartTwoPlayerTournament" and "StartOnePlayerTournament". The renames themselves were done in §9b
+(2026-09-20) and saved there; §7 was never updated. Re-checked in the open `mm` project with
+`get_function_by_address` `[PROVEN]`:
+
+| Address | Name in Ghidra | What it is |
+|---|---|---|
+| `1000:0fbf` | `RunOnePlayerHeadToHeadVsCpu` | one human, the two-car format (`[2656]=2`) |
+| `1000:102b` | `RunOnePlayerChallenge` | one human, the four-car Challenge |
+| `1000:1e20` | `RunTwoPlayerHeadToHeadSetup` | two humans, Head to Head |
+
+No Ghidra change was needed, so there was nothing to save. §7's flow line now uses the Ghidra names
+(`RunOnePlayerGameMenu 02e0`, `RunTwoItemMenu 0382` as well), and the §9 correction table's row
+says the renames are done.
+
