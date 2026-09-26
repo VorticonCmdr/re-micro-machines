@@ -750,7 +750,7 @@ docs, (6) commit.
 - [x] **`UNKNOWN_fade_duration`.** **Done (§9co, M3.96): `327A` took 16 ticks live, `32CE` 17 (CPU-bound; DOSBox's numbers); the port uses them.** The exit fade is unpaced. Measure it live (Part L) and pace it.
 - [x] **`UNKNOWN_countdown_hud_digit`.** **Done (§9co, M3.96): DOS also shows 3, then 4 at the first progress write; the port already matched, now tested.** The HUD digit reads 3 during the start countdown and 4
   once racing. Capture the original's value live (Part L) and match it.
-- [ ] **The front-end screens' own fades.** `32CE` is also called by the title (`01A9`), the race
+- [x] **The front-end screens' own fades.** **Done (§9cp, M3.97): the first screen after a race fades up for 17 ticks with its logic frozen (the champion holds black), and race setup fades the screen before the race out over 16.** `32CE` is also called by the title (`01A9`), the race
   intro (`12B7`/`12DF`), the results (`1546`), the champion (`1BCF`), the outcome message
   (`1D82`/`1E01`) and the two-human winner screen (`2641`). It fades up (17 ticks, §9co) only when
   `[26CE]==1`, which only the race exit's `327A` (`315A`) and race setup's (`395A`) set, so in

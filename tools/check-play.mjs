@@ -2234,6 +2234,49 @@ async function checkFade() {
     check('raceStartHold: never holds for a fade-out', !raceStartHold(createFadeState('out'), 16, key))
   }
 
+  // (b3) a front-end screen's own 32CE ('up', docs/engine.md §9cp): the presented screen, each value
+  // capped at k = floor(c/2) + 1 after call c, over the same 17 ticks.
+  {
+    const s = createFadeState('up')
+    const mix = new Uint8Array([63, 10, 0, 40])
+    const first = applyFade(mix, s)
+    check('applyFade up: the first upload shows min(v, 1) (3303 on CX=0)', first.join() === '1,1,0,1')
+    updateFade(s, 8.5 * TICK)
+    const mid = applyFade(mix, s)
+    check(`applyFade up: at tick 8.5 of 17, k = 33: 63 -> 33, 10 stays 10 (got ${mid.join()})`, mid.join() === '33,10,0,33')
+    updateFade(s, 8.4 * TICK)
+    check('applyFade up: still running just before tick 17', s.active)
+    updateFade(s, 0.2 * TICK)
+    check('applyFade up: the real palette at tick 17', !s.active && applyFade(mix, s).join() === '63,10,0,40')
+  }
+
+  // (b4) [26CE]'s own sequencing (src/frontend/dacFade.js, docs/engine.md §9cp).
+  {
+    const { createDacFadeState, raceSetupFade, raceStartFadeUp, raceExitFade, beginScreenFadeUp, screenFadeStep, screenPalette } = await import('../src/frontend/dacFade.js')
+    const d = createDacFadeState()
+    check('[26CE]: the boot title does not fade (the flag starts 0)', !beginScreenFadeUp(d) && d.screen === null)
+    const setup = raceSetupFade(d)
+    check('[26CE]: race setup fades the screen before the race out (395A, 16 ticks) and sets the flag', setup?.direction === 'out' && d.faded)
+    raceStartFadeUp(d)
+    check('[26CE]: the race start\'s 32CE clears it', !d.faded)
+    raceExitFade(d)
+    let done = 0
+    check('[26CE]: the first screen after the race exit fades up', beginScreenFadeUp(d, 'up', () => done++) && !d.faded)
+    let held = 0
+    while (screenFadeStep(d, TICK)) held++
+    check(`[26CE]: its logic is frozen for 16 whole ticks, released on the 17th (got ${held})`, held === 16 && d.screen === null)
+    check('[26CE]: onDone runs exactly once, when the fade ends', done === 1)
+    check('[26CE]: the next screen (e.g. the board) does not fade again', !beginScreenFadeUp(d))
+    const dac6 = new Uint8Array(768).fill(50)
+    check('[26CE]: with no fade running, the screen palette is the real one', screenPalette(d, dac6) === dac6)
+    raceExitFade(d)
+    check('[26CE]: race setup with the flag still 1 skips its fade-out (327A\'s 3282 test)', raceSetupFade(d) === null && d.faded)
+    raceStartFadeUp(d)
+    raceExitFade(d)
+    beginScreenFadeUp(d, 'in')
+    check('[26CE]: the champion screen (1BCF before its present) holds black', screenPalette(d, dac6).every((v) => v === 0))
+  }
+
   // (c) an inactive/absent state is a safe no-op (identity), so a caller can call applyFade unconditionally.
   {
     const s = createFadeState('in')

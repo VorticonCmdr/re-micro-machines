@@ -31,7 +31,8 @@ import { initCameraState } from '../engine/camera.js'
 import { createKeyboardReader, createExtraKeysReader, createPauseKeyReader, createMenuReleaseTracker, createIsrKeyWordReader, recordingReader, SCANCODE_TO_KEY_CODE } from '../engine/input.js'
 import { createPauseState, updatePause } from '../engine/pause.js'
 import { createRaceEndState, updateRaceEnd } from '../engine/raceEnd.js'
-import { createFadeState, applyFade, raceStartHold } from '../engine/fade.js'
+import { createFadeState, updateFade, applyFade, raceStartHold, FADE_UP_TICKS } from '../engine/fade.js'
+import { createDacFadeState, raceSetupFade, raceStartFadeUp, raceExitFade, beginScreenFadeUp as dacBeginScreenFadeUp, screenFadeStep, screenPalette } from './dacFade.js'
 import { raceStart, updateEngines, createRaceJitter, raceOverStart, raceOverGateCar, titleMusic, subMenuMusic, raceIntroMusic, raceResultMusic, raceOutcomeMusic, championMusic, eliminatedMusic } from '../engine/sound.js'
 import { lapLineSegments, nearestPaletteIndex } from '../engine/lapLine.js'
 import { Si2Player } from '../audio/si2Player.js'
@@ -186,6 +187,21 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   canvas.height = MENU_VIEW.h
   const menuBuf = createMenuBuffer()
 
+  // [26CE] and the front end's palette fades (docs/engine.md §9cp, dacFade.js): the first screen
+  // after a race fades up for 17 ticks with its own logic frozen; race setup fades the screen before
+  // the race out.
+  const dac = createDacFadeState()
+  const beginScreenFadeUp = (kind = 'up', onDone = null) => dacBeginScreenFadeUp(dac, kind, onDone)
+  const menuPalNow = () => (dac.screen ? decodePalette(screenPalette(dac, introPalBytes)).rgb : menuPal)
+  /** At the top of a screen's tick: while its 32CE runs, repaint the screen at the fading palette
+   * and skip the screen's own logic (true). Key releases still latch meanwhile. */
+  function screenFadeHold(dtMs) {
+    if (!dac.screen) return false
+    const holding = screenFadeStep(dac, Math.min(dtMs, 250))
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
+    return holding
+  }
+
   // P1 (GOAL-DOS-PARITY.md, docs/intro-and-codecard.md, src/formats/gfx1.js header comment):
   // SM.EXE's own real per-frame animation (48-record reveal, banner slide, diagonal shine sweep),
   // not a static still. Real timing: one step per VGA vsync (~70Hz); missing either file just
@@ -295,7 +311,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     if (options.sub === 'credits') drawCreditsScreen(menuBuf, arena)
     else if (options.sub === 'redefine') drawRedefineKeysScreen(menuBuf, arena, { slots: options.redefineScratch, slotIndex: options.redefineSlotIndex })
     else drawOptionsScreen(menuBuf, arena, { settings, cheatActive })
-    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
     statusEl.textContent = 'GAME OPTIONS'
   }
   /** F1-F7 dispatch (1000:28BE-2A08); anything else falls through to the cheat-code check. */
@@ -329,7 +345,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     phase = 'QUIT'
     menuBuf.fill(0)
     drawQuitToDosScreen(menuBuf, arena)
-    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
     statusEl.textContent = 'Quit to DOS (this is a port -- close the tab, or reload to play again)'
   }
   function optionsKey(e) {
@@ -381,6 +397,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     titleReader = createKeyboardReader(p1Keys(), window) // fire only -- title reads P1's OWN reader slot directly, never the combined-both-players byte the menu levels use
     menuReleaseTracker.reset() // 1000:0081: [0x1096]=0 before every 0100 call
     phase = 'TITLE'
+    beginScreenFadeUp() // 01A9, after 0081's latch clear: a release during the fade counts
     titleMusic(sound) // 1000:0066-007B: tune 1 (re)started right before every real entry into the title
     paintTitle()
     titleLast = performance.now()
@@ -390,11 +407,12 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   function paintTitle() {
     menuBuf.fill(0)
     drawTitleScreen(menuBuf, arena, { classIndex: titleState.classIndex })
-    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
     statusEl.textContent = 'MicroMachines'
   }
   function titleTick(now) {
     if (phase !== 'TITLE') return
+    if (screenFadeHold(now - titleLast)) { titleLast = now; titleRafId = requestAnimationFrame(titleTick); return }
     titleAcc += Math.min(now - titleLast, 250)
     titleLast = now
     while (titleAcc >= INTRO_TICK_MS) {
@@ -474,7 +492,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   function paintSelectGame() {
     menuBuf.fill(0)
     drawSelectGame(menuBuf, arena, { selection: twoItemState.selection })
-    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
     statusEl.textContent = 'SELECT GAME'
   }
   function enterSelectGame() {
@@ -488,7 +506,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   function paintOnePlayerGame() {
     menuBuf.fill(0)
     drawOnePlayerGameMenu(menuBuf, arena, { selection: twoItemState.selection })
-    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
     statusEl.textContent = 'ONE PLAYER GAME'
   }
   function enterOnePlayerGame() {
@@ -527,7 +545,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     const h2h = charWho.startsWith('h2h')
     drawCharacterSelect(menuBuf, arena, { scroll: charSelectState.scroll, cursor: charSelectState.cursor, roster: rosterBytes(), blinkOn: charSelectState.blinkOn, prompt: charWho !== 'player' && !h2h ? 'WHO DO YOU WANT TO RACE ?' : 'WHO DO YOU WANT TO BE ?' })
     if (h2h) drawTwoPlayerPickLabels(menuBuf, arena, { slot: charWho === 'h2h-p1' ? 0 : 1, handicap: phase === 'HANDICAP' ? { character: handicapCharacter, answer: handicapState.answer } : null })
-    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
     statusEl.textContent = 'CHAR_SELECT'
   }
   function enterCharSelect(startIndex, who) {
@@ -688,7 +706,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     menuBuf.fill(0)
     const { victim, slot } = tournament.pendingElimination
     drawEliminatedScreen(menuBuf, arena, { victim, playerCharacter: tournament.playerCharacter, opponents: tournament.opponents, slot, step: eliminationState.step, frameOn: eliminationState.frameOn, done: eliminationState.done })
-    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
     statusEl.textContent = 'ELIMINATED'
   }
   function enterEliminatedScreen() {
@@ -740,7 +758,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   function paintBoard() {
     menuBuf.fill(0)
     drawTournamentBoard(menuBuf, arena, { raceIndex: effectiveRaceIndex(tournament), blinkOn: boardState.blinkOn })
-    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
     statusEl.textContent = 'BOARD'
   }
   function enterBoard() {
@@ -802,7 +820,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     else if (phase === 'RESULTS') drawResults(menuBuf, arena, { standings: lastStandings, passed: lastPassed })
     else if (phase === 'OUTCOME') drawOutcome(menuBuf, arena, { message: OUTCOME_MESSAGES[tournament.lastOutcome] })
     else if (phase === 'CHAMPION') drawChampion(menuBuf, arena, { playerName: CHARACTER_NAMES[championCharacter ?? tournament.playerCharacter] })
-    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
     statusEl.textContent = phase
   }
 
@@ -894,6 +912,9 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     const escLatched = () => menuReleaseTracker.escQuit()
     const pauseState = createPauseState()
     const fadeState = createFadeState('in')
+    // 395A (docs/engine.md §9cp): race setup fades the screen before the race to black (16 ticks),
+    // unless [26CE] says the DAC is already black; either way [26CE] is 1 at 39F0.
+    const setupFade = raceSetupFade(dac)
     const globalState = {} // written by cheats.js's applyCheatEffect on a pause-entry cheat-spot match
 
     const isBonus = round === 9
@@ -930,6 +951,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       let lastIndexed = null // the last painted frame: the hold re-shows it, and the fade-out darkens it
       function finishRace() {
         cleanup()
+        raceExitFade(dac) // 315A's 327A (the ESC exit's too) set [26CE]
         // 11CA/2185: [0x1096]==1 -> JMP 00CC -> 0054 -> the title (tune 1), whether the ESC ended the
         // race itself or was released during the normal race end's hold or fade.
         if (escLatched()) { resolve({ aborted: true }); return }
@@ -955,8 +977,17 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
           requestAnimationFrame(frame)
           return
         }
+        if (setupFade?.active) {
+          // 395A -> 327A: the screen before the race (still in menuBuf) fades out; nothing steps.
+          updateFade(setupFade, dtMs)
+          pauseKey.read() // no loop head yet: a SPACE tap here must not pause the race (3074 tests the level)
+          paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, decodePalette(applyFade(introPalBytes, setupFade)).rgb), { zoom: 1 })
+          requestAnimationFrame(frame)
+          return
+        }
         if (raceStartHold(fadeState, dtMs, pauseKey)) {
           // 39F0 -> 32CE: the fade-up over zeroed VRAM, before the main loop -- black, nothing steps.
+          raceStartFadeUp(dac) // 32DD
           const c2d = canvas.getContext('2d')
           c2d.fillStyle = '#000'
           c2d.fillRect(0, 0, canvas.width, canvas.height)
@@ -1117,6 +1148,12 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     raceOutcomeMusic(sound, tournament.lastOutcome) // ShowRaceOutcomeMessageTune8or6 1000:1c84, docs/engine.md §9ai
     menuReleaseTracker.reset() // 1C30/1C35
     outcomeWait = outcomeWaitInitialState(tournament.lastOutcome)
+    // 1D82/1E01: the fade runs after 1C1B/1D1F zeroed [261F], so it spends 17 ticks of the timeout;
+    // on the SIMPLE path the first 17FF (and its latch clear) only opens after it.
+    beginScreenFadeUp('up', () => {
+      outcomeWait.ticks += FADE_UP_TICKS
+      if (outcomeWait.path === 'SIMPLE') menuReleaseTracker.reset()
+    })
     paintMenu()
     outcomeLast = performance.now()
     outcomeAcc = 0
@@ -1138,6 +1175,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
   function outcomeTick(now) {
     if (phase !== 'OUTCOME') return
+    if (screenFadeHold(now - outcomeLast)) { outcomeLast = now; outcomeRafId = requestAnimationFrame(outcomeTick); return }
     outcomeAcc += Math.min(now - outcomeLast, 250)
     outcomeLast = now
     while (outcomeAcc >= INTRO_TICK_MS) {
@@ -1221,7 +1259,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
   function paintChooseGame() {
     paintOps(menuBuf, arena, layoutChooseGame({ characters: h2hSetup.characters, selection: twoItemState.selection })) // 1EF1 (docs/engine.md §9bz)
-    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
     statusEl.textContent = 'CHOOSE GAME'
   }
   /** RunHeadToHeadChooseGameMenu 1000:1EF1: tune 2, the win tally reset (1F09-1F18) on every
@@ -1274,7 +1312,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     canvas.height = MENU_VIEW.h
     // 1FAF's screen (docs/engine.md §9bz): 2216's icons move one step per slide tick
     paintOps(menuBuf, arena, layoutTwoPlayerRaceInfo({ players: h2hPlayers(), tally: [h2hMatch.p1Wins, h2hMatch.p2Wins], raceNumber: h2hMatch.raceNumber, round: h2hTrack.round, smoothness: smoothnessN, iconX: slideIconX(h2hInfoTicks, smoothnessN) }))
-    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
     statusEl.textContent = 'TOURNAMENT RACE'
   }
   function h2hInfoWaitTick(input) {
@@ -1339,7 +1377,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     const vehicle = s.phase !== 'AWAIT_RELEASE'
     const iconX = slideIconX(s.phase === 'SLIDE' ? s.slideTicks - s.slideLeft : Infinity, smoothnessN)
     paintOps(menuBuf, arena, layoutSingleRaceSelect({ players: h2hPlayers(), round: s.track.round, vehicleClass: s.track.vehicleClass, smoothness: smoothnessN, vehicle, iconX, polled: s.phase === 'POLL', blink: Math.floor(h2hSingleTicks / 32) % 2 === 1 }))
-    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
     statusEl.textContent = 'SELECT VEHICLE'
   }
   function h2hSingleWaitTick(readInput, readFire) {
@@ -1381,6 +1419,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   let h2hResultAcc = 0
   function enterTwoPlayerResult(p1Won, raceNumber, outcome, round) {
     phase = 'H2H_RESULT'
+    beginScreenFadeUp() // 2641, before the icon slide and its 17FF windows
     sound.playTune(8) // 2593/25A0: tune 8, AH=9-guarded
     h2hResult = { state: raceResultScreenInitialState(), p1Won, raceNumber, outcome, round } // round: the miniatures' frames, still 2216's own (records 8/9)
     paintTwoPlayerResult()
@@ -1396,7 +1435,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     // 256E's screen (docs/engine.md §9bz): the icons step 4 per slide tick to 88/136, then each 26A3
     // XOR shows the winner's FCHAPPY and the loser's FCSAD pose, blinking
     paintOps(menuBuf, arena, layoutTwoPlayerResult({ players: h2hPlayers(), tally: [h2hMatch.p1Wins, h2hMatch.p2Wins], raceNumber: h2hResult.raceNumber, round: h2hResult.round, p1Won: h2hResult.p1Won, single, iconX: 4 * (RACE_RESULT_SLIDE_TICKS - st.slideLeft), blinks: st.blinks }))
-    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPal), { zoom: 1 })
+    paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
     statusEl.textContent = 'RESULTS'
   }
   function h2hResultWaitTick(input) {
@@ -1412,6 +1451,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
   function h2hResultTick(now) {
     if (phase !== 'H2H_RESULT') return
+    if (screenFadeHold(now - h2hResultLast)) { h2hResultLast = now; h2hResultRafId = requestAnimationFrame(h2hResultTick); return }
     h2hResultAcc += Math.min(now - h2hResultLast, 250)
     h2hResultLast = now
     while (h2hResultAcc >= INTRO_TICK_MS) {
@@ -1435,6 +1475,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     raceResultMusic(sound, passed)
     phase = 'RESULTS'
     menuReleaseTracker.reset() // the first 17FF call's own 180F/1814
+    beginScreenFadeUp('up', () => menuReleaseTracker.reset()) // 1546 comes before that first 17FF
     resultsWait = windowedWaitInitialState({ cx: RESULTS_17FF_CX })
     paintMenu()
     resultsLast = performance.now()
@@ -1450,6 +1491,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
   function resultsTick(now) {
     if (phase !== 'RESULTS') return
+    if (screenFadeHold(now - resultsLast)) { resultsLast = now; resultsRafId = requestAnimationFrame(resultsTick); return }
     resultsAcc += Math.min(now - resultsLast, 250)
     resultsLast = now
     while (resultsAcc >= INTRO_TICK_MS) {
@@ -1478,6 +1520,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   let championAcc = 0
   function enterChampion() {
     phase = 'CHAMPION'
+    beginScreenFadeUp('in') // 1BCF before 1BD3's first present: black, then the screen at full
     championMusic(sound)
     championState = championInitialState()
     paintMenu()
@@ -1497,6 +1540,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
   function championTick(now) {
     if (phase !== 'CHAMPION') return
+    if (screenFadeHold(now - championLast)) { championLast = now; championRafId = requestAnimationFrame(championTick); return }
     championAcc += Math.min(now - championLast, 250)
     championLast = now
     while (championAcc >= INTRO_TICK_MS) {
@@ -1532,6 +1576,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     raceIntroMusic(sound)
     if (hasRaceIntro(tournament)) {
       phase = 'RACE_INTRO'
+      beginScreenFadeUp('up', () => menuReleaseTracker.reset()) // 12B7/12DF, before the slide loop and 179B
       const holdTicks = raceIntroHoldTicks(tournament)
       raceIntroWait = waitScreenInitialState(holdTicks === 0)
       raceIntroPreStep = holdTicks === 0 ? () => true : holdTicksPreStep(holdTicks)
@@ -1568,6 +1613,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   }
   function raceIntroTick(now) {
     if (phase !== 'RACE_INTRO') return
+    if (screenFadeHold(now - raceIntroLast)) { raceIntroLast = now; raceIntroRafId = requestAnimationFrame(raceIntroTick); return }
     raceIntroAcc += Math.min(now - raceIntroLast, 250)
     raceIntroLast = now
     while (raceIntroAcc >= INTRO_TICK_MS) {

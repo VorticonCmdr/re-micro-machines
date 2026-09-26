@@ -128,7 +128,7 @@ and stays local to your machine.
 ## What's not implemented
 
 - No longer listed here because they are implemented: the race-start black hold and the paced
-  exit fade (`docs/engine.md` §9co), two-human head-to-head's own screens
+  exit fade (`docs/engine.md` §9co), the menu screens' own fades (§9cp), two-human head-to-head's own screens
   (portraits, win/lose poses, vehicle icons and their slides, pixel-checked against DOSBox,
   `docs/engine.md` §9bz), the tournament board screen, the interactive opponent picker, and the
   elimination/replacement screen.

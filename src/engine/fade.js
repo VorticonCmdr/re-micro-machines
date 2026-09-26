@@ -17,6 +17,9 @@
 // palette at the loop's first flip (docs/engine.md §9an 8). Nothing steps during it: the main loop
 // has not started. So the 'in' state here is a black hold, not a ramp over the scene.
 //
+// A front-end screen's own `32CE` ('up', docs/engine.md §9cp) fades a screen that is already
+// presented: the shown value after call c is min(v, floor(c/2) + 1), over the same 17 ticks.
+//
 // The fade-out works on the palette's own 6-bit DAC bytes (`.PAL` is used verbatim as 6-bit,
 // `formats/pal.js`), with k taken from the elapsed fraction rather than stepped per upload: a
 // variable-framerate rAF loop has no natural tick to hang a literal per-upload replica on.
@@ -35,7 +38,7 @@ export function createFadeState(direction = 'in') {
 export function updateFade(state, dtMs) {
   if (!state || !state.active) return
   state.elapsedMs += dtMs
-  if (state.elapsedMs >= durationMs(state.direction)) state.active = false
+  if (state.elapsedMs >= durationMs(state.direction) - 1e-6) state.active = false // tick sums of 1000/70 fall a hair short
 }
 
 /**
@@ -67,5 +70,13 @@ export function applyFade(dac6, state) {
     for (let i = 0; i < b.length; i++) out[i] = Math.max(0, b[i] - k)
     return out
   }
-  return t >= 1 ? b : new Uint8Array(b.length) // 39F0: black until the fade-up is over
+  if (t >= 1) return b
+  if (state.direction === 'up') {
+    // 3303: +1 toward the target on every even CX (0..0x7F), so k increments by the elapsed fraction
+    const k = 1 + Math.floor(t * 64)
+    const out = new Uint8Array(b.length)
+    for (let i = 0; i < b.length; i++) out[i] = Math.min(b[i], k)
+    return out
+  }
+  return new Uint8Array(b.length) // 'in', 39F0: black until the fade-up is over
 }

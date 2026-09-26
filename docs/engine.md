@@ -6146,6 +6146,10 @@ matched, now pinned by a test), and the race-start fade-in (the port now holds b
 and steps nothing, then shows the first frame at full palette). Still unported: the race setup's own
 `395D` fade-out of the screen before the race (the port's front-end screens have no fades at all).
 
+**Added 2026-09-26 (§9cp).** Both ported: the first front-end screen after a race fades up (17 ticks,
+its logic frozen; the champion holds black), and race setup fades the screen before the race out
+(16 ticks), gated by `[26CE]` as in DOS (`src/frontend/dacFade.js`).
+
 **Added 2026-09-25 (§9bz).** The four two-human screens are now drawn from the original's own draw
 calls and pixel-checked against seven DOSBox frames (`npm run h2hscreens`). They are Part F's first
 front-end refs, under `tools/refs/front/`. Still `[STATIC]` only: the intermediate slide positions,
@@ -12542,7 +12546,7 @@ is closed as "already matching".
   (no step, no pause poll, no render), as the main loop has not started in DOS. The first frame then
   appears at full palette on the first drawn step.
 - Not ported: `395D`'s fade-out of the screen before the race (the port's front-end screens have
-  no palette fades at all). A new GOAL P5 item covers both.
+  no palette fades at all). A new GOAL P5 item covers both. **(Both ported, §9cp.)**
 - `play.js`/`flow.js` call `raceStartHold`, which also drains the pause key's press edge: `3074`
   tests SPACE's level at the first loop head, so a tap over before then must not pause.
 
@@ -12568,3 +12572,66 @@ the opponent picker reached `32CE` with `[26CE]=0` and did no fade.
 On the old `fade.js` four of the fade checks fail. The HUD digit checks pass on both (no fix).
 The loop change (black, no steps) was not browser-checked: the Chrome window was hidden, so
 `requestAnimationFrame` never ran.
+
+## 9cp. The front-end screens' own fades, and race setup's fade-out (2026-09-26)
+
+GOAL-DOS-PARITY.md P5, the item §9co opened. `[STATIC]` from the call sites and the `[26CE]` byte
+scan; `[PROVEN]` where marked, from the same DOSBox session as §9co (an ESC quit from THE BREAKFAST
+BENDS to the title), with execute breakpoints and `[261F]`.
+
+**The flag.** `[26CE]` is touched only inside the two fade routines (§9co's byte scan): `327A` skips
+when it is 1 and sets it; `32CE` fades only when it is 1 and clears it. `327A`'s callers are the race
+exit `315A` and race setup `395A`; `32CE`'s are the race start `39F0` and eight front-end sites.
+
+**After a race** (every race returns through `26C0`: `11C7` in the one-player tournament, `2182` in
+two-human play; `26C0` reloads the arena, restarts the driver (`321C`) and calls `26EC`, which loads
+INTRO.PAL into `7D78:0000` and sets all 256 DAC entries from it with INT 10h AX=1012h -- no fade):
+- live `[PROVEN]`: the race's exit fade ended at tick 2811; `26EC`'s DAC write at 2819, with the
+  screen black; the title's `32CE` from 2824 to 2841 (**17 ticks**, as §9co's race start), then the
+  title at full palette (captured).
+- So the first screen after a race that calls `32CE` fades up; any later one finds the flag 0.
+
+**The call sites** (`[STATIC]`, from `code.lst`):
+| site | screen | before the fade | after the fade |
+|---|---|---|---|
+| `01A9` | title | draw `01DE`, present `08BC`; `0081` cleared `[1096]` before `0100` | `[0x2]=0`, the loop |
+| `12B7`/`12DF` | race intro | draw, present | the slide loop, then `179B` (latch clear at its entry) |
+| `1546` | results | draw, present | `[0x2]=0`, the rows, then `[261F]=0` and the `17FF` windows |
+| `1BCF` | champion | the first iteration's draws -- **no present yet** | present `1BD3`, the loop |
+| `1D82` | outcome, LIVES | `[261F]=0` (`1C1B`/`1D1F`), latch cleared (`1C30`/`1C35`), five ticks, present | the slide; gated by `[0x311]` |
+| `1E01` | outcome, SIMPLE | the same entry, draw, present | the first `17FF` window (latch clear); gated by `[0x311]` |
+| `2641` | two-human result | draw, present | the icon slide, then `17FF` windows |
+
+(`2160` is in the unreferenced `ShowHeadToHeadResultUnreferenced`.) So five screens show their first
+frame fading up from black. The champion screen shows black for the 17 ticks (VRAM was black after
+`26EC`, live) and then appears at full palette. On the outcome screen the fade spends 17 ticks of the
+~700-tick timeout, since `[261F]` was zeroed before it.
+
+**Race setup** (`395A`): `327A` fades whatever screen is showing (the race intro, PRESS ANY KEY, the
+two-human race info or SELECT VEHICLE) to black over 16 ticks (§9co), unless the flag is already 1.
+
+**Port.**
+- `fade.js`: an `'up'` direction, `min(v, k)` with k = 1 + floor(t·64) over 17 ticks (`3303`: +1 on
+  every even CX 0..0x7F).
+- `src/frontend/dacFade.js` (new): `[26CE]` as `{ faded, screen }` -- `raceSetupFade` (395A),
+  `raceStartFadeUp` (39F0), `raceExitFade` (315A), `beginScreenFadeUp(kind, onDone)`,
+  `screenFadeStep`, `screenPalette`.
+- `flow.js`:
+  - every menu paint goes through `menuPalNow()`;
+  - the six screens call `beginScreenFadeUp` at entry, before their first paint, and their tick
+    loops start with `screenFadeHold`, which repaints at the fading palette and skips the screen's
+    own logic (key releases still latch);
+  - `onDone` covers what the port's entry did before the fade but DOS does after it: the latch
+    clear of the results' first `17FF`, of the race intro's `179B`, and of the outcome SIMPLE path's
+    first `17FF`; the outcome screen also adds the fade's 17 ticks to its `[261F]` count;
+  - `runOneRace` fades `menuBuf` out over 16 ticks before the race-start hold (skipped when the flag
+    is 1), draining the pause key's press edge, and `finishRace` sets the flag.
+- Simplified: the outcome LIVES path's fade sits after the first iteration's five ticks in DOS; the
+  port runs it first. The same total, 5 ticks earlier. The time `26C0`'s reload takes (8 ticks
+  live, CPU/disk-bound) is not reproduced.
+
+**Tests.** `check-play`: the `'up'` values at the first upload, at tick 8.5 and at 17; the flag's
+sequence (no fade at boot, setup fade-out, cleared by the race start, the first screen after a race
+fades and freezes for 16 whole ticks with `onDone` once, the next screen doesn't, a setup with the
+flag already 1 skips its fade-out, the champion holds black). On the old `fade.js` the `'up'` checks
+and the tick-17 release fail. Not browser-checked: the Chrome window was hidden again.

@@ -30,9 +30,9 @@
 //
 // Two assumptions, both `[STATIC]`-open: (a) `CS:[0x4ADE]` is also incremented by the INT 0Ah
 // (vertical retrace) handler (`4AC5`); a slide iteration is 5 ticks only if that handler is not
-// installed during this screen. (b) Both budgets include whatever the first iteration's palette
-// fade-up (`32CE`, `UNKNOWN_fade_duration`) and the entry draws take; the port counts from phase
-// entry, so on DOS the visible wait is shorter by that unknown amount. (c) Each iteration's draw
+// installed during this screen. (b) Both budgets include the first iteration's palette fade-up
+// (`32CE`: 17 ticks when it runs, i.e. when this is the first screen after a race, docs/engine.md
+// §9co/§9cp -- `flow.js` adds them to `ticks` after the fade) and the entry draws (not modelled). (c) Each iteration's draw
 // work finishes inside one tick. None of the draw helpers waits on anything (`08BC` is a plain
 // 51 KB `REP MOVSD`; `0DB0`/`0823`/`0929` and their blitters `053A`/`0999` contain no `0x3DA`
 // retrace poll, no `CALL 3165` and no `[0x2]` spin -- byte sweeps for all three), but on slow
