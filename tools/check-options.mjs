@@ -11,12 +11,15 @@
 //  - the 25011968 cheat's own cursor logic, including the real "a mismatch resets to 0 without
 //    re-testing the mismatched key" behaviour (typing "225011968" does not trigger it);
 //  - the redefine-keys screen's SPACE rejection and same-pass duplicate rejection, live-confirmed;
-//  - SETTINGS.DAT's 32-byte round-trip (parseSettings . serializeSettings = identity).
+//  - SETTINGS.DAT's 32-byte round-trip (parseSettings . serializeSettings = identity);
+//  - which keys set the dirty flag [0xF63], in the original's dispatch order: F1-F5 and F7 do,
+//    the cheat's completing digit does not (live, docs/engine.md §9dq), and F1-F4 reset a
+//    half-typed cheat while F5-F7 don't.
 //   node tools/check-options.mjs
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { cycleControl, cycleSound, cycleSmoothness, advanceCheatCursor, redefineKeyAccepted, redefineGroupOf, redefineSlotInGroup, CHEAT_CODE_DIGITS, CONTROL_JOY1, CONTROL_JOY2, CONTROL_MOUSE, CONTROL_KEYS1, CONTROL_KEYS2 } from '../src/frontend/options.js'
+import { cycleControl, cycleSound, cycleSmoothness, advanceCheatCursor, optionsKeyStep, redefineKeyAccepted, redefineGroupOf, redefineSlotInGroup, CHEAT_CODE_DIGITS, CONTROL_JOY1, CONTROL_JOY2, CONTROL_MOUSE, CONTROL_KEYS1, CONTROL_KEYS2 } from '../src/frontend/options.js'
 import { parseSettings, serializeSettings, DEFAULT_SETTINGS } from '../src/formats/globaldata.js'
 import { SMOOTHNESS_LABELS, SMOOTHNESS_AUTO, resolveSmoothnessForPlay, REDEFINE_SLOT_LABELS } from '../src/data/frontend-tables.js'
 
@@ -68,6 +71,22 @@ check('a non-AUTO value resolves to itself', resolveSmoothnessForPlay(3) === 3)
   check('a leading extra "2" breaks the match (dumb reset, not a smart re-scan)', !completed)
 }
 check('a mismatch resets to cursor 0', advanceCheatCursor(3, '2').cursor === 0) // cursor 3 expects '1', typed '2'
+
+// 4b. The dispatch order and the dirty flag (1000:28B7-29D0, docs/engine.md §9dq).
+{
+  const typeAll = (codes) => codes.reduce((acc, c) => { const r = optionsKeyStep(c, acc.cursor); return { cursor: r.cheatCursor, completed: acc.completed || r.cheatCompleted, dirty: acc.dirty || r.dirty } }, { cursor: 0, completed: false, dirty: false })
+  const digits = CHEAT_CODE_DIGITS.split('').map((d) => `Digit${d}`)
+  const t = typeAll(digits)
+  check('the cheat completes through the options dispatch', t.completed)
+  check('typing the cheat does not set [0xF63] (live: 0 after the code, nothing saved)', !t.dirty)
+  for (const k of ['F1', 'F2', 'F3', 'F4', 'F5', 'F7']) check(`${k} sets [0xF63]`, optionsKeyStep(k, 0).dirty)
+  for (const k of ['F6', 'Escape', 'Enter', 'KeyA', 'Digit5']) check(`${k} does not set [0xF63]`, !optionsKeyStep(k, 0).dirty)
+  check('F1 mid-code resets the cheat cursor (it goes through the matcher, 2943 after 28FE)', optionsKeyStep('F1', 4).cheatCursor === 0)
+  check('ENTER goes through the matcher too (2938)', optionsKeyStep('Enter', 4).cheatCursor === 0 && optionsKeyStep('Enter', 4).action === 'confirm')
+  for (const k of ['F5', 'F6', 'F7', 'Escape']) check(`${k} leaves the cheat cursor alone (tested before 28FE)`, optionsKeyStep(k, 4).cheatCursor === 4)
+  check('"2501" F1 "1968" does not complete the cheat', !typeAll([...digits.slice(0, 4), 'F1', ...digits.slice(4)]).completed)
+  check('"2501" F6 "1968" still completes it', typeAll([...digits.slice(0, 4), 'F6', ...digits.slice(4)]).completed)
+}
 
 // 5. Redefine-keys: SPACE rejected, same-pass duplicates rejected, a fresh scancode accepted.
 check('SPACE (0x39) is always rejected', !redefineKeyAccepted(0x39, []))

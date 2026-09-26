@@ -70,6 +70,33 @@ export function advanceCheatCursor(cursor, digit) {
   return { cursor: 0, completed: false }
 }
 
+/**
+ * One key on the main options screen, in the original's dispatch order (1000:28B7-29D0). `code`
+ * is the key's `KeyboardEvent.code`. Returns `{ action, cheatCursor, cheatCompleted, dirty }`:
+ * `action` is 'quit' | 'credits' | 'joycal' | 'redefine' | 'confirm' | 'F1'..'F4' | null, `dirty`
+ * whether the key sets `[0xF63]` (SETTINGS.DAT is written at RETURN only if it is set, 2A13).
+ * - ESC, F6, F7 and F5 are tested first (28BE-28E9) and never reach the cheat matcher, so they
+ *   leave its cursor alone. F7 sets `[0xF63]` before its joystick test (28D3), F5 before the
+ *   redefine screen (28E9), F6 (credits) doesn't.
+ * - Every other key goes through the matcher (28FE-2924), F1-F4 and ENTER included, so they
+ *   reset a half-typed code. The completing digit sets `[0xF69]`/`[0xF6A]` and jumps to the
+ *   redraw (2911-291B): it does NOT set `[0xF63]`, live-proven (docs/engine.md §9dq).
+ * - Then ENTER (2938) and F1-F4 (2943/2972/29B5/29CC, each setting `[0xF63]`).
+ */
+export function optionsKeyStep(code, cheatCursor) {
+  const out = (action, dirty) => ({ action, cheatCursor, cheatCompleted: false, dirty })
+  if (code === 'Escape') return out('quit', false) // 28BE
+  if (code === 'F6') return out('credits', false) // 28C5
+  if (code === 'F7') return out('joycal', true) // 28D3
+  if (code === 'F5') return out('redefine', true) // 28E9
+  const digit = /^Digit[0-9]$/.test(code) ? code.slice(5) : null
+  const { cursor, completed } = advanceCheatCursor(cheatCursor, digit)
+  if (completed) return { action: null, cheatCursor: cursor, cheatCompleted: true, dirty: false } // 2911-291B
+  if (code === 'Enter') return { action: 'confirm', cheatCursor: cursor, cheatCompleted: false, dirty: false } // 2938
+  const fn = /^F[1-4]$/.test(code) ? code : null
+  return { action: fn, cheatCursor: cursor, cheatCompleted: false, dirty: fn != null }
+}
+
 /** SPACE (0x39) is rejected outright; a scancode already collected earlier in this SAME 10-key
  * pass is rejected too (1000:936E-9373 -- checked only against this pass's own keys, not any
  * previous SETTINGS.DAT). Returns true if `scancode` may be assigned. `collectedSoFar` is the

@@ -903,7 +903,7 @@ was carried forward and never met. Meet it now:
   `screens.js` with the same inputs and reports the differing-pixel count per screen, the way
   `check-live.mjs` does. Target: 0 for every static screen. Where a screen animates, pin the frame
   using the tick count read live. Add `front` to the regression loop above.
-- [ ] F3. Walk one full session side by side: DOSBox and `game.html` in a foreground Chrome tab.
+- [x] F3. **(§9dq: two differences, both fixed: the carousel's entry-skip direction and the cheat code's settings write.)** Walk one full session side by side: DOSBox and `game.html` in a foreground Chrome tab.
   Take the boot → options → title → Challenge → qualifier → race → results → board → … → a lost
   race → ONE LIFE LOST path, then quit. Write down each difference you see and either fix it (one
   commit each) or add it to §10 as an open item.

@@ -60,7 +60,7 @@ import { pressAnyKeyInitialState, pressAnyKeyStep } from './pressAnyKey.js'
 import { twoHumanSessionState, twoHumanSetupState, twoHumanRosterBytes, commitTwoHumanPick, twoHumanMatchState, H2H_P1_START, H2H_P2_START, nextTrack, reportRace, raceInfoSlideTicks, raceResultScreenInitialState, raceResultScreenStep, RACE_RESULT_SLIDE_TICKS, singleRaceSelectInitialState, singleRaceSelectStep } from './twoHuman.js'
 import { windowedWaitInitialState, windowedWaitStep, RESULTS_17FF_CX } from './windowedWait.js'
 import { composeCodeCardScreen, fontbinPalette, targetFromTickByte, moveCursor, CURSOR_X0, CURSOR_Y0, CODECARD_W, CODECARD_H } from '../formats/fontbin.js'
-import { cycleControl, cycleSound, cycleSmoothness, advanceCheatCursor, redefineKeyAccepted, redefineGroupOf, redefineSlotInGroup, REDEFINE_TOTAL_SLOTS, REDEFINE_SLOTS_PER_GROUP } from './options.js'
+import { cycleControl, cycleSound, cycleSmoothness, optionsKeyStep, redefineKeyAccepted, redefineGroupOf, redefineSlotInGroup, REDEFINE_TOTAL_SLOTS, REDEFINE_SLOTS_PER_GROUP } from './options.js'
 
 const STEP_DT = 1 / 35 // 35 Hz physics (docs/engine.md §2), matching play.js's own constant
 
@@ -375,23 +375,17 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
     statusEl.textContent = 'GAME OPTIONS'
   }
-  /** F1-F7 dispatch (1000:28BE-2A08); anything else falls through to the cheat-code check. */
-  function optionsMenuKey(code) {
-    if (/^F[1-7]$/.test(code)) detectDevices() // the port allowance above
-    if (code === 'F7') { // 28D3: the dirty flag first, then the [2625] test; with no stick F7 does nothing else
-      settingsDirty = true
-      if (sticks !== 0) startJoystickCalibration()
-      return true
-    }
-    if (code === 'F1') { settings.p1Control = cycleControl(settings.p1Control, settings.p2Control, true, deviceAvail); settingsDirty = true }
-    else if (code === 'F2') { settings.p2Control = cycleControl(settings.p2Control, settings.p1Control, false, deviceAvail); settingsDirty = true }
-    else if (code === 'F3') { settings.soundDriver = cycleSound(settings.soundDriver); settingsDirty = true }
-    else if (code === 'F4') { settings.smoothness = cycleSmoothness(settings.smoothness); settingsDirty = true }
-    else if (code === 'F5') { settingsDirty = true; options.sub = 'redefine'; options.redefineScratch = []; options.redefineSlotIndex = 0 }
-    else if (code === 'F6') { options.sub = 'credits' }
-    else return false
+  /** F1-F7's effects (1000:28BE-2A08); which keys set the dirty flag and the order they are
+   * tested in is options.js's optionsKeyStep. */
+  function optionsMenuKey(action) {
+    if (action === 'joycal') { if (sticks !== 0) startJoystickCalibration(); return } // 28D8: the [2625] test; with no stick F7 does nothing else
+    if (action === 'F1') settings.p1Control = cycleControl(settings.p1Control, settings.p2Control, true, deviceAvail)
+    else if (action === 'F2') settings.p2Control = cycleControl(settings.p2Control, settings.p1Control, false, deviceAvail)
+    else if (action === 'F3') settings.soundDriver = cycleSound(settings.soundDriver)
+    else if (action === 'F4') settings.smoothness = cycleSmoothness(settings.smoothness)
+    else if (action === 'redefine') { options.sub = 'redefine'; options.redefineScratch = []; options.redefineSlotIndex = 0 }
+    else if (action === 'credits') options.sub = 'credits'
     paintOptions()
-    return true
   }
   function optionsConfirm() {
     // 1000:2A6E-2A7E: AUTO resolves here, right before the settings write and the game actually
@@ -420,16 +414,14 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     if (options.sub === 'joycal') return // the calibration reads only the stick and an ENTER release
     if (options.sub === 'credits') { options.sub = 'main'; paintOptions(); return } // 1000:2AAD: any key dismisses it
     if (options.sub === 'redefine') { redefineKey(e); return }
-    if (e.code === 'Escape') { optionsEscape(); return }
-    if (e.code === 'Enter') { optionsConfirm(); return }
-    if (optionsMenuKey(e.code)) return
-    // 1000:28FE-2924: every other key is checked against the 25011968 cheat sequence (raw digits,
-    // not a specific key group) -- see options.js's own advanceCheatCursor header.
-    const digit = /^Digit[0-9]$/.test(e.code) ? e.code.slice(5) : null
-    const { cursor, completed } = advanceCheatCursor(options.cheatCursor, digit)
-    options.cheatCursor = cursor
-    if (completed) { cheatActive = true; settingsDirty = true }
-    if (completed || digit != null) paintOptions()
+    if (/^F[1-7]$/.test(e.code)) detectDevices() // the port allowance above
+    const r = optionsKeyStep(e.code, options.cheatCursor)
+    options.cheatCursor = r.cheatCursor
+    if (r.dirty) settingsDirty = true
+    if (r.action === 'quit') { optionsEscape(); return }
+    if (r.action === 'confirm') { optionsConfirm(); return }
+    if (r.action) { optionsMenuKey(r.action); return }
+    if (r.cheatCompleted) { cheatActive = true; paintOptions() } // 2911-291B: [0xF69]/[0xF6A] and the redraw, not [0xF63]
   }
   /** The redefine-keys sub-screen (1000:9357-93A9): a plain keydown scancode map covers this
    * screen's own reachable keys (digits/letters -- the same set FONT.BIN's own scancode->display
