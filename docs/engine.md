@@ -5999,7 +5999,7 @@ So entry to the end of the slide took **148 ticks** (2.11 s), about 1.37 ticks a
 - An execute breakpoint at `4900` conditioned on AX=0xFFFE was armed from the qualifier's first engine command to the end of the second race: **21,115 hits, no stop.** `CmdTick` was never re-entered, so no tick was dropped.
 - The race start's engine batch (`7C24`, `AH=5`, one per car, `[261F]` read at each): the first batch went **car 0 at tick 1418, cars 1, 2, 3 at 1419**. The ISR (seen at `4900`) fired between car 0's command and car 1's. The batch after the fade-up and `AH=7` (`39F5`) was all four at 1441.
 
-So the four commands are not atomic with respect to the 70 Hz tick. `UpdateEngineSoundsPerFrame 7B46-7C4D` is one straight-line loop with no wait (§8), and the tick can fall anywhere inside it; where it falls depends on how fast the emulated CPU runs the loop. The old capture's car 3 landing two ticks after the others is that: its tracer stopped the emulator at every OPL write, which slows DOSBox's emulated CPU. It is not a rule of the game, and the dropped-tick reading is refuted. **Closed.**
+So the four commands are not atomic with respect to the 70 Hz tick. The dropped-tick reading is refuted. **Closed.** **(CORRECTED the same day, §9di:** the mechanism is narrower than "where the tick falls in the loop". A later capture with the driver's queues read at every call showed the tick IRQ landing INSIDE an `AH=5` call, before `CmdPlaySfx` wrote the id into its queue, so that tick ran without it and the voice started one tick late; 8 times in one race start. That is what the old capture's car 3 was. Still not a rule of the game and still no port change; the text above as first written blamed the tracer's slowdown.)**
 
 **Port.** No change: `sound.js` issues the four commands in the same tick, the undelayed case. `check-si2-race` still tolerates the old capture's placement (`docs/sound.md` §8).
 
@@ -6071,6 +6071,23 @@ Neither writes `[1382]`, which the port zeroed. The port set only the state (and
 
 **4. A regression in the old checks, fixed.** Since M3.99 (`fa15911`, §9cr) `runStep` reads the order the previous drawn frame's ranking left instead of ranking at its own top. The idle-trace harnesses (`check-trace`, `check-ai`'s full loop) start from `raceState = {}`, so step 1 ran on the seed order [0,1,2,3] with every drone's drawn flag 0: car 0 "led", the rubber band boosted all three drones, and both fell to 0 of 20 (the documented baseline is 13). Nothing failed, since those numbers are printed, not asserted. Found by `git bisect`. Both now rank row 0 once before stepping and are back to 13 of 20.
 
+## 9di. Part L: a race start replayed exactly through the driver model, live (2026-09-26)
+
+`GOAL-DOS-PARITY.md` Part L, `UNKNOWN_race_live_reverify` (`docs/sound.md` §8): the race-start replay rested on one old capture, and that capture's tracer read the game tick late, so `check-si2-race` only checks the ORDER of its writes.
+
+**The capture** (`[PROVEN]`):
+- **Where to break.** An execute breakpoint on DRIVER1's far entry (live `1662:0000`, the `CALLF 2424:0000` target) catches every driver call, the ISR's `AH=3` ticks included. It was first armed on the game's own `AH=7` call at race setup, `11AA` (return `11AF`).
+- **What was read.** At each call: AX..DX and `[261F]`, and the driver's variables and slot table (`+0x1250..0x13F0`: accumulators, track count, pending flags, the two sfx queues, the 16 slots). At each `AH=3` also the OPL shadow (`+0x114D`) and the four engine records (`+0x08`) as the tick fired.
+- **The run.** A Challenge race start through 250 ticks after the first engine command: 733 calls, 300 ticks, the four engine voices, their restarts after `39F5`'s `AH=7`, drop-in/checkpoint sfx 9 and the pitch traffic. Two earlier captures of the same kind, which lacked the per-tick engine records, were used to find the two effects below.
+
+**Two things the old capture could not show.**
+1. **A tick can land inside a driver command.** In the log an `AH=5` entry is sometimes followed by an `AH=3` whose start queue does not yet hold the id; the id appears only after that tick. The IRQ fired inside `CmdPlaySfx`, before its queue write, so that tick ran without the new sfx and the sfx started one tick later. The `AH=3`'s stale AL (0x41 throughout) fits a call interrupted mid-way. This happened 8 times here. It is what the old capture's "car 3 two ticks late" was (§9dd's `UNKNOWN_race_4th_engine_delay`; its explanation is corrected there).
+2. **The game writes engine records with no command.** `7B46` writes all four records every frame; a car at pitch 0 gets 0 and END (0x91) with no driver call, so the next tick ends its voice. Reading the records at each `AH=3` makes this exact; the old check inferred it from gaps in the batches.
+
+**The replay.** The model starts from the live accumulators, track count, division/tempo and the tune being stopped (4, 5 tracks). It takes the engine records as each tick fired, and applies each command in order, after the tick when the tick interrupted it. Its full 256-byte OPL shadow then equals the live one at **all 298 ticks** compared. (The first tick, which processes the stop of the menu tune, is re-synced once: the model has no copy of that tune's playing slots.) Without the interrupted-command rule, 49 ticks differ. `tools/refs/si2/live_race_start2.json` (35 KB: per-tick shadow diffs, engine records when they change, one done-before-tick flag per command); `check-si2-race` runs it after the old capture's order check, and fails on any difference.
+
+**Port.** No change. The port's sound model issues commands between ticks, the case where no tick interrupts a command. Whether one does on DOS depends on where the 70 Hz IRQ lands, not on a rule the game follows.
+
 ## 10. Open items
 
 Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: `open`, `narrowed` (part answered; the rest is the open question), `closed`. **Section** is where the answer (or the question) is written up; the history, wrong turns included, stays in those sections and is not repeated here. **Address** is `MICROU.EXE`'s (`1000:` code, `DS:` data) unless another file is named. This table replaced a run-on paragraph of dated notes on 2026-09-26 (`GOAL-DOS-PARITY.md` D2, §9cx); each ID's status was re-read from its latest dated note. When an item opens or closes, change its row here in the same commit.
@@ -6095,7 +6112,6 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_opl_sample_fidelity` | open | `docs/sound.md` §6-§8; GOAL Part L | - | The JS OPL2 core's audio has never been compared against DOSBox; only the register stream is proven. |
 | `UNKNOWN_options_pixel_diff` | narrowed | §9cu | `0400`, `DS:0E88` | The options/F7 body (rows 30-199) is 0 px off against three live frames. The `0400` logo-header background is still undrawn (GOAL Part F). |
 | `UNKNOWN_overlay_tile_191` | open | `docs/track-graphics.md` overlay tiles; §9d | `9214-9237` | Round 2 overlay index 191's +12 variant differs from its base; how it looks with a car under it is unverified. |
-| `UNKNOWN_race_live_reverify` | narrowed | `docs/sound.md` §8; §9av | `03CE` (FUN_0382), `0100` | Cause refuted (no title timeout, KEYS1 reachable). Remaining: the race-start sound replay rests on one capture. |
 | `UNKNOWN_replay_determinism` | open | PLAN-ENGINE.md §4 | - | Is a replay deterministic across DOSBox sessions? Matters only for human-tape replays; never investigated. |
 | `UNKNOWN_single_race_28c1` | open | §9by | `2329`, `DS:28C1` | 2329 never writes [28C1], so a two-human single race runs on a stale value. Effect via its non-tuning readers untraced (port passes 1). |
 | `UNKNOWN_thumb_frame1_invisible` | open | §9av (from §9ao 7) | `0382`, `[130]` | Why SELECT GAME's THUMB frame 1 renders no visible highlight live while frame 2 does (a sprite-art question). |
@@ -6218,9 +6234,10 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 | `UNKNOWN_ph0_tail_icons` | closed | §9q (tail icon ported §9cj) | `8712`, `871F-872D`, `[1396]` | The projectile draw's tail icons; only indices 0/1 are used. |
 | `UNKNOWN_pr0_header_use` | closed | §9cf 5 | `4808`, `DS:3EE3`, `8996` | It is not a header: it is tile 0, copied to DS:3EE3 for the rounds 1/3/5 tile-0 parallax [STATIC]. |
 | `UNKNOWN_puff_slot_fields` | closed | §9q (byte-exact §9ch) | `8083`,`8386` | Each trigger spawns a pair of 8×8 sprites sharing one frame counter and one source (wet/skid/mud). |
-| `UNKNOWN_race_4th_engine_delay` | closed | §9dd; `docs/sound.md` §8 | `489C-490C`, `4900`, `7B46-7C4D` | `AH=3` never returned 0xFFFE in 21,115 live ticks; a race start's per-car `AH=5`s straddled a tick live (car 0 at 1418, cars 1-3 at 1419), so the old 2-tick gap was where the tick fell, not a rule [PROVEN]. |
+| `UNKNOWN_race_4th_engine_delay` | closed | §9dd, §9di; `docs/sound.md` §8 | `489C-490C`, `4900`, `7B46-7C4D` | `AH=3` never returned 0xFFFE in 21,115 live ticks; the late start is a tick IRQ landing inside the `AH=5` call before its queue write (seen 8 times in one race start), not a rule [PROVEN]. |
 | `UNKNOWN_race_end_commands` | closed | `docs/sound.md` §8 (OPL, §9an.2) + §4 (DRIVER2) | `30DF`, `30EF`, `3102`, `3109` | Sfx 16, 7AF8 (OPL: zeroes speeds only), a 100-tick hold, then AH=8 (wiped) and AH=6. DRIVER2 drops sfx 16 [STATIC]. |
 | `UNKNOWN_race_intro_prehold` | closed | §9co/§9cp | `32CE`,`12B7`,`12DF`,`[26CE]` | `32CE` takes 17 ticks only when `[26CE]==1`, otherwise it is skipped; the race-intro fade-up is ported. |
+| `UNKNOWN_race_live_reverify` | closed | §9di (`docs/sound.md` §8; §9av) | `1662:0000` (DRIVER1 entry), `11AA`, `7B46` | A fresh race start replays through the SI2 model with the full OPL shadow equal on all 298 ticks, given ticks that interrupt a command and the game's silent END writes [PROVEN]; `check-si2-race` runs it. |
 | `UNKNOWN_race_reader_low_bits` | closed | §9cf 4 | `2DB1-2DE0`, `4D47`, `37B8-37F5`, `DS:107C` | Nothing reads control-byte bits 0-2. The pause reads [107C] for the cheat-gated F1+F2/F2+F3 combos [STATIC]. |
 | `UNKNOWN_ranking_2670` | closed | §9s | `8E10`, `8E1A-8ECC`, `[2652]` | score=(9-laps)*scale+progress with an 8-bit `MUL CL`, a persistent bubble sort and a freeze on finish or `[26C6]>=2` [STATIC]. |
 | `UNKNOWN_rematch_fail_stale_2682` | closed | §9cm | `[2682]`,`7759`,`7F62` | Double-fall outcomes traced: mid-blink the first point is lost and the second counts; unreachable in play. |

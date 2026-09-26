@@ -17,7 +17,7 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Driver, Sequencer } from '../src/formats/si2.js'
+import { Driver, Sequencer, OFF } from '../src/formats/si2.js'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const lines = readFileSync(join(ROOT, 'tools', 'refs', 'si2', 'live_race_start.txt'), 'utf8').split('\n')
@@ -120,4 +120,42 @@ console.log(`race window: ${liveRace.length} live writes over ticks ${START + 1}
 console.log(`best sfx-accumulator fraction ${best.frac}: ${best.matched} of ${liveRace.length} live writes matched in order (${best.skipped} first-writes assumed deduplicated by the inherited shadow)`)
 console.log('tick alignment (model tick − live tick: count): ' + [...best.deltas.entries()].sort((a, b) => a[0] - b[0]).map(([d, n]) => `${d >= 0 ? '+' : ''}${d}: ${n}`).join('  '))
 if (best.firstMismatch) console.log(`first mismatch: model ${fmt(best.firstMismatch.model)} vs live ${fmt(best.firstMismatch.live)}`)
-process.exitCode = best.matched === liveRace.length ? 0 : 1
+const oldOk = best.matched === liveRace.length
+
+// A second, exact race start (docs/engine.md §9di, closing UNKNOWN_race_live_reverify): every DRIVER1
+// call from the race setup's AH=7 (11AA) through 250 ticks after the first engine command, with the
+// OPL shadow and the four engine records read at each AH=3 as it fired. So nothing is inferred: the
+// model starts from the live accumulators/track count/tempo, takes the records the game had written
+// when each tick fired, applies each command in order -- after the tick when the tick IRQ landed
+// inside it (its queue/flag write not yet done at that AH=3; 8 such here) -- and its whole 256-byte
+// shadow must equal the live one at every tick from the second on (the first tick processes the
+// stop of the menu tune, whose playing slots the model does not have; the shadow is re-synced once).
+{
+  const cap = JSON.parse(readFileSync(join(ROOT, 'tools', 'refs', 'si2', 'live_race_start2.json'), 'utf8'))
+  const st = cap.start
+  const seq = new Sequencer(drv, { dedupe: true })
+  seq.command(4, st.tune); seq.hostTick()
+  seq.trackCount = st.trackCount; seq.division = st.division; seq.tempo = st.tempo; seq.recomputeIncrements()
+  seq.musicAcc = st.musicAcc; seq.sfxAcc = st.sfxAcc
+  const live = Uint8Array.from(Buffer.from(st.shadow, 'hex'))
+  seq.shadow.set(live)
+  let ticks = 0, bad = 0, first = null, interrupted = 0, deferred = []
+  for (const ev of cap.events) {
+    if (ev[0] === 'c') {
+      const [, ax, done] = ev
+      if (!done) { deferred.push(ax); interrupted++; continue }
+      seq.command(ax >> 8, ax & 0xff)
+      continue
+    }
+    const [, diff, eng] = ev
+    for (const [r, v] of diff) live[r] = v
+    if (ticks === 1) seq.shadow.set(live)
+    else if (ticks > 1 && seq.shadow.some((v, r) => v !== live[r])) { bad++; first ??= ticks }
+    if (eng) seq.image.set(Buffer.from(eng, 'hex'), OFF.ENGINE_RECORDS)
+    seq.hostTick(); ticks++
+    for (const ax of deferred) seq.command(ax >> 8, ax & 0xff)
+    deferred = []
+  }
+  console.log(`race start 2 (exact): ${ticks - 2} ticks compared on all 256 OPL registers, ${bad} differ${first != null ? ` (first at tick ${first})` : ''}; ${interrupted} commands interrupted by a tick`)
+  process.exitCode = oldOk && bad === 0 ? 0 : 1
+}

@@ -833,7 +833,7 @@ Commit each item on its own, including any capture file under `tools/refs/`.
   `tools/refs/` and extend `npm run trace` to use it.
 - [x] `UNKNOWN_race_4th_engine_delay` **(§9dd: `AH=3` never returned 0xFFFE in 21,115 ticks; a batch straddled a tick live; closed)** (`docs/sound.md` §8): a fresh race-start capture that logs
   `AH=3`'s return value.
-- [ ] `UNKNOWN_race_live_reverify` (`docs/sound.md` §8).
+- [x] `UNKNOWN_race_live_reverify` (`docs/sound.md` §8). **(§9di: a fresh race start replays exactly, 298/298 ticks on the whole OPL shadow.)**
 - [x] `UNKNOWN_champion_slide_duration` **(§9db: 148 ticks in DOSBox, entry to `1BF4`; the port now uses it)** (docs/engine.md §9bs): how long `1AAD`'s 108 wait-free
   slide iterations take on DOS (for example, `[0x2]` read at `1BF8` minus its value at entry).
 - [x] The outcome screen's LIVES-path timing **(§9de: `[261F]`=156 at `1DCD` live, as predicted)** (docs/engine.md §9bq assumptions a-c): a breakpoint at
