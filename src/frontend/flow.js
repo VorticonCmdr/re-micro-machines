@@ -954,12 +954,13 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
         }
         updateFade(fadeState, dtMs)
 
-        // 3789/37B8: any key release ends the pause, so an ESC release does too; 35F0 returns into the
-        // middle of the iteration (307B), which runs its step and draw, and the next loop head quits.
-        if (escLatched() && pauseState.paused) { pauseState.paused = false; escGraceSteps = 1 }
+        // 3789/37B8: the first key release through the ISR's gate ends the pause (docs/engine.md §9cl),
+        // so an ESC release does too; 35F0 returns into the middle of the iteration (307B), which runs
+        // its step and draw, and the next loop head quits.
         const wasPaused = pauseState.paused
-        const { pressed, held } = pauseKey.read()
-        const paused = updatePause(pauseState, dtMs, pressed, held, cars[0], cheats, round, race, globalState, sound)
+        const { pressed, held } = pauseKey.read() // a press since the last frame counts as held: 3074 samples at 35 Hz, a frame can miss a short tap
+        const paused = updatePause(pauseState, dtMs, { spaceHeld: held || pressed, released: menuReleaseTracker.isrState().latch, cheatFlag: cheatActive }, cars[0], cheats, round, race, globalState, sound)
+        if (wasPaused && !paused && escLatched()) escGraceSteps = 1
         if (paused && !wasPaused) {
           menuReleaseTracker.clearIsrLatch() // 377F/3784: [0x107E]=0, [0x107F]=0
           smoothGate.forceNextDraw() // 37A0: [2638]=1, so the iteration the pause returns into draws

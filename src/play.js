@@ -21,7 +21,7 @@ import { loadWorld, loadBrk, roundCtx, spawnCars } from './engine/race.js'
 import { runStep } from './engine/step.js'
 import { droneControlByte } from './engine/ai.js'
 import { initCameraState } from './engine/camera.js'
-import { createKeyboardReader, createPauseKeyReader, recordingReader } from './engine/input.js'
+import { createKeyboardReader, createPauseKeyReader, createMenuReleaseTracker, recordingReader } from './engine/input.js'
 import { createPauseState, updatePause } from './engine/pause.js'
 import { createFadeState, updateFade, applyFade } from './engine/fade.js'
 import { raceStart, updateEngines, createRaceJitter, raceOverStart } from './engine/sound.js'
@@ -79,6 +79,7 @@ export async function bootRace({ canvas, statusEl, pickButton, dropZone, oplStri
   const keys2 = settingsBytes ? parseSettings(settingsBytes).keys2 : DEFAULT_KEYS2
   const humanReader = recordingReader(createKeyboardReader(keys2, window))
   const pauseKey = createPauseKeyReader(window)
+  const releaseTracker = createMenuReleaseTracker(window) // the ISR's [107E]/[107F] gate, which ends the pause (docs/engine.md §9cl)
   const pauseState = createPauseState()
   const fadeState = createFadeState('in')
   const globalState = {} // written by cheats.js's applyCheatEffect on a pause-entry cheat-spot match (docs/engine.md §9q)
@@ -181,8 +182,10 @@ export async function bootRace({ canvas, statusEl, pickButton, dropZone, oplStri
     }
     updateFade(fadeState, dtMs)
 
-    const { pressed, held } = pauseKey.read()
-    const paused = updatePause(pauseState, dtMs, pressed, held, cars[0], cheats, ROUND, RACE, globalState, sound)
+    const wasPaused = pauseState.paused
+    const { pressed, held } = pauseKey.read() // a press since the last frame counts as held: 3074 samples at 35 Hz, a frame can miss a short tap
+    const paused = updatePause(pauseState, dtMs, { spaceHeld: held || pressed, released: releaseTracker.isrState().latch }, cars[0], cheats, ROUND, RACE, globalState, sound)
+    if (paused && !wasPaused) releaseTracker.clearIsrLatch() // 377F/3784
 
     let shouldRender = paused
     if (!paused) {
@@ -197,7 +200,7 @@ export async function bootRace({ canvas, statusEl, pickButton, dropZone, oplStri
 
   return {
     cars, camera, ctx, pauseState, raceState,
-    stop: () => { running = false; humanReader.dispose?.(); pauseKey.dispose?.(); window.removeEventListener('keydown', onRestartKey) },
+    stop: () => { running = false; humanReader.dispose?.(); pauseKey.dispose?.(); releaseTracker.dispose?.(); window.removeEventListener('keydown', onRestartKey) },
     getTape: () => humanReader.tape,
     // Synchronous fast-forward for debugging/testing (browser rAF is throttled in a backgrounded
     // or automated tab, which is otherwise the only way to observe many steps quickly).

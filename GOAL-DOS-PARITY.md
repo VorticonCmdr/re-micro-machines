@@ -742,7 +742,7 @@ docs, (6) commit.
   §9ai). Find what DOS does. Start at `1000:26E4`, which reloads the sound driver after ESC (see the
   §9q header), and at the pause path `CheckCheatSpotsThenPause 1000:37BF`. Match it, and delete the
   port-only path.
-- [ ] **The pause minimum.** `src/engine/pause.js` has `MIN_PAUSE_MS = 2000`. DOS resumes on the
+- [x] **The pause minimum.** **Done (§9cl, M3.92): no minimum without the cheat flag; the pause ends at the first gated key release (live-proven).** `src/engine/pause.js` has `MIN_PAUSE_MS = 2000`. DOS resumes on the
   first key click (§9an, "Corrected"). Fix it, and update the comment in `pause.js` that calls
   2000 "the precise real-world duration".
 - [ ] **The race-start fade-in.** The port fades the scene in; DOS shows black, then the first

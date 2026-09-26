@@ -2038,72 +2038,82 @@ async function checkPause() {
   const cheatNear = [{ round: 1, race: 1, x: 105, y: 95, type: 4, param: 0x99 }]
   const cheatFar = [{ round: 1, race: 1, x: 500, y: 500, type: 4, param: 0x99 }]
 
-  // (a) a fresh press enters pause; holding SPACE (no press edge) does nothing new.
+  const I = (spaceHeld, released = null, cheatFlag = false) => ({ spaceHeld, released, cheatFlag })
+
+  // (a) entry is SPACE held at the loop head (3074, a level test).
   {
     const s = createPauseState()
-    check('updatePause: idle, no press -> stays unpaused', updatePause(s, 16, false, false, car(), [], 1, 1, {}) === false)
-    check('updatePause: a fresh press enters pause', updatePause(s, 16, true, true, car(), [], 1, 1, {}) === true)
+    check('updatePause: idle, SPACE up -> stays unpaused', updatePause(s, 16, I(false), car(), [], 1, 1, {}) === false)
+    check('updatePause: SPACE held enters pause', updatePause(s, 16, I(true), car(), [], 1, 1, {}) === true)
   }
 
   // (b) a nearby cheat spot's effect applies exactly once, on entry -- not applied at all when out of range.
   {
     const s = createPauseState()
     const c = car()
-    updatePause(s, 16, true, true, c, cheatNear, 1, 1, {})
+    updatePause(s, 16, I(true), c, cheatNear, 1, 1, {})
     check('updatePause: entering pause near a cheat spot applies its effect', c.accel === 0x99)
     check('updatePause: applying a cheat effect flashes (cheatFlashMs > 0)', s.cheatFlashMs > 0)
   }
   {
     const s = createPauseState()
     const c = car()
-    updatePause(s, 16, true, true, c, cheatFar, 1, 1, {})
+    updatePause(s, 16, I(true), c, cheatFar, 1, 1, {})
     check('updatePause: no cheat spot in range -> no effect, no flash', c.accel === undefined && s.cheatFlashMs === 0)
   }
 
-  // (c) minimum hold: doesn't resume before the chosen duration even once SPACE is released.
+  // (c) no minimum (docs/engine.md §9cl): the first release through the ISR's gate ends it at once;
+  // with no gated release it never ends (37B8 has no timeout).
   {
     const s = createPauseState()
-    updatePause(s, 16, true, true, car(), [], 1, 1, {}) // enter
-    let paused = updatePause(s, 1900, false, false, car(), [], 1, 1, {}) // released immediately, well under the hold
-    check('updatePause: still paused just under the minimum hold, even though SPACE is already released', paused === true)
-    paused = updatePause(s, 200, false, false, car(), [], 1, 1, {}) // crosses the 2000ms floor
-    check('updatePause: resumes once the minimum hold has elapsed AND SPACE is released', paused === false)
+    updatePause(s, 16, I(true), car(), [], 1, 1, {}) // enter
+    check('updatePause: SPACE let go but no gated release (a quick tap) -> still paused, however long', updatePause(s, 60000, I(false), car(), [], 1, 1, {}) === true)
+    const t = createPauseState()
+    updatePause(t, 16, I(true), car(), [], 1, 1, {})
+    check('updatePause: a gated release 100ms in ends it -- no 2-second minimum (3789 -> 37B8 -> 37F5)', updatePause(t, 100, I(false, 'KeyX'), car(), [], 1, 1, {}) === false)
   }
 
-  // (d) holding SPACE past the minimum hold blocks the resume until release (the real function's
-  // own "wait for both" framing -- see engine/pause.js's header comment).
+  // (d) the 140-tick minimum exists only with the 25011968 flag (37BF), and not in round 9 (37C7) or
+  // for an F12 release (37CE).
   {
     const s = createPauseState()
-    updatePause(s, 16, true, true, car(), [], 1, 1, {}) // enter, held
-    let paused = updatePause(s, 3000, false, true, car(), [], 1, 1, {}) // well past the hold, but still held
-    check('updatePause: past the minimum hold but SPACE still held -> stays paused', paused === true)
-    paused = updatePause(s, 16, false, false, car(), [], 1, 1, {}) // now released
-    check('updatePause: releases as soon as SPACE lets go, past the hold', paused === false)
+    updatePause(s, 16, I(true, null, true), car(), [], 1, 1, {})
+    check('updatePause: cheat flag -> a release at 100ms does not end it yet (37ED)', updatePause(s, 100, I(false, 'KeyX', true), car(), [], 1, 1, {}) === true)
+    check('updatePause: cheat flag -> ends once 2000ms (140 ticks) have passed', updatePause(s, 1900, I(false, 'KeyX', true), car(), [], 1, 1, {}) === false)
+    const r9 = createPauseState()
+    updatePause(r9, 16, I(true, null, true), car(), [], 9, 1, {})
+    check('updatePause: cheat flag in round 9 -> no minimum (37C7)', updatePause(r9, 100, I(false, 'KeyX', true), car(), [], 9, 1, {}) === false)
+    const f12 = createPauseState()
+    updatePause(f12, 16, I(true, null, true), car(), [], 1, 1, {})
+    check('updatePause: cheat flag, F12 released -> no minimum (37CE)', updatePause(f12, 100, I(false, 'F12', true), car(), [], 1, 1, {}) === false)
   }
 
   // (e) cheatFlashMs counts down to 0 over real time and never goes negative.
   {
     const s = createPauseState()
-    updatePause(s, 16, true, true, car(), cheatNear, 1, 1, {})
+    updatePause(s, 16, I(true), car(), cheatNear, 1, 1, {})
     const start = s.cheatFlashMs
-    updatePause(s, start + 50, false, true, car(), [], 1, 1, {}) // overshoot the flash duration
+    updatePause(s, start + 50, I(true), car(), [], 1, 1, {}) // overshoot the flash duration
     check('updatePause: cheatFlashMs floors at 0, never negative', s.cheatFlashMs === 0)
     check('updatePause: cheatFlashMs actually had a positive duration to count down from', start > 0)
   }
 
-  // (f) sound (1000:35f0's own opening AH=8/AH=6 pair, docs/engine.md §9q): silenced exactly once,
-  // on the pause-ENTRY edge -- not on every tick spent paused, not on resume, not while unpaused.
+  // (f) sound: 35F0's AH=8/AH=6 on entry, and 37AA/37B3's again when stage 1 ends (a gated release
+  // or 140 ticks) -- not on every tick spent paused, not on resume.
   {
     const calls = []
     const sound = { stopSfx: (id) => calls.push(['stopSfx', id]), muteAll: () => calls.push(['muteAll']) }
     const s = createPauseState()
-    updatePause(s, 16, false, false, car(), [], 1, 1, {}, sound) // idle tick, no press
-    check('updatePause: no sound calls while idle (no press)', calls.length === 0)
-    updatePause(s, 16, true, true, car(), [], 1, 1, {}, sound) // the press that enters pause
+    updatePause(s, 16, I(false), car(), [], 1, 1, {}, sound)
+    check('updatePause: no sound calls while idle', calls.length === 0)
+    updatePause(s, 16, I(true), car(), [], 1, 1, {}, sound)
     check('updatePause: entering pause calls stopSfx then muteAll, once each', calls.length === 2 && calls[0][0] === 'stopSfx' && calls[1][0] === 'muteAll')
-    updatePause(s, 500, true, true, car(), [], 1, 1, {}, sound) // still paused, held
-    updatePause(s, 3000, false, false, car(), [], 1, 1, {}, sound) // resumes
-    check('updatePause: no further sound calls while paused or on resume', calls.length === 2)
+    updatePause(s, 500, I(true), car(), [], 1, 1, {}, sound)
+    check('updatePause: nothing more while stage 1 runs', calls.length === 2)
+    updatePause(s, 1600, I(false), car(), [], 1, 1, {}, sound) // 140 ticks pass with no release
+    check('updatePause: stage 1\'s timeout sends AH=8/AH=6 again (37AA/37B3)', calls.length === 4)
+    updatePause(s, 16, I(false, 'KeyX'), car(), [], 1, 1, {}, sound)
+    check('updatePause: no further sound calls on resume', calls.length === 4 && s.paused === false)
   }
 }
 

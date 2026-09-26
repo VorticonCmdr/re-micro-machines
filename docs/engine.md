@@ -1831,7 +1831,7 @@ not AND; a key click ends the pause at once**) was known, but
 same pass). This port has no busy-wait loop to port at all — a browser keyboard is event-driven, not
 polled — so the two-loop structure is collapsed into one boolean state (`engine/pause.js`) with a
 minimum hold that turned out, once the rate was confirmed, to already be exactly right: **2000ms is
-now the confirmed precise real-world duration, not a chosen approximation** (the "~70Hz vsync tick"
+now the confirmed precise real-world duration, not a chosen approximation** **(CORRECTED, §9cl: there is no minimum without the `25011968` flag -- the 140 ticks only end stage 1; the pause ends at the first gated key release, live-proven at 0.66 s)** (the "~70Hz vsync tick"
 reading used elsewhere in this codebase for `DS:0002`'s 0x7D0-tick/28.6s idle timeout — the same rate
 — is what made 2000ms a good guess at the time; §9v is what confirmed it exactly), gated on
 **both** the hold elapsing **and** SPACE being released, matching the real function's own "wait for
@@ -2888,7 +2888,7 @@ incrementer. (**§9an:** the 140-tick loop also exits on a key click, so 2 s is 
 re-render, not a minimum pause.) **140 ticks (the real pause function's own busy-wait threshold, `CheckCheatSpotsThenPause
 1000:35F0`, confirmed at `3790`/`37ED`) at 70.0 Hz = exactly 2.000 seconds** -- `src/engine/pause.js`'s
 own chosen `MIN_PAUSE_MS = 2000` is not merely "plausible" as its own comment previously said, it is
-the exact real-world duration. Cross-checked against `DS:0002`'s own already-documented durations,
+the exact real-world duration **(CORRECTED, §9cl: of the cheat-only floor and of stage 1's timeout; `MIN_PAUSE_MS` is gone)**. Cross-checked against `DS:0002`'s own already-documented durations,
 all landing on clean round numbers at 70.0 Hz (`0x118`=4.0s, `0x7D0`=28.57s matching the already-cited
 "28.6s", `0x2BC`=10.0s exactly) -- independent corroboration the rate is right, not a coincidence.
 `src/engine/pause.js`'s own header comment updated to drop the "plausible, not verified" hedge.
@@ -5346,7 +5346,7 @@ decided match with `[2630]=1`. `trace` (13/20), `ai` and `live` (0) are unchange
   otherwise keeps it waiting. `37B8-37BD` then waits for `[107E]!=0` without clearing it. So the
   pause resumes at the first key click, whether or not 140 ticks have passed. The 140 ticks only decide
   when `37A4` re-renders the view. The 70 Hz rate (§9v, `[PROVEN]`) stands. Not changed in the port
-  (`MIN_PAUSE_MS`, open).
+  (`MIN_PAUSE_MS`, open) **-- ported in §9cl**.
 
 ### 8. Not ported, or still open
 
@@ -5358,7 +5358,7 @@ decided match with `[2630]=1`. `trace` (13/20), `ai` and `live` (0) are unchange
   - `UNKNOWN_fade_duration` (unpaced).
 - *The race start:* the port still fades the scene in; the original shows black, then the first
   frame at full palette (2).
-- *Pause:* no 2 s minimum in the original (7); the port keeps `MIN_PAUSE_MS`.
+- *Pause:* no 2 s minimum in the original (7); the port keeps `MIN_PAUSE_MS` **(fixed, §9cl)**.
 - *Fire:* `UNKNOWN_keyboard_fire_preempt_live`; the on-screen `[1250]` gate (5i) -- **the gate is ported in §9ao; the
   menu "dropping" fire presses was a wrong diagnosis, see §9ao 7; the live preempt check itself is
   `[PROVEN]` in §9aq 3**.
@@ -5933,6 +5933,8 @@ TANKS/a cheat spot actually lets a shot fire. The release tick's own speed jump 
 
 ## 10. Open items
 
+**2026-09-26 (§9cl):** the pause minimum is fixed -- DOS has none without the `25011968` flag; the pause ends at the first key release through the ISR's gate (live-proven).
+
 **2026-09-25 (§9cf), Part R closed:** `UNKNOWN_lev_low_bits` (no reader), `UNKNOWN_map_attr_bits` (bit 1 = mirrored flow field), `UNKNOWN_cheats_type` (`[2917]`/`[291B]` write-only), `UNKNOWN_race_reader_low_bits` (no control-byte reader; the pause's cheat-gated F1+F2/F2+F3 combos found instead), `UNKNOWN_pr0_header_use` (tile 0), `UNKNOWN_sfx_semantics` (consistent; not yet listened to), `UNKNOWN_microu_runs_standalone` (yes, `[PROVEN]`), `UNKNOWN_gfx1_header`, `UNKNOWN_unp_version` (4.11), `UNKNOWN_ph0_1140_1380` (unused knockout slot 5). The race-draw helpers are all named; four port divergences (puffs/splash, paint order, projectile tail icon) and the pause combos went to GOAL P5.
 
 **2026-09-25 (§9ce):** the round-2 bathtub plughole (`62E3`) is ported and live-proven. `UNKNOWN_stale_animtimer_port` **resolved and ported 2026-09-25 (§9cg)** -- `[12B0]` is not bumped in state 0 (`309F`) and not zeroed by the 0→1/0→D entries `62E3`/`6169`/`5FAC`, so those animations start from the value the car entered state 0 with (94 after the countdown, live); the port starts them from 0 (GOAL P5).
@@ -6056,7 +6058,7 @@ resumes at the first key click (no 2 s minimum). New or carried open items (deta
 - the on-screen `[1250]` gate on firing (`4F3C`) -- **resolved and ported 2026-09-23 (§9ao)**;
 - `UNKNOWN_exit_hold_855a_pass`, `UNKNOWN_exit_banner_live`, `UNKNOWN_fade_duration`;
 - the race-start fade-in (the original shows black, then the first frame at full palette);
-- the pause's `MIN_PAUSE_MS` (port) vs the first key click (original);
+- the pause's `MIN_PAUSE_MS` (port) vs the first key click (original) **(fixed, §9cl)**;
 - the BX-quirk garbage's cross-race carry-over;
 - the Challenge flow's own divergences (final race 2nd = fail, uncapped bonus trigger, no OUTCOME
   after a passed race, tune 5 unreachable, the main menu's tune 1, OUTCOME 4's screen, the `1A4A`
@@ -12245,3 +12247,64 @@ setting (`SETTINGS.DAT` word 2), constant for the whole race.
 **Not modelled.** The pre-loop render also runs `8083`'s puff cooldown re-arm (`[12B2]=3`), which
 the port does in the per-car pass instead, and the HUD ranking pass. Both are without visible effect
 at the start line.
+
+## 9cl. The pause ends at the first gated key release: no minimum (2026-09-26)
+
+GOAL-DOS-PARITY.md P5, "The pause minimum". This corrects §9q/§9v, which read the 140-tick wait as
+a minimum for every pause. `[STATIC]` from a full re-read of `CheckCheatSpotsThenPause 35F0-37FB`,
+and `[PROVEN]` where marked by live DOSBox reads of `[2633]`, `[261F]` and `[107E]`/`[107F]` in a
+ROUND21 race.
+
+**The real sequence.**
+1. **Entry.** `3074` tests SPACE's **level** (`[107C]` bit 0x2) at each loop head. `35F0` sends
+   `AH=8`/`AH=6` and scans the cheat spots.
+2. **Paused.** `3753` sets `[2633]=1` and `7AF8` runs. The "Paused!" banner is drawn and presented
+   (`9289`/`92BC`).
+3. **Clears** (`3779-3784`): `[261F]=0`, then the ISR's release latch `[107E]=0` and tracked key
+   `[107F]=0`.
+4. **Stage 1** (`3789-3796`): wait until `[107E]≠0` or `[261F]==140`.
+5. **Stage-1 end** (`3798-37B3`): `[2633]=2` and `[2638]=1`, then a render into the back buffer, which
+   is not presented. `7AF8` runs again, then `AH=8`/`AH=6`.
+6. **Stage 2** (`37B8`): wait until `[107E]≠0`, with **no timeout**.
+7. **The cheat branch.** Only with the `25011968` flag (`37BF`), outside round 9 (`37C7`), and not
+   for F12 (`37CE`), it polls the combos until `[261F]` ≥ 140 (`37ED`).
+8. **End:** `[2633]=0` (`37F5`).
+
+`[2633]` is read only by the engine-sound update (`7B89`).
+
+So without the flag the pause ends at the first key release that gets through the ISR's gate
+(§9ca), however early. Because the entry clears `[107F]`, a quick SPACE tap's own release doesn't
+pass the gate. A SPACE held until keyboard auto-repeat re-tracks it does, and so does the next press
+and release of any key.
+
+**Live `[PROVEN]`:**
+- **The tap's own release doesn't count.**
+  - SPACE was held 500 ms (the injected key produces no auto-repeat). On its press it was tracked
+    (`[107F]=0x39`), then `[2633]=1`, then latch and tracked were cleared. Its release changed
+    nothing.
+  - At `[261F]=140` stage 1 ended (`[2633]=2`). An X tap 3 s in was tracked on its press and latched
+    on its release (`0x2D`), and `[2633]` went to 0 within 5 ms.
+- **There is no minimum.** With an X tap 0.5 s after SPACE, the pause lasted 0.66 s (`[261F]`=45),
+  ending on the X release.
+
+**Port.** `pause.js`'s `updatePause(state, dtMs, { spaceHeld, released, cheatFlag }, …)` follows the
+sequence:
+- entry is on SPACE held;
+- stage 1 ends on the gate or on 140 ticks (2000 ms at 70 Hz), with the second `AH=8`/`AH=6`;
+- the end comes on the gate;
+- the 2000 ms floor applies only with the flag, outside round 9, and not for F12.
+
+`released` is the mirrored `[107E]` (`menuReleaseTracker.isrState().latch`). The callers clear it on
+the entry edge, as `377F`/`3784` do. `play.js` now has its own tracker. `flow.js` passes
+`cheatActive`, and an ESC release now ends the pause through the same rule (and still quits after
+one step, §9ca), including the cheat floor. A press since the last frame counts as held, so a tap
+shorter than a frame isn't missed; DOS samples at 35 Hz. The combos stay unported (their own P5 item).
+
+**Tests.** `check-play`'s pause block was rewritten:
+- entry on the level;
+- a SPACE tap without a gated release stays paused for 60 s;
+- a gated release at 100 ms ends it;
+- the cheat floor, and its round-9 and F12 exceptions;
+- the second `AH=8`/`AH=6` at stage 1's timeout.
+
+The old 2-second floor fails three of the cases.
