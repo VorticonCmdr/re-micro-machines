@@ -365,28 +365,6 @@ export function drawCreditsScreen(buf, arena) {
   CREDITS_LINES.forEach((line, i) => drawString(buf, arena, rec('FONT1.CHR'), line, 8, 40 + i * 14))
 }
 
-/** RunRedefineKeysScreen 1000:92f0: NOT cleared between the two groups (only once, at entry) --
- * "KEYS 1" and its 5 labels stay on screen while "KEYS 2" and its own 5 are drawn below them, live-
- * confirmed this session (a single DOSBox screenshot showed both groups stacked together). `slots`:
- * the 10-scancode scratch array so far (undefined past the current one); `slotIndex`: 0-9, the
- * slot currently being prompted for (or `REDEFINE_TOTAL_SLOTS` once the whole pass is done). */
-export function drawRedefineKeysScreen(buf, arena, { slots, slotIndex }) {
-  let y = 8
-  for (let group = 0; group < 2; group++) {
-    if (slotIndex < group * REDEFINE_SLOT_LABELS.length) break // this group hasn't started yet
-    drawString(buf, arena, rec('FONT2.CHR'), REDEFINE_GROUP_LABELS[group], 8, y)
-    y += 17
-    for (let i = 0; i < REDEFINE_SLOT_LABELS.length; i++) {
-      const slot = group * REDEFINE_SLOT_LABELS.length + i
-      if (slot > slotIndex) break
-      drawString(buf, arena, rec('FONT1.CHR'), REDEFINE_SLOT_LABELS[i], 16, y)
-      const scancode = slots[slot]
-      if (scancode != null) drawString(buf, arena, rec('FONT1.CHR'), redefineKeyChar(scancode), 168, y)
-      y += 10
-    }
-  }
-}
-
 /** redefineKeyChar: the character 1000:ADF0's table shows for `scancode` (falls back to '?'). */
 export const redefineKeyChar = (scancode) => REDEFINE_DISPLAY_CHAR[scancode] ?? REDEFINE_DISPLAY_CHAR_DEFAULT
 export { REDEFINE_SLOT_LABELS }

@@ -6222,6 +6222,8 @@ With every checkbox of `GOAL-DOS-PARITY.md` ticked, §10.1 still held items that
    - `check-front` now also fails when a capture in `tools/refs/front` has no layout checking it (the `h2h_*` frames are `check-h2hscreens`'), which is what makes the PRESS ANY KEY check fail without the fix.
    - The credits capture failed: `screen_capture` returned frames seconds old in this session, so the credits had already been dismissed when `A000` was read (the frame is the OPTIONS screen). The redefine-keys frame was read directly and differs from `drawRedefineKeysScreen` (§9dr 8).
 
+8. **The redefine-keys screen, pixel-exact.** Its frame was read from `A000` in the first session: the `0400` header, "KEYS 1" and LEFT with `?` against it, RIGHT being asked (the F5 that opened the screen auto-repeated past the typematic delay, and that repeat was taken as LEFT's key -- scratch `DS:AE73` held 0x3F -- before an ESC left without saving; `DS:106C` was unchanged). `RunRedefineKeysScreen 92F0`'s draw calls (`931C-939F`) give the layout: a y cursor from 0x28; the group name (`DS:AE3D`/`AE44`, FONT2) at x 0xA before slots 0 and 5, then y += 0x11; each label (`DS:AE4B`'s list, each with a leading space) FONT1 at x 0x14; the key's character FONT1 at x 0x6E, then y += 0xA. The port's older `drawRedefineKeysScreen` had no header and its own positions; `frontLayouts.js`'s `layoutRedefineKeys` replaces it. `npm run front`: 0 px (22 screens).
+
 ## 10. Open items
 
 Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: `open`, `narrowed` (part answered; the rest is the open question), `closed`. **Section** is where the answer (or the question) is written up; the history, wrong turns included, stays in those sections and is not repeated here. **Address** is `MICROU.EXE`'s (`1000:` code, `DS:` data) unless another file is named. This table replaced a run-on paragraph of dated notes on 2026-09-26 (`GOAL-DOS-PARITY.md` D2, §9cx); each ID's status was re-read from its latest dated note. When an item opens or closes, change its row here in the same commit.
@@ -6239,7 +6241,7 @@ Every `UNKNOWN_*` ID the docs and the code have used, one row each. **Status**: 
 
 | Item | Status | Section | Address | Open question |
 |---|---|---|---|---|
-| Front-end pixel parity | narrowed | §9dm-§9dp, §9dr 7; GOAL Part F | - | All 21 captured screens (and §9bz's six two-human ones) are 0 px in `npm run front`, PRESS ANY KEY and FAILED TO QUALIFY included (§9dr 7). Not captured, so not checked: the Head-to-Head vs CPU carousel and intro, the round-9 bonus race's intro, EXTRA LIFE / NO BONUS, the credits (a failed attempt, §9dr 7). |
+| Front-end pixel parity | narrowed | §9dm-§9dp, §9dr 7; GOAL Part F | - | All 22 captured screens (and §9bz's six two-human ones) are 0 px in `npm run front`, PRESS ANY KEY, FAILED TO QUALIFY and the redefine-keys screen included (§9dr 7-8). Not captured, so not checked: the Head-to-Head vs CPU carousel and intro, the round-9 bonus race's intro, EXTRA LIFE / NO BONUS, the credits (a failed attempt, §9dr 7). |
 
 ### 10.3 Closed
 

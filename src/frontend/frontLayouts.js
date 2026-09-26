@@ -3,11 +3,11 @@
 // tools/refs/front/ to the layout of the state it shows; tools/check-front.mjs diffs them. Each entry
 // takes `ctx` = `{ settings }` (the parsed SETTINGS.DAT the capture ran with).
 import { header, portrait, PORTRAIT_NAMES } from './h2hScreens.js'
-import { drawOptionsScreen, drawJoystickCalibrationScreen } from './screens.js'
+import { drawOptionsScreen, drawJoystickCalibrationScreen, redefineKeyChar } from './screens.js'
 import { caseImage } from '../formats/chr.js'
 import { blitTransparent } from '../render/blit.js'
 import { MENU_VIEW } from '../render/menuView.js'
-import { ORDER_TABLE, BOARD_ICON_POSITIONS } from '../data/frontend-tables.js'
+import { ORDER_TABLE, BOARD_ICON_POSITIONS, REDEFINE_GROUP_LABELS, REDEFINE_SLOT_LABELS } from '../data/frontend-tables.js'
 
 /** GAME OPTIONS (`2770`): the `0400` header (`[0x156]`=0), then the body `drawOptionsScreen` draws
  * (exact below row 30 since §9cu). */
@@ -18,6 +18,26 @@ export function layoutOptions({ settings, joystick = false }) {
 /** F7's joystick calibration (`2AB5`) on the same `0400` header. */
 export function layoutJoyCal({ columns, prompt }) {
   return [...header({ words: 0 }), { op: 'call', fn: (buf, arena) => drawJoystickCalibrationScreen(buf, arena, { columns, prompt }) }]
+}
+
+/** F5's redefine keys (`RunRedefineKeysScreen 92F0`): the `0400` header, then a y cursor from 0x28.
+ * Before slots 0 and 5 the group name ("KEYS 1"/"KEYS 2", `DS:AE3D`/`AE44`, FONT2) at x 0xA and
+ * y += 0x11 (`931C-9339`); each slot's label (`08F0`, the n-th of `DS:AE4B`, which carry a leading
+ * space) FONT1 at x 0x14 (`933B-9344`); once its key is taken, the key's character (`ADF0`'s table,
+ * '?' otherwise) FONT1 at x 0x6E, and y += 0xA (`9392-939F`). Nothing is cleared between slots.
+ * `slots`: the scancodes taken so far; `slotIndex`: the slot being asked for (10 when done). */
+export function layoutRedefineKeys({ slots, slotIndex }) {
+  const ops = [...header({ words: 0 })]
+  let y = 0x28
+  for (let slot = 0; slot <= Math.min(slotIndex, 9); slot++) {
+    const n = slot % REDEFINE_SLOT_LABELS.length
+    if (n === 0) { ops.push({ op: 'text', font: 'FONT2.CHR', text: REDEFINE_GROUP_LABELS[slot / REDEFINE_SLOT_LABELS.length], x: 0xa, y }); y += 0x11 }
+    ops.push({ op: 'text', font: 'FONT1.CHR', text: ` ${REDEFINE_SLOT_LABELS[n]}`, x: 0x14, y })
+    if (slots[slot] == null) break // 9357: waiting for this slot's key
+    ops.push({ op: 'text', font: 'FONT1.CHR', text: redefineKeyChar(slots[slot]), x: 0x6e, y })
+    y += 0xa
+  }
+  return ops
 }
 
 /** The class names in `DS:002F` order (`0C5D`/`020E`'s NUL-walk). */
@@ -321,6 +341,7 @@ export const FRONT_SCREENS = {
   oneplayer: () => layoutOnePlayerGame({ selection: 0 }),
   options: (ctx) => layoutOptions({ settings: ctx.settings }),
   options_f7: (ctx) => layoutOptions({ settings: ctx.settings, joystick: true }),
+  redefine: () => layoutRedefineKeys({ slots: [0x3f], slotIndex: 1 }), // F5's auto-repeat was taken as LEFT, live (§9dr 8)
   joycal_centre: () => layoutJoyCal({ columns: [['CENTRE'], null], prompt: true }),
   joycal_right: () => layoutJoyCal({ columns: [['CENTRE', 'LEFT', 'RIGHT'], null], prompt: true }),
 }

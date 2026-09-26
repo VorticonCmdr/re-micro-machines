@@ -43,9 +43,9 @@ import { RUFF_TRUCK_TIMES } from '../data/engine-tables.js'
 import { initTournament, createRaceIndexRegister, isInQualifier, applyRaceSkip, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, raceIntroHoldTicks, raceIntroParticipants, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, resultsPassed, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, OUTCOME } from './tournament.js'
 import { CHARACTER_NAMES, OUTCOME_MESSAGES, resolveSmoothnessForPlay } from '../data/frontend-tables.js'
 import { ORDER_TABLE, TRACK_NAMES } from '../data/frontend-tables.js'
-import { layoutOptions, layoutJoyCal, layoutTitle, layoutSelectGame, layoutOnePlayerGame, layoutCharSelect, layoutPicker, layoutQualifierIntro, layoutRaceIntro, layoutResults, layoutOutcome, layoutBoard, layoutEliminated, layoutChampion, pressAnyKeyPrompt } from './frontLayouts.js'
+import { layoutOptions, layoutJoyCal, layoutTitle, layoutSelectGame, layoutOnePlayerGame, layoutCharSelect, layoutPicker, layoutQualifierIntro, layoutRaceIntro, layoutResults, layoutOutcome, layoutBoard, layoutEliminated, layoutChampion, pressAnyKeyPrompt, layoutRedefineKeys } from './frontLayouts.js'
 import { paintOps, layoutChooseGame, layoutTwoPlayerRaceInfo, layoutTwoPlayerResult, layoutSingleRaceSelect, slideIconX } from './h2hScreens.js'
-import { drawTwoPlayerPickLabels, drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawOpponentPanel, drawEliminatedScreen, drawEliminationIcon, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawJoystickCalibrationScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
+import { drawTwoPlayerPickLabels, drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawOpponentPanel, drawEliminatedScreen, drawEliminationIcon, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawJoystickCalibrationScreen, drawCreditsScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
 import { createSmoothnessGate } from '../engine/smoothness.js'
 import { introInitialState, introStep, smPalette, SCREEN_W as LOGO_W, SCREEN_H as LOGO_H } from '../formats/gfx1.js'
 import { attractInitialState, attractStep } from './attract.js'
@@ -366,7 +366,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   function paintOptions() {
     menuBuf.fill(0)
     if (options.sub === 'credits') drawCreditsScreen(menuBuf, arena)
-    else if (options.sub === 'redefine') drawRedefineKeysScreen(menuBuf, arena, { slots: options.redefineScratch, slotIndex: options.redefineSlotIndex })
+    else if (options.sub === 'redefine') paintOps(menuBuf, arena, layoutRedefineKeys({ slots: options.redefineScratch, slotIndex: options.redefineSlotIndex })) // 92F0, pixel-exact (§9dr 8)
     else if (options.sub === 'joycal') paintOps(menuBuf, arena, layoutJoyCal({ columns: options.cal.columns, prompt: options.cal.phase === 'wait' }))
     else {
       paintOps(menuBuf, arena, layoutOptions({ settings, joystick: sticks !== 0 })) // pixel-exact with 0400's header (docs/engine.md §9dm)
