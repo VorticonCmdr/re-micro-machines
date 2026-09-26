@@ -108,8 +108,10 @@ and stays local to your machine.
   race-over jingle, which that driver's sound bank lacks) and NONE (silence). The choice changes a
   little gameplay too, as in the original: with BLASTER, pausing stops every car.
 - **The real GAME OPTIONS screen** (`game.html`, shown after the code card, before the title): F1/
-  F2 cycle the control device (P1 can never reach JOY2/MOUSE, a real, live-confirmed asymmetry —
-  both currently only ever reach KEYS1/KEYS2, since no joystick/mouse input is wired up yet), F3
+  F2 cycle the control device (P1 can never reach JOY2/MOUSE, a real, live-confirmed asymmetry;
+  JOY 1/JOY 2 are gamepads, offered once the browser reports one — press a button on it first — and
+  F7 calibrates them; MOUSE is never offered, because the original never turns its mouse on,
+  `docs/engine.md` §9cu), F3
   the sound driver, F4 the smoothness (1–4, plus a real 5th value, AUTO, that resolves to the
   smoothest setting at RETURN — the original's own hardware-speed probe has no meaningful browser
   equivalent), F5 redefines the KEYS1/KEYS2 keyboard bindings, F6 shows the credits; RETURN plays
@@ -143,9 +145,6 @@ and stays local to your machine.
   (portraits, win/lose poses, vehicle icons and their slides, pixel-checked against DOSBox,
   `docs/engine.md` §9bz), the tournament board screen, the interactive opponent picker, and the
   elimination/replacement screen.
-- Gamepad/mouse input during a race (keyboard only) -- mouse input elsewhere (the logo intro's
-  click-to-skip) is implemented. The GAME OPTIONS screen's own F7 (joystick calibration) is gated
-  correctly (never shown without a joystick) but its analog-read body isn't ported, same reason.
 - A handful of narrow, explicitly-tagged `[UNKNOWN]` items remain — grep `docs/engine.md` and
   `docs/sound.md` for `UNKNOWN_` to see exactly what and why.
 

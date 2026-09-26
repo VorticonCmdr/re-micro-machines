@@ -50,6 +50,7 @@
     "live": "node tools/check-live.mjs",
     "smoke": "node tools/check-views.mjs",
     "pages": "node tools/check-pages.mjs",
+    "devices": "node tools/check-devices.mjs",
     "si2": "node tools/check-si2.mjs && node tools/check-si2-live.mjs && node tools/check-si2-race.mjs",
     "tunes": "node tools/render-tunes.mjs"
   },

@@ -4,7 +4,7 @@
 // matching this project's existing engine/frontend split.
 //
 // The real screen's own structure: a 6-line static menu (F1-F6; F7 only when a joystick is
-// detected, 1000:2822 -- always false in this port today, no joystick input yet, P6) with the
+// detected, 1000:2822 -- `[2625]`, from the Gamepad API, docs/engine.md §9cu) with the
 // current P1/P2 control device, sound driver and smoothness shown after each label, redrawn after
 // every key. F1-F4 CYCLE a value (with real availability gating, not simply "next"); F5 opens the
 // redefine-keys sub-screen; F6 the credits; ENTER commits and plays; ESC quits (to DOS, for real
@@ -24,10 +24,11 @@ export const CONTROL_KEYS2 = 5
  * 1000:2977-29A4 for P2) -- NOT symmetric: P1 can never choose JOY2 or MOUSE, regardless of
  * hardware (only JOY1, KEYS1, KEYS2 are ever reachable for P1); P2 can choose any of the five,
  * gated on real presence (JOY1 needs >=1 stick, JOY2 needs exactly 2, MOUSE needs a detected
- * mouse). `avail` is `{joy1,joy2,mouse}`, all `false` in this port today (no joystick/mouse input
- * is wired up yet -- P6), so in practice both players currently only ever reach KEYS1/KEYS2 --
- * live-confirmed: with no joystick or mouse present, one F1 press and one F2 press each cycled
- * all the way back to their own starting value. */
+ * mouse). `avail` is `{joy1,joy2,mouse}`: `joy1` = `[2625]!=0`, `joy2` = `[2625]==2` (the
+ * gamepads flow.js counts), `mouse` = `[2627]`, which is always 0 -- its only writer `3A44` is never
+ * called (docs/engine.md §9cu), so MOUSE is never offered even with a mouse driver present (live).
+ * Live-confirmed too: with no joystick, one F1 press and one F2 press each cycle all the way back to
+ * their own starting value. */
 export function controlAvailable(value, isP1, avail) {
   if (value === CONTROL_JOY1) return avail.joy1
   if (value === CONTROL_JOY2) return isP1 ? false : avail.joy1 && avail.joy2 // real bytes: [2625]==2, both sticks

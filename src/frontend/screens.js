@@ -11,7 +11,7 @@
 import { CHR_TABLE, caseImage } from '../formats/chr.js'
 import { drawString, drawStringCentred, blitChr, MENU_VIEW } from '../render/menuView.js'
 import { blitTransparent } from '../render/blit.js'
-import { CHARACTER_NAMES, CHARACTER_SKILLS, trackName, OPTIONS_MENU_LINES, OPTIONS_FOOTER, OPTIONS_TITLE, SMOOTHNESS_LABELS, SOUND_LABELS, CREDITS_LINES, REDEFINE_GROUP_LABELS, REDEFINE_SLOT_LABELS, REDEFINE_DISPLAY_CHAR, REDEFINE_DISPLAY_CHAR_DEFAULT, TITLE_COPYRIGHT, TITLE_CLASS_NAMES, SELECT_GAME_TITLE, ONE_PLAYER_LABEL, TWO_PLAYER_LABEL, GAME_LABEL, ONE_PLAYER_ITEM_LABELS, ORDER_TABLE, BOARD_ICON_POSITIONS } from '../data/frontend-tables.js'
+import { CHARACTER_NAMES, CHARACTER_SKILLS, trackName, OPTIONS_MENU_LINES, OPTIONS_FOOTER, OPTIONS_TITLE, JOYCAL_PROMPT, SMOOTHNESS_LABELS, SOUND_LABELS, CREDITS_LINES, REDEFINE_GROUP_LABELS, REDEFINE_SLOT_LABELS, REDEFINE_DISPLAY_CHAR, REDEFINE_DISPLAY_CHAR_DEFAULT, TITLE_COPYRIGHT, TITLE_CLASS_NAMES, SELECT_GAME_TITLE, ONE_PLAYER_LABEL, TWO_PLAYER_LABEL, GAME_LABEL, ONE_PLAYER_ITEM_LABELS, ORDER_TABLE, BOARD_ICON_POSITIONS } from '../data/frontend-tables.js'
 import { CONTROL_NAME } from '../formats/globaldata.js'
 import { WOBBLE_TABLE } from './elimination.js'
 
@@ -309,25 +309,44 @@ export function drawEliminatedScreen(buf, arena, { victim, playerCharacter, oppo
 }
 
 /** P1's third boot item: RunOptionsScreenWithSettingsDat 1000:2770 (GOAL-DOS-PARITY.md,
- * docs/engine.md §9au). F1-F6 (F7 is never drawn here: it only appears with a real joystick
- * detected, 1000:2822, and no joystick/mouse input is wired up yet -- P6), each with its current
- * value; the footer hints; a "!" once the 25011968 cheat completes (1000:289D-28AA). Laid out by
- * hand for this substrate's 256-wide buffer, like every other screen in this file -- not measured
- * against a DOSBox frame (no live capture of this exact layout was taken; the SCREEN'S OWN
- * behaviour, not its pixel position, was verified live this session). */
-export function drawOptionsScreen(buf, arena, { settings, cheatActive = false }) {
-  drawStringCentred(buf, arena, rec('FONT2.CHR'), OPTIONS_TITLE, 4)
+ * docs/engine.md §9au, §9cu). The body is pixel-exact against a live frame (rows 30-199,
+ * `tools/refs/front/options_f7_a000.bin`): the title centred in FONT2 at y=0x23 (`27F8`), the menu
+ * lines in FONT2 from (0, 0x34) every 0x10 (`2804`), F7 only with a joystick detected (`2822`,
+ * `[2625]!=0`), the values at x=200, and the footer in FONT1 centred from y=176 every 8. The menu
+ * background above (`0400`, the logo header) is not drawn here (GOAL Part F). `joystick`: whether
+ * `[2625]` is nonzero; a "!" once the 25011968 cheat completes (1000:289D-28AA, position not
+ * measured). */
+export function drawOptionsScreen(buf, arena, { settings, cheatActive = false, joystick = false }) {
+  const f2 = rec('FONT2.CHR'), f1 = rec('FONT1.CHR')
+  drawStringCentred(buf, arena, f2, OPTIONS_TITLE, 0x23)
   const values = [
     CONTROL_NAME[settings.p1Control], CONTROL_NAME[settings.p2Control],
-    SOUND_LABELS[settings.soundDriver], SMOOTHNESS_LABELS[settings.smoothness - 1], '', '',
+    SOUND_LABELS[settings.soundDriver], SMOOTHNESS_LABELS[settings.smoothness - 1],
   ]
-  OPTIONS_MENU_LINES.slice(0, 6).forEach((label, i) => {
-    const y = 26 + i * 12
-    drawString(buf, arena, rec('FONT1.CHR'), label, 8, y)
-    if (values[i]) drawString(buf, arena, rec('FONT1.CHR'), values[i], 176, y) // longest value is 7 chars (BLASTER/MEDIUM): 176+7*8=232, fits MENU_VIEW.w=256
+  OPTIONS_MENU_LINES.slice(0, joystick ? 7 : 6).forEach((label, i) => {
+    const y = 0x34 + i * 0x10
+    drawString(buf, arena, f2, label, 0, y)
+    if (values[i]) drawString(buf, arena, f2, values[i], 200, y)
   })
-  OPTIONS_FOOTER.forEach((line, i) => drawStringCentred(buf, arena, rec('FONT1.CHR'), line, 170 + i * 10))
-  if (cheatActive) drawString(buf, arena, rec('FONT1.CHR'), '!', 248, 4)
+  OPTIONS_FOOTER.forEach((line, i) => drawStringCentred(buf, arena, f1, line, 176 + i * 8))
+  if (cheatActive) drawString(buf, arena, f1, '!', 248, 4)
+}
+
+/** The F7 joystick calibration (`2AB5`), pixel-exact below the menu background against two live
+ * frames (`joycal_centre`/`joycal_right`): "JOYSTICK n" and then CENTRE, LEFT, RIGHT in FONT2 at
+ * x=10 (stick 1) or 110 (stick 2), y=0x1E + 0x10*line (`929`), stick 1's column staying on screen
+ * while stick 2 is calibrated; "PLACE JOYSTICK THEN PRESS FIRE" centred in FONT1 at y=180, drawn only
+ * while a step waits for the fire button (`2BAD`, `C96`). `columns`: per stick, the labels drawn so
+ * far (e.g. ['CENTRE', 'LEFT']); `prompt`: whether the wait loop is running. */
+export function drawJoystickCalibrationScreen(buf, arena, { columns, prompt }) {
+  const f2 = rec('FONT2.CHR'), f1 = rec('FONT1.CHR')
+  columns.forEach((labels, i) => {
+    if (!labels) return
+    const x = i === 0 ? 10 : 110
+    drawString(buf, arena, f2, `JOYSTICK ${i + 1}`, x, 0x1e)
+    labels.forEach((label, j) => drawString(buf, arena, f2, label, x, 0x2e + 0x10 * j))
+  })
+  if (prompt) drawStringCentred(buf, arena, f1, JOYCAL_PROMPT, 180)
 }
 
 /** ShowCredits 1000:2a82: 10 lines, dismissed by any key. */

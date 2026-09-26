@@ -135,14 +135,18 @@ export const OPTIONS_MENU_LINES = [
   'F4 SMOOTHNESS',
   'F5 REDEFINE KEYS',
   'F6 CREDITS',
-  'F7 CONFIGURE JOYSTICK', // only drawn when a joystick is detected (JoystickCount != 0, 1000:2822) -- P6 scope, never shown by this port yet
+  'F7 CONFIGURE JOYSTICK', // only drawn when a joystick is detected ([2625] != 0, 1000:2822)
 ]
-export const OPTIONS_FOOTER_ADDR = 0xe8c
+export const OPTIONS_FOOTER_ADDR = 0xe88 // was 0xe8c, without the leading space the live frame shows (§9cu)
 export const OPTIONS_FOOTER = [
-  'USE ESCAPE TO QUIT GAME',
+  ' USE ESCAPE TO QUIT GAME',
   'PRESS RETURN TO PLAY GAME',
   'SPACE PAUSES IN GAME',
 ]
+// The F7 calibration's strings (JoystickCalibration 1000:2AB5): DS:0DED 'JOYSTICK 1' (its digit
+// patched at DS:0DF6 to '1'/'2'), 0DD3 CENTRE, 0DDA LEFT, 0DDF RIGHT, and the prompt at 0DF8.
+export const JOYCAL_LABELS = ['CENTRE', 'LEFT', 'RIGHT']
+export const JOYCAL_PROMPT = 'PLACE JOYSTICK THEN PRESS FIRE'
 export const OPTIONS_TITLE_ADDR = 0xf5b
 export const OPTIONS_TITLE = 'GAME OPTIONS'
 

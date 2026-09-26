@@ -14,6 +14,8 @@ import { resolveSource } from './io/resolveSource.js'
 import { loadTileBank, buildWordMap, vehicleFrames } from './formats/race.js'
 import { decodePalette } from './formats/pal.js'
 import { decompress } from './formats/lz.js'
+import { createControlReader, createMouseDriver } from './engine/devices.js'
+import { attachMouseDriver } from './engine/pointerMouse.js'
 import { parseStrtPos, parseSettings, parseCheats } from './formats/globaldata.js'
 import { indexedToRgba, paint } from './render/raster.js'
 import { composeRaceView } from './render/raceView.js'
@@ -80,8 +82,20 @@ export async function bootRace({ canvas, statusEl, pickButton, dropZone, oplStri
   const ph0 = decompress(ph0Bytes)
   const strt = parseStrtPos(strtBytes).find((s) => s.round === ROUND && s.race === RACE)
 
-  const keys2 = settingsBytes ? parseSettings(settingsBytes).keys2 : DEFAULT_KEYS2
-  const humanReader = recordingReader(createKeyboardReader(keys2, window))
+  const fileSettings = settingsBytes ? parseSettings(settingsBytes) : null
+  const keys2 = fileSettings ? fileSettings.keys2 : DEFAULT_KEYS2
+  // P1's device is SETTINGS.DAT's word 0 (docs/engine.md §9cu): KEYS 1/2, or JOY 1 through the
+  // Gamepad API. (P1 can never pick JOY 2 or MOUSE on the real options screen.)
+  const p1Control = fileSettings?.p1Control ?? 5
+  const mouseDriver = createMouseDriver()
+  attachMouseDriver(mouseDriver, window, canvas, () => p1Control === 3)
+  const humanReader = recordingReader(createControlReader(p1Control, {
+    keyboard: (scancodes) => createKeyboardReader(scancodes, window),
+    keys1: fileSettings?.keys1 ?? [], keys2,
+    getGamepads: () => (navigator.getGamepads ? navigator.getGamepads() : []),
+    thresholds: (stick) => (stick === 2 ? fileSettings?.joystick2 : fileSettings?.joystick1) ?? { left: 10, right: 200 },
+    mouse: mouseDriver,
+  }))
   const pauseKey = createPauseKeyReader(window)
   const releaseTracker = createMenuReleaseTracker(window) // the ISR's [107E]/[107F] gate, which ends the pause (docs/engine.md §9cl)
   const pauseState = createPauseState()
@@ -90,9 +104,10 @@ export async function bootRace({ canvas, statusEl, pickButton, dropZone, oplStri
 
   const cars = spawnCars(parseStrtPos(strtBytes), ROUND, RACE)
   const camera = initCameraState(strt)
-  // controllerTypes: the words [2658..265E] -- the player is on the keyboard (KEYS2 = 5), the drones
-  // the CPU (6). A keyboard car holding fire gets no steering or throttle that step (4D4B-4D70).
-  const ctx = { ...roundCtx(ROUND, RACE), brk, tournamentIndex: 0, world, stepIncrement: 1, sound, camera, controllerTypes: [5, 6, 6, 6] }
+  // controllerTypes: the words [2658..265E] -- the player's device (KEYS 2 = 5 by default), the
+  // drones the CPU (6). A keyboard or mouse car holding fire gets no steering or throttle that step
+  // (4D4B-4D70); a joystick car does (live, docs/engine.md §9cu).
+  const ctx = { ...roundCtx(ROUND, RACE), brk, tournamentIndex: 0, world, stepIncrement: 1, sound, camera, controllerTypes: [p1Control, 6, 6, 6] }
   // Fresh per race: [26C6]/[26CC]/the order array all start from their race-init values (runStep's
   // own docstring). `raceState.raceOver` is the real main loop's 30df exit (docs/engine.md §9ah).
   const raceState = {}

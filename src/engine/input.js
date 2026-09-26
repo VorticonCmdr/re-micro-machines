@@ -1,6 +1,6 @@
 // Human control-byte reader (PLAN-ENGINE.md D3: one pluggable reader among several -- `ai.js` is
-// another). Keyboard only this milestone; gamepad/mouse are the same 5-bit-byte interface and are
-// not implemented here. Bit order and key roles: docs/engine.md §6 (`KeyboardIsr 2efd`,
+// another). The keyboard readers; JOY 1/JOY 2/MOUSE are `devices.js` (docs/engine.md §9cu), the same
+// 5-bit-byte interface. Bit order and key roles: docs/engine.md §6 (`KeyboardIsr 2efd`,
 // `RunRedefineKeysScreen`'s slot labels) -- LEFT/RIGHT/ACCELERATE/BRAKE/SELECT(fire) map to bits
 // 0x80/0x40/0x20/0x10/0x08, the same layout every reader (human or AI) produces.
 

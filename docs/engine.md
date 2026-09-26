@@ -6148,6 +6148,10 @@ matched, now pinned by a test), and the race-start fade-in (the port now holds b
 and steps nothing, then shows the first frame at full palette). Still unported: the race setup's own
 `395D` fade-out of the screen before the race (the port's front-end screens have no fades at all).
 
+**Added 2026-09-26 (§9cu).** JOY 1/JOY 2 via the Gamepad API with the real F7 calibration, and the
+mouse reader over a model of the untouched INT 33h driver; MOUSE is never offered, because `3A44` has
+no caller (live). New: `UNKNOWN_mouse_host_scale` (pointer pixels to mickeys, taken as 1:1).
+
 **Added 2026-09-26 (§9ct).** The page chrome (P7): the developer toggles appear only with `?dev`.
 
 **Added 2026-09-26 (§9cs).** Race setup leaves 14 byte ranges of every car record alone (`[STATIC]`,
@@ -12897,3 +12901,129 @@ It checks that both entry scripts call `applyDevFlag()` before their first `getE
 Against the old pages six checks fail. **Browser-checked:** without `?dev`, `game.html` shows only
 the title, the description and the canvas, and boots into the logo with no console error. With
 `?dev` it shows the two toggles and the links. `index.html` shows Smoothness and the links and races.
+
+## 9cu. JOY 1, JOY 2 and MOUSE (2026-09-26)
+
+GOAL-DOS-PARITY.md P6. `[STATIC]` from the listing unless tagged; the live session is listed at the end.
+
+**The readers.** `2D00` sets one reader per car slot from the control words `[2658..265E]`. It
+clears `[108C]` first, then:
+- 4 → `2DFA` and 5 → `2DFE` (the keyboard);
+- 3 → `2E02` (the mouse);
+- 1 → `2E6C` with `[108C]|=1`, and 2 → `2EB3` with `|=2` (the joysticks);
+- anything else → `2DED`.
+
+Every poll, `2D5B` first reads the game port for the sticks `[108C]` names:
+- `2F9E` for stick A, `2FCC` for stick B, `2FFE` for both;
+- each one fires the one-shots at `0x201` and counts, per axis, the passes its bit stays high, with
+  `CX=0x7530`;
+- A's X/Y go to `[108D]/[108F]` and B's to `[1091]/[1093]`;
+- `[1095]` is the port byte, inverted, so pressed buttons are 1: A's in bits 4/5, B's in bits 6/7.
+
+`2E6C` (and `2EB3` on B, with `[1095]>>2`) builds the byte:
+- any button of the stick → 0x08;
+- X ≤ `[28FD]` → 0x80 (`JG` skips it), X ≥ `[28FF]` → 0x40 (`JL`);
+- button 2 alone → 0x20, button 1 alone → 0x10, both → 0x30.
+
+The Y compares (`2E96`, `2EA3`, and B's) set no bit. So a button is 0x28 or 0x18. The thresholds
+are `SETTINGS.DAT` words 4-7, loaded at `27C5-27D1` (this copy: 87/252 and 10/200).
+
+**A stick that isn't there reads 30000.** Its axis bit never drops, so the loop runs out at
+`0x7530`, and JOY 1 then reads 0x40 (right) on every poll. `[PROVEN]`: F7 with no stick stored 30000
+for both of stick 1's thresholds.
+
+**Detection.** `JoystickCountSticks 3A12` runs at every GAME OPTIONS entry (`2775`):
+- BIOS `INT 15h AH=84h DX=1` gives both sticks' counts;
+- stick A counts if X > 5 or Y ≥ 5, and stick B adds one on the same test, so B alone also gives 1;
+- the result goes to `[2625]`.
+
+The F7 line is drawn only when `[2625]!=0` (`2822`), and F7 does its work only then (`28D8`),
+though it sets the dirty flag first (`28D3`).
+
+**The mouse is never enabled.** `DetectMouseInt33Dead 3A44` is the only writer of `[2627]`. It is
+also the only code that resets the INT 33h driver, limits it to 320×200 and centres it. It has no
+caller: no near or far `CALL`, and no xref. `[2627]` stays at its static 0, so the options screen
+never offers MOUSE (P2's gate `2985`). Only a `SETTINGS.DAT` that already holds 3 reaches `2E02`.
+
+`[PROVEN]`: at GAME OPTIONS under DOSBox, whose INT 33h driver is always present, `[2627]` read 0.
+With `[2658]` poked to 3, a warp to x=600 was accepted, so the driver keeps its 640-wide default range.
+The game read 0x40 and put the cursor back at (160,100).
+
+`2E02` reads `AX=3`:
+- the left button gives 0x28 and the right 0x10;
+- x ≤ 160−`[290D]` gives 0x80, else x ≥ 160+ gives 0x40;
+- y ≤ 100− gives 0x20, else y ≥ 100+ gives 0x10;
+- when any of 0xF0 is set, `AX=4` puts the cursor back at (160,100).
+
+`[290D]` is 3 and has no writer.
+
+**F7, the calibration (`2AB5`).** It draws "JOYSTICK 1" (the digit is patched at `DS:0DF6`) and
+CENTRE, LEFT, RIGHT, one line per stage. Each stage `2B93`:
+- clears the key latches;
+- waits until the stick's buttons are up;
+- loops with "PLACE JOYSTICK THEN PRESS FIRE" on screen until a button is down or ENTER has been
+  released (`[107E]==0x1C`);
+- then reads `2FFE`.
+
+LEFT and RIGHT store `(centre + reading) >> 1` straight away. Stick 2 follows only when `[2625]==2`,
+at x=110, beside stick 1's column. `[PROVEN]`: the screens and the prompt shown only while a stage
+waits, with `[2625]` poked to 1.
+
+**Port.**
+- `src/engine/devices.js`:
+  - the port model (`readGamePort`, `padToPort`), with a gamepad's axis a ∈ [−1, 1] as the count
+    `170 + 165·a`. That is a port choice: it puts this copy's calibration at a = ±0.5;
+  - the stick and the d-pad steer; A or RT is button 2, B or LT button 1;
+  - a missing pad is timed out;
+  - `joystickByte`, `countSticks`, `calibrationThreshold`;
+  - the driver model (`createMouseDriver`: 640×200, (320,100), 8 mickeys per 8 pixels across and 16
+    down) and `mouseByte`;
+  - `createControlReader`, which is `2D00`.
+- `src/engine/pointerMouse.js` feeds the driver from pointer movement, one mickey per CSS pixel
+  (`UNKNOWN_mouse_host_scale`), and takes the pointer lock on a canvas click while MOUSE is in use.
+- `flow.js` builds every P1/P2 reader through the factory: the race, the title, the menus, the
+  character select and the waits. It counts gamepads at the options entry, and again on every F-key
+  there, because a browser lists a gamepad only after it has been used on the page (a port
+  allowance). `deviceAvail.mouse` stays false. F7 runs `src/frontend/joyCal.js`.
+- `play.js` takes P1's device and `controllerTypes` from `SETTINGS.DAT`.
+
+**The options screen, corrected.** Against the live frame, the port's options screen was hand laid
+out, 13,694 pixels off. The body below the menu background is now exact:
+- the title in FONT2 centred at y=0x23;
+- the lines in FONT2 at (0, 0x34+0x10·i), the values at x=200;
+- the footer in FONT1 at y=176/184/192.
+
+The first footer line starts at `DS:0E88` with a leading space, not at `0E8C` as
+`frontend-tables.js` had it. The menu background itself (`0400`, the logo header) is still not
+drawn (GOAL Part F).
+
+**Tests.** `npm run devices` (`tools/check-devices.mjs`) covers:
+- `2E6C`/`2EB3` against a hand transcription at every X around the thresholds, with every button
+  pair;
+- the port model: the 30000 timeout, a centred pad, the d-pad, the buttons, stick B;
+- `3A12`'s count and the calibration arithmetic;
+- F7's stages, including the no-stick run's 30000/30000;
+- the mouse against the live readings;
+- the factory, and the options gates for 0/1/2 sticks (MOUSE never);
+- the per-device fire pre-empt;
+- the options and F7 screens: 0 differing pixels against three live frames, rows 30-199.
+
+Six mutations each fail it: the left compare, stick 2's shift, the timeout, the mouse re-centre, the
+halving, and the prompt's y.
+
+**Not browser-checked.** The Chrome window was hidden, so animation frames don't run and a fake
+gamepad couldn't be driven through `game.html`. What was checked: both pages load with no console
+error, and `index.html`'s race steps with `controllerTypes [5,6,6,6]` taken from `SETTINGS.DAT`.
+
+**The live session.** A fresh DOSBox, one instance. Every code patch was made in RAM only and put
+back. `tools/refs/front/options_f7_a000.bin`, `joycal_centre_a000.bin` and `joycal_right_a000.bin`
+were captured.
+
+**The game wrote `SETTINGS.DAT` during the session.** After it, `game/SETTINGS.DAT` held 30000/30000
+as stick 1's thresholds (`3075 3075` at bytes 8-11). The likely cause is that the DOSBox screen lags
+the input by about a second. So one of the ENTERs sent to end the calibration reached GAME OPTIONS as
+RETURN while F7's dirty flag was still 1, before I restored the thresholds and cleared the flag in
+memory. The file was restored from `../micro_machines.zip`, which is byte-identical to its earlier
+state, and given its old modification time back. Nothing else in `game/` changed. Next time: clear
+`[0F63]` right after the last calibration stage, before sending anything else, and compare
+`SETTINGS.DAT` before and after every live session.

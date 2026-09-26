@@ -28,6 +28,9 @@ import { createBrkBuffer } from '../formats/levbrk.js'
 import { runStep, runPreLoopRender } from '../engine/step.js'
 import { droneControlByte } from '../engine/ai.js'
 import { initCameraState } from '../engine/camera.js'
+import { createControlReader, createMouseDriver, countSticks, calibrationThreshold, readGamePort } from '../engine/devices.js'
+import { attachMouseDriver } from '../engine/pointerMouse.js'
+import { createJoyCal, joyCalStep } from './joyCal.js'
 import { createKeyboardReader, createExtraKeysReader, createPauseKeyReader, createMenuReleaseTracker, createIsrKeyWordReader, recordingReader, SCANCODE_TO_KEY_CODE } from '../engine/input.js'
 import { createPauseState, updatePause } from '../engine/pause.js'
 import { createRaceEndState, updateRaceEnd } from '../engine/raceEnd.js'
@@ -40,7 +43,7 @@ import { RUFF_TRUCK_TIMES } from '../data/engine-tables.js'
 import { initTournament, isInQualifier, applyRaceSkip, pickPlayerCharacter, pickOpponentCharacter, hasRaceIntro, raceIntroHoldTicks, raceIntroParticipants, screenAfterRace, showsOutcomeAfterResults, currentRace, reportRaceResult, reportRaceResultWithOpponentSnapshot, resultsPassed, shouldShowBoard, effectiveRaceIndex, opponentCharactersFor, needsOpponentPick, hasEmptyOpponentSlot, applyLivesCheat, OUTCOME } from './tournament.js'
 import { CHARACTER_NAMES, OUTCOME_MESSAGES, resolveSmoothnessForPlay } from '../data/frontend-tables.js'
 import { paintOps, layoutChooseGame, layoutTwoPlayerRaceInfo, layoutTwoPlayerResult, layoutSingleRaceSelect, slideIconX } from './h2hScreens.js'
-import { drawTwoPlayerPickLabels, drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawOpponentPanel, drawEliminatedScreen, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
+import { drawTwoPlayerPickLabels, drawTitleScreen, drawSelectGame, drawOnePlayerGameMenu, drawCharacterSelect, drawOpponentPanel, drawEliminatedScreen, drawPressAnyKey, drawRaceIntro, drawResults, drawOutcome, drawChampion, drawTournamentBoard, drawOptionsScreen, drawJoystickCalibrationScreen, drawCreditsScreen, drawRedefineKeysScreen, drawQuitToDosScreen, redefineKeyChar, REDEFINE_SLOT_LABELS } from './screens.js'
 import { createSmoothnessGate } from '../engine/smoothness.js'
 import { introInitialState, introStep, smPalette, SCREEN_W as LOGO_W, SCREEN_H as LOGO_H } from '../formats/gfx1.js'
 import { attractInitialState, attractStep } from './attract.js'
@@ -125,11 +128,24 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     settingsDirty = false
   }
   let keys2 = settings.keys2
-  // KEYS1(4) or KEYS2(5) -- the only two devices reachable yet (P6 adds JOY1/JOY2/MOUSE), shared
-  // by every P1-only input site (the race itself, the title screen's own fire test, the character
-  // select carousel).
+  // The keyboard bindings for KEYS 1 (4) and KEYS 2 (5); JOY 1/JOY 2/MOUSE readers come from
+  // `readerFor` below (docs/engine.md §9cu).
   const p1Keys = () => (settings.p1Control === 4 ? settings.keys1 : keys2)
   const p2Keys = () => (settings.p2Control === 4 ? settings.keys1 : keys2)
+  // P6 (docs/engine.md §9cu): `2D00`'s five readers behind one factory. JOY 1/2 poll the Gamepad API
+  // through the game's own port model and thresholds; MOUSE reads a model of the INT 33h driver fed
+  // by pointer movement (one per session, like the real driver's state).
+  const mouseDriver = createMouseDriver()
+  const deviceEnv = {
+    keyboard: (scancodes) => createKeyboardReader(scancodes, window),
+    get keys1() { return settings.keys1 },
+    get keys2() { return keys2 },
+    getGamepads: () => (typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : []),
+    thresholds: (stick) => (stick === 2 ? settings.joystick2 : settings.joystick1),
+    mouse: mouseDriver,
+  }
+  const readerFor = (control) => createControlReader(control, deviceEnv)
+  attachMouseDriver(mouseDriver, window, canvas, () => settings.p1Control === 3 || settings.p2Control === 3)
   // P2's global "which key was just released" latch (GOAL-DOS-PARITY.md, engine/input.js's own
   // header comment): one instance for the whole session, `.reset()` at each menu screen's entry
   // (mirroring the real ISR's many `[107e]=0;[107f]=0` writes), read once per tick by whichever
@@ -149,13 +165,13 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   // createExtraKeysReader header): F1/F2/F3 for KEYS1, D/SPACE/V for KEYS2. F1-F3 are mapped here,
   // not in SCANCODE_TO_KEY_CODE, so they don't become bindable on the redefine-keys screen.
   const EXTRA_KEY_CODES = { 0x3b: 'F1', 0x3c: 'F2', 0x3d: 'F3' }
-  const extraKeysFor = (control) => (control === 4 ? settings.f1f3 : control === 5 ? settings.dSpaceV : []).map((sc) => SCANCODE_TO_KEY_CODE[sc] ?? EXTRA_KEY_CODES[sc]) // only the two keyboard devices; JOY/MOUSE readers return their own bytes (P6)
+  const extraKeysFor = (control) => (control === 4 ? settings.f1f3 : control === 5 ? settings.dSpaceV : []).map((sc) => SCANCODE_TO_KEY_CODE[sc] ?? EXTRA_KEY_CODES[sc]) // only the two keyboard devices; JOY/MOUSE readers return their own bytes (§9cu)
   function refreshWaitReaders() {
     const binding = JSON.stringify([p1Keys(), p2Keys(), settings.p1Control, settings.p2Control, settings.f1f3, settings.dSpaceV])
     if (binding === waitReadersBinding) return
     if (waitReaders) for (const r of Object.values(waitReaders)) r.dispose()
     waitReaders = {
-      p1: createKeyboardReader(p1Keys(), window), p2: createKeyboardReader(p2Keys(), window),
+      p1: readerFor(settings.p1Control), p2: readerFor(settings.p2Control),
       p1Extra: createExtraKeysReader(extraKeysFor(settings.p1Control), window), p2Extra: createExtraKeysReader(extraKeysFor(settings.p2Control), window),
     }
     waitReadersBinding = binding
@@ -302,31 +318,66 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
   // P1's third boot item (GOAL-DOS-PARITY.md, docs/engine.md §9au): RunOptionsScreenWithSettingsDat
   // 1000:2770, shown after the code card, before the title. F1/F2 cycle the control device (P1 can
   // never reach JOY2/MOUSE, regardless of hardware -- a real, live-confirmed asymmetry, not a
-  // simplification; both currently only ever reach KEYS1/KEYS2 since no joystick/mouse input is
-  // wired up yet, P6); F3 the sound driver; F4 the smoothness (including AUTO); F5 opens the
+  // simplification; JOY 1/2 appear once a gamepad is detected, MOUSE never, §9cu); F3 the sound driver; F4 the smoothness (including AUTO); F5 opens the
   // redefine-keys sub-screen; F6 the credits; ENTER commits (writing SETTINGS.DAT only if
   // something actually changed) and plays; ESC quits -- for real, live-confirmed: an immediate,
   // unconfirmed drop to the DOS prompt, no "are you sure".
-  let options = null // { sub: 'main'|'credits'|'redefine', cheatCursor, redefineScratch, redefineSlotIndex }
+  let options = null // { sub: 'main'|'credits'|'redefine'|'joycal', cheatCursor, redefineScratch, redefineSlotIndex, cal }
   let cheatActive = false // DS:0F69 -- survives past the OPTIONS phase itself (options is reset to null on leaving), tournament.js's own lives-to-10 effect reads this
-  const deviceAvail = { joy1: false, joy2: false, mouse: false } // no joystick/mouse input yet -- P6
+  // [2625] (sticks) and [2627] (mouse): JoystickCountSticks 3A12 runs at every entry (2775); the
+  // mouse flag's only writer, 3A44, is never called, so MOUSE is never offered (§9cu). A browser only
+  // lists a gamepad after it has been used on the page, so the port also re-counts on every F-key
+  // here -- a port allowance, not the original's timing.
+  let sticks = 0
+  const deviceAvail = { joy1: false, joy2: false, mouse: false }
+  function detectDevices() {
+    sticks = countSticks(deviceEnv.getGamepads())
+    deviceAvail.joy1 = sticks !== 0
+    deviceAvail.joy2 = sticks === 2
+  }
+  let joyCalRafId = null
+  let joyCalEnterReleased = false
   function enterOptions() {
     canvas.width = MENU_VIEW.w
     canvas.height = MENU_VIEW.h
     options = { sub: 'main', cheatCursor: 0, redefineScratch: [], redefineSlotIndex: 0 }
     phase = 'OPTIONS'
+    detectDevices()
     paintOptions()
+  }
+  /** F7 (28D3-28E2): the calibration, then 27F0's full redraw of the options screen. */
+  function startJoystickCalibration() {
+    options.sub = 'joycal'
+    options.cal = createJoyCal(sticks, { 1: settings.joystick1, 2: settings.joystick2 })
+    joyCalEnterReleased = false
+    paintOptions()
+    const tick = () => {
+      if (phase !== 'OPTIONS' || options?.sub !== 'joycal') { joyCalRafId = null; return }
+      const { stageStarted } = joyCalStep(options.cal, readGamePort(deviceEnv.getGamepads()), joyCalEnterReleased)
+      if (stageStarted) joyCalEnterReleased = false // 2B98: each stage clears the key latches
+      if (options.cal.done) { options.sub = 'main'; options.cal = null; joyCalRafId = null; paintOptions(); return }
+      paintOptions()
+      joyCalRafId = requestAnimationFrame(tick)
+    }
+    joyCalRafId = requestAnimationFrame(tick)
   }
   function paintOptions() {
     menuBuf.fill(0)
     if (options.sub === 'credits') drawCreditsScreen(menuBuf, arena)
     else if (options.sub === 'redefine') drawRedefineKeysScreen(menuBuf, arena, { slots: options.redefineScratch, slotIndex: options.redefineSlotIndex })
-    else drawOptionsScreen(menuBuf, arena, { settings, cheatActive })
+    else if (options.sub === 'joycal') drawJoystickCalibrationScreen(menuBuf, arena, { columns: options.cal.columns, prompt: options.cal.phase === 'wait' })
+    else drawOptionsScreen(menuBuf, arena, { settings, cheatActive, joystick: sticks !== 0 })
     paint(canvas, MENU_VIEW.w, MENU_VIEW.h, indexedToRgba(menuBuf, menuPalNow()), { zoom: 1 })
     statusEl.textContent = 'GAME OPTIONS'
   }
   /** F1-F7 dispatch (1000:28BE-2A08); anything else falls through to the cheat-code check. */
   function optionsMenuKey(code) {
+    if (/^F[1-7]$/.test(code)) detectDevices() // the port allowance above
+    if (code === 'F7') { // 28D3: the dirty flag first, then the [2625] test; with no stick F7 does nothing else
+      settingsDirty = true
+      if (sticks !== 0) startJoystickCalibration()
+      return true
+    }
     if (code === 'F1') { settings.p1Control = cycleControl(settings.p1Control, settings.p2Control, true, deviceAvail); settingsDirty = true }
     else if (code === 'F2') { settings.p2Control = cycleControl(settings.p2Control, settings.p1Control, false, deviceAvail); settingsDirty = true }
     else if (code === 'F3') { settings.soundDriver = cycleSound(settings.soundDriver); settingsDirty = true }
@@ -361,6 +412,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     statusEl.textContent = 'Quit to DOS (this is a port -- close the tab, or reload to play again)'
   }
   function optionsKey(e) {
+    if (options.sub === 'joycal') return // the calibration reads only the stick and an ENTER release
     if (options.sub === 'credits') { options.sub = 'main'; paintOptions(); return } // 1000:2AAD: any key dismisses it
     if (options.sub === 'redefine') { redefineKey(e); return }
     if (e.code === 'Escape') { optionsEscape(); return }
@@ -406,7 +458,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     canvas.width = MENU_VIEW.w
     canvas.height = MENU_VIEW.h
     titleState = attractInitialState()
-    titleReader = createKeyboardReader(p1Keys(), window) // fire only -- title reads P1's OWN reader slot directly, never the combined-both-players byte the menu levels use
+    titleReader = readerFor(settings.p1Control) // fire only -- title reads P1's OWN reader slot directly, never the combined-both-players byte the menu levels use
     menuReleaseTracker.reset() // 1000:0081: [0x1096]=0 before every 0100 call
     phase = 'TITLE'
     beginScreenFadeUp() // 01A9, after 0081's latch clear: a release during the fade counts
@@ -471,7 +523,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     canvas.height = MENU_VIEW.h
     phase = phaseName
     twoItemState = twoItemMenuInitialState(initialSelection)
-    twoItemReaders = { p1: createKeyboardReader(p1Keys(), window), p2: createKeyboardReader(p2Keys(), window) }
+    twoItemReaders = { p1: readerFor(settings.p1Control), p2: readerFor(settings.p2Control) }
     menuReleaseTracker.reset() // 1000:038c: [0x107e]=0 at every 0382 entry
     twoItemPaint = paintFn
     twoItemOnExit = onExit
@@ -569,7 +621,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     // Two-human picks read the PICKING player's own reader (1E20: [0x1080]=0x137B, then 0x14DF), and
     // the session-lifetime one, so the handicap question after it sees a fire still held from the
     // commit (0B51 has no release-wait, docs/engine.md §9bk/§9bv)
-    charSelectReader = charWho.startsWith('h2h') ? null : createKeyboardReader(p1Keys(), window)
+    charSelectReader = charWho.startsWith('h2h') ? null : readerFor(settings.p1Control)
     menuReleaseTracker.reset()
     paintCharSelect()
     charSelectLast = performance.now()
@@ -899,7 +951,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     currentCars = cars
     const camera = initCameraState(strt)
     // controllerTypes [2658..265E]: P1's real chosen device (settings.p1Control, 1000:2D00's own
-    // 1-based enum -- JOY1/JOY2/MOUSE never reachable yet, P6), every other car the CPU (6).
+    // 1-based enum: 1/2 JOY, 3 MOUSE, 4/5 KEYS), every other car the CPU (6); P2's in two-human play.
     const raceCtx = { ...roundCtx(round, race, { raceFormat }), brk, tournamentIndex: tIndex, world, stepIncrement: 1, sound, camera, controllerTypes }
     if (round === 9) raceCtx.ruffTruxTime = RUFF_TRUCK_TIMES[race - 1]
     const raceState = {}
@@ -908,9 +960,8 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     const smoothGate = createSmoothnessGate(smoothnessN) // fresh per race -- see the comment above
     if (presentCountdown === 1) runPreLoopRender(world, cars, raceState, raceCtx, jitter) // 39E8, before 3064 resets [2638]
     raceStart(sound)
-    // KEYS1(4) or KEYS2(5) -- the only two devices reachable yet (P6 adds JOY1/JOY2/MOUSE).
-    const humanReader = recordingReader(createKeyboardReader(settings.p1Control === 4 ? settings.keys1 : keys2, window))
-    const p2Reader = twoHuman ? createKeyboardReader(p2Keys(), window) : null // car 1's own human driver
+    const humanReader = recordingReader(readerFor(settings.p1Control)) // 2D00's slot-0 reader: KEYS 1/2, JOY 1/2 or MOUSE (§9cu)
+    const p2Reader = twoHuman ? readerFor(settings.p2Control) : null // car 1's own human driver
     // Pause/fade/cheats (docs/engine.md §9q/§9ai): the same modules `play.js` wires into its own
     // loop, ported here for the first time (M3.34) -- `game.html` previously had none of the three.
     // Fresh per race, same as `humanReader`/`smoothGate` above: a reader created once at boot would
@@ -1699,7 +1750,10 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
     if (e.code === 'Space' || e.code === 'Enter') confirm()
   }
   window.addEventListener('keydown', onKeydown)
-  function onKeyup(e) { introHeldKeys.delete(e.code) }
+  function onKeyup(e) {
+    introHeldKeys.delete(e.code)
+    if (phase === 'OPTIONS' && options?.sub === 'joycal' && e.code === 'Enter') joyCalEnterReleased = true // [107E]==0x1C (2BD8)
+  }
   window.addEventListener('keyup', onKeyup)
   // A mouse click is the intro's real, only skip input (INT 33h AX=3, a level check every
   // iteration) -- tracked here as a level, not an edge, same as the real byte it mirrors.
@@ -1727,6 +1781,7 @@ export async function bootGame({ canvas, statusEl, pickButton, dropZone, oplStri
       window.removeEventListener('mouseup', onMouseup)
       if (introRafId != null) cancelAnimationFrame(introRafId)
       if (titleRafId != null) cancelAnimationFrame(titleRafId)
+      if (joyCalRafId != null) cancelAnimationFrame(joyCalRafId)
       if (twoItemRafId != null) cancelAnimationFrame(twoItemRafId)
       if (charSelectRafId != null) cancelAnimationFrame(charSelectRafId)
       if (boardRafId != null) cancelAnimationFrame(boardRafId)

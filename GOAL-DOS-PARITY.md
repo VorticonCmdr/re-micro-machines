@@ -121,7 +121,7 @@ Don't read `docs/engine.md` from start to finish. It is 6,000 lines. Jump to sec
 
 ```bash
 for s in catalog lz chrtable tables car intro codecard options title mainmenu charselect board elimination keywait outcomewait windowedwait champion pressanykey raceskip step trace ai play sound rounds finish twocar twohuman h2hscreens escquit tournament \
-         beeper menu screens opl-toggle smoothness si2 live smoke pages; do npm run -s $s || echo "FAIL $s"; done
+         beeper menu screens opl-toggle smoothness si2 live smoke pages devices; do npm run -s $s || echo "FAIL $s"; done
 npm run build
 ```
 
@@ -801,7 +801,7 @@ docs, (6) commit.
   "Deliberately not done").
 
 ### P6: input and sound (last)
-- [ ] **JOY 1/JOY 2/MOUSE** through the Gamepad API and pointer events. They feed the same 5-bit
+- [x] **JOY 1/JOY 2/MOUSE** **Done (§9cu, M3.102): the readers, the port model, 3A12 and the F7 calibration ported and live-checked; MOUSE is never offered by the original (3A44 is never called, live) and reads a model of the untouched INT 33h driver when SETTINGS.DAT already holds it.** through the Gamepad API and pointer events. They feed the same 5-bit
   control byte. Joysticks fire only after accelerating (§9an 5a). The joystick thresholds come
   from SETTINGS.DAT.
 - [x] **The SPEAKER driver** (`DRIVER2.BIN`, "Internal Beeper v1.08"): **Done (`docs/sound.md` §4, `docs/engine.md` §9cq, M3.98): ported as a memory-level model, replayed byte for byte against two live captures; sfx 16-18 are dropped by the driver (live); the game's `[0F64]` branches ported, incl. 7AF8's.** the same command set, played
