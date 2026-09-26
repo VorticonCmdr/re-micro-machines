@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Micro Machines — Level Editor</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+    <link rel="stylesheet" href="/src/editor/editor.css" />
+  </head>
+  <body class="ed-body">
+    <header class="topbar">
+      <h1>Micro Machines <span class="sub">level editor</span></h1>
+      <div class="topbar-controls">
+        <label>Round <select id="ed-round"></select></label>
+        <label>Race <select id="ed-race"></select></label>
+        <button id="ed-undo" type="button" title="Undo (Ctrl+Z)">↶ Undo</button>
+        <button id="ed-redo" type="button" title="Redo (Ctrl+Shift+Z)">↷ Redo</button>
+        <span id="ed-save" class="status"></span>
+        <button id="ed-zip" type="button" title="Download every changed file as a .zip (GAME1/…)">⬇ Changed files (.zip)</button>
+        <a id="ed-play" class="viewer-link" href="index.html" target="_blank" title="Race the current track with your edits (opens the race page)">▶ Test race</a>
+        <span id="source-status" class="status">connecting…</span>
+        <button id="pick-folder" type="button" hidden>Open game folder…</button>
+        <a class="viewer-link" href="viewer.html">Asset Viewer →</a>
+      </div>
+    </header>
+    <nav id="ed-tabs" class="ed-tabs"></nav>
+    <main id="ed-main" class="ed-main">
+      <p class="placeholder" style="padding:16px">
+        Loading the level files… If the game files aren't found at <code>/game</code> (a production build),
+        open your own copy with "Open game folder…" or drop it here.
+      </p>
+    </main>
+    <script type="module" src="/src/editor-entry.js"></script>
+  </body>
+</html>

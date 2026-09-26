@@ -39,6 +39,15 @@ Open the URL Vite prints. Three pages:
   sound drivers play there: `DRIVER1.BIN` (every tune and sfx through the OPL2 core, an engine
   slider, live channel readout, a strict-YM3812 toggle) and `DRIVER2.BIN` (the same through the
   PC-speaker driver, with its engine voice).
+- **`editor.html`** — a level editor for the shipped tracks. It paints a race's map (meta-tiles,
+  attribute bits, the track-progress plane), edits the round's meta-tiles (tile layout, collision,
+  flow field, LEV fields), its 16×16 tiles pixel by pixel, its palette, the drones' brake stream,
+  the start points and the cheat spots, with undo, overlays of what the engine reads (flow field as
+  a car follows it, checkpoint bands, brake bytes, the start grid) and checks against the game's own
+  limits. Edits are saved in the browser; changed files download singly or as a `.zip` of `GAME1/…`
+  paths. Every file is written back at its own layout, so an unedited file downloads byte-identical;
+  an edited tile bank is re-packed with an LZ encoder the game's decompressor reads back exactly.
+  "Test race" opens the race page on the edited track (`index.html?round=&race=&edited=1`).
 
 In dev, Vite serves a local `game/` folder (see below) over HTTP automatically. A **production
 build** (`npm run build && npm run preview`, or any static host) has no `game/` to serve — every
@@ -172,6 +181,7 @@ npm run opl-toggle   # the two OPL2 waveform modes actually sound different
 npm run si2          # the JS OPL2 core reproduces every register write DOSBox made, a race start exactly
 npm run live         # pixel-diffs an assembled track against a real DOSBox frame
 npm run smoke        # every viewer view against the real files, headless
+npm run editor       # the level editor: unedited export byte-identical, exact edits, LZ encoder, .zip
 ```
 
 `npm run render` / `npm run tracks` / `npm run tunes` decode assets to `tools/out/` to be looked at
@@ -189,6 +199,7 @@ src/render/      indexed-buffer compositing and sprite blitting
 src/audio/       the from-scratch OPL2 synthesizer and its AudioWorklet host
 src/data/        engine/front-end constants read live from MICROU.EXE, checked against it
 src/ui/          the developer asset viewer (viewer.html)
+src/editor/      the level editor (editor.html): a byte-level model of the level files, its UI
 tools/           check-*.mjs verification scripts, render-*.mjs asset dumpers
 docs/            subsystem-by-subsystem reverse-engineering findings, with evidence tags
 ```

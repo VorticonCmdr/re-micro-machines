@@ -38,7 +38,7 @@ Verification: `npm run lz` decompresses all 41 packed files; the JS output is by
 |---|---|
 | `COMPRESS.PI0–PI5` | → `0xC000` each; `PI6` → `0xA000` (total `0x52000` = the whole arena) |
 | `BITSFILE.PH0` | 3611 → `0x65C0` (26048), copied to `DS:3FE3` every race |
-| `ROUNDnBR.PR0` | → `0xC000`; `PR1` → `0xC000` or less; `PR2` the remainder — one contiguous per-round image up to `0x27D00` bytes, placed at `2B78/3778/4378` |
+| `ROUNDnBR.PR0` | → `0xC000`; `PR1` → `0xC000` or less; `PR2` the remainder — one contiguous per-round image placed at `2B78/3778/4378`, at most `0x20000` bytes (512 tiles): the world-map arenas at `4B78`/`5478` are built first (`InitRaceCarsFromTables 1000:448c`, called at `3932`) and the PR series loads after them (`3952` → `45ef`), so a longer bank would overwrite the map `[STATIC]`. (This row used to say `0x27D00`, which the layout does not allow; the largest shipped bank is round 1's `0x1FD00`.) |
 | `ROUNDnBR.VH0` | `0x2400..0x3600` (round 9: `0x5DC0`), then split to `5D78:0000` / `6D78:0000` (`0x1440` / `0x1B00`; round 9 `0x3840` / `0x1F40`) |
 
 ## The arena and `chrDescriptorTable` `[PROVEN]` by render
@@ -73,3 +73,10 @@ Verification: `npm run lz` decompresses all 41 packed files; the JS output is by
 ## Race-time reuse
 
 Race loading (`SetupRaceLoadAllRoundFiles 1000:37fc`) overwrites the arena with `BITSFILE.PH0`, `VH0` and `PR0–2`; therefore `InitLoadAssets` (COMPRESS series + `DRIVERn.BIN` + `INTRO.PAL`) runs again after every race (callers `1000:11c7`, `1000:2182`). A port must treat the menu assets and the race assets as two loads of the same memory, not as one resident set.
+
+## An encoder, for the level editor `[PROVEN]`
+
+`src/formats/lzEncode.js` writes streams for this codec (the original compressor is not in the release). It emits only the opcode forms that occur in the 41 shipped files — a histogram of all of them found flag-0 literals, `80–FE`, `20–4F`, `50–5E`, `5F`, `10–1E`, `1F`, `60–6F` and the `FF` end byte, but no incrementing runs (`70–7F`) and only six short literal runs — and picks the cheapest parse by dynamic programming. Two edge cases are excluded by construction: a short copy of length 5 at distance 36 would encode as `FF`, the end marker, and a medium copy's high distance bits stop at 2 (`0x50` up is the long copy), so its reach is `0x301`, not `0x401`. `npm run editor` checks that it round-trips all 41 files through the decompressor (191,763 bytes against the shipped 216,137); it is not byte-identical to the shipped streams, which the editor passes through untouched when a slab is unedited.
+
+Limits on a packed file the loader imposes (`LoadCompressedSeries 1000:3547`) `[STATIC]`: it is read with `CX=FFFF` to `7D78:C000`, so it must fit the segment's last `0x4000` bytes; it unpacks to `7D78:0000` and is copied to its slab with `SHR CX,1; REP MOVSW` (`35AB–35AF`), so its unpacked length should be even (256-byte tiles always are); and every slab but the last must be a full `0xC000`, since the next file's destination is always 48 KB further on (`35A7`).
+

@@ -27,6 +27,7 @@ export default defineConfig({
         main: 'index.html',
         game: 'game.html',
         viewer: 'viewer.html',
+        editor: 'editor.html',
       },
     },
   },

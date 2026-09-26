@@ -31,17 +31,21 @@ import { createRaceEndState, updateRaceEnd } from './engine/raceEnd.js'
 import { lapLineSegments, nearestPaletteIndex } from './engine/lapLine.js'
 import { Si2Player } from './audio/si2Player.js'
 import { createSmoothnessGate } from './engine/smoothness.js'
+import { raceFromQuery, withSavedEdits } from './editor/overlaySource.js'
+import { RACES } from './editor/model.js'
 
-const ROUND = 2
-const RACE = 1
+// The race: ROUND21 by default; `?round=&race=` (the level editor's "Test race") picks another,
+// and `&edited=1` reads through the editor's saved edits (src/editor/overlaySource.js).
+const { round: ROUND, race: RACE, edited: EDITED } = raceFromQuery(globalThis.location?.search ?? '', RACES, { round: 2, race: 1 })
 const STEP_DT = 1 / 35 // 35 Hz physics (docs/engine.md §2)
 const VIEW = { w: 256, h: 200 }
 const DEFAULT_KEYS2 = [0x4b, 0x4d, 0x48, 0x50, 0x1f] // left,right,accel,brake,fire -- LEFT/RIGHT/UP/DOWN/S
 
 export async function bootRace({ canvas, statusEl, pickButton, dropZone, oplStrictCheckbox, smoothnessSelect, projectilesToggle, lapLineToggle }) {
   const source = await resolveSource({ statusEl, pickButton, dropZone })
-  const read = (path) => source.read(path)
+  let read = (path) => source.read(path)
   if (pickButton) pickButton.hidden = true
+  if (EDITED) read = withSavedEdits(read).read
 
   statusEl.textContent = 'Loading assets…'
   const [{ bytes: bank }, ctBytes, mapBytes, palBytes, vh0Bytes, ph0Bytes, strtBytes, settingsBytes, cheatsBytes, world, brk, driverBytes] = await Promise.all([
@@ -55,7 +59,7 @@ export async function bootRace({ canvas, statusEl, pickButton, dropZone, oplStri
     read('SETTINGS.DAT').catch(() => null),
     read('GAME1/CHEATS.BIN'),
     loadWorld(read, ROUND, RACE),
-    loadBrk(read, ROUND, RACE),
+    ROUND === 9 ? null : loadBrk(read, ROUND, RACE), // RUFFTRUX ships no .BRK (no drones)
     Promise.all(['DRIVER0.BIN', 'DRIVER1.BIN', 'DRIVER2.BIN'].map((n) => read(n))), // [0F64] 0/1/2
   ])
   const cheats = parseCheats(cheatsBytes)
