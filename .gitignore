@@ -25,3 +25,6 @@ tools/out/
 
 # CodeGraph index (machine-local, regenerable with `codegraph init`).
 .codegraph/
+
+# moddingwiki
+moddingwiki/
