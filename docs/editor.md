@@ -48,6 +48,6 @@ Tiles and meta-tiles can only be appended: a download adds or replaces files and
 - `src/editor/zip.js` — a store-only ZIP writer (CRC-32), checked with `unzip -t`.
 - `src/editor/render.js` — bitmap caches for tiles and meta-tiles, dropped when their files change.
 - `src/editor/mapTab.js`, `metaTab.js`, `tilesTab.js`, `tablesTab.js`, `filesTab.js`, `app.js` — the UI. The map's flow-field overlay draws the heading a car actually follows: the DIR low nibble (`& 7` in round 2), remapped through the LEV row when attribute bit 1 is set, reversed by bit 0 (`terrain.js` `h6231`, `ai.js`).
-- `src/editor/overlaySource.js` — `index.html?round=R&race=N&edited=1` reads through the saved diff, so "Test race" plays the edited track in the port. Round 9 skips the BRK read (it has none).
+- `src/editor/overlaySource.js` — `single.html?round=R&race=N&edited=1` reads through the saved diff, so "Test race" plays the edited track in the port. Round 9 skips the BRK read (it has none).
 
 One real bug the check caught while this was written: Node's `Buffer.slice()` is a view, so undo snapshots aliased the live bytes and every edit looked like no change. The model now copies every loaded file into a plain `Uint8Array`.

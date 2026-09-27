@@ -19,13 +19,14 @@ export default defineConfig({
   build: {
     target: 'es2022',
     outDir: 'dist',
-    // Three pages: the single-race page (index.html, M3.6), the tournament flow (game.html, M3.9)
-    // and the dev asset viewer (viewer.html). Vite's default build only picks up index.html — list
-    // all three or the others silently drop out of dist/.
+    // Four pages: the tournament flow (index.html, M3.9), the single-race page (single.html, M3.6),
+    // the dev asset viewer (viewer.html) and the level editor (editor.html). Vite's default build
+    // only picks up index.html on its own — list all four explicitly or the others silently drop
+    // out of dist/.
     rollupOptions: {
       input: {
-        main: 'index.html',
-        game: 'game.html',
+        index: 'index.html',
+        single: 'single.html',
         viewer: 'viewer.html',
         editor: 'editor.html',
       },

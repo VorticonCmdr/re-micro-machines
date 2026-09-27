@@ -7,7 +7,7 @@
 //    nothing is sent to the sound driver at all -- and it still ends ('done');
 //  - the normal exit keeps its 100-tick hold, then AH=8/AH=6, then the fade (unchanged).
 // The flow side (the loop-head test, the pause ending on the release, an ESC during the normal
-// exit still going to the title) is checked live in game.html (§9ca).
+// exit still going to the title) is checked live in index.html (§9ca).
 //   node tools/check-escquit.mjs
 import { createRaceEndState, updateRaceEnd, RACE_END_HOLD_MS } from '../src/engine/raceEnd.js'
 import { createMenuReleaseTracker } from '../src/engine/input.js'

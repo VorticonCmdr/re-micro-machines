@@ -379,7 +379,7 @@ async function settled(round, race) {
   check('(f) ...then both respawn together, with no point scored', bothRespawned && r.rs.twoCar.score === before && r.rs.bothDown === 0)
 }
 
-// (g) The instant-win cheat (type 1, 36A7-36AD: [26C6]=4, [2635]=1) as game.html now applies it:
+// (g) The instant-win cheat (type 1, 36A7-36AD: [26C6]=4, [2635]=1) as index.html now applies it:
 // a two-car race exits at once (3081-3088, no [26CC] countdown) and the exit fix-up (3115-313A)
 // forces car0/car2/car1/car3 -- unless a Winner pass had already set [2630] (3143-3156 runs after).
 {

@@ -1,7 +1,7 @@
 // M3.9 smoke test: every screens.js render function runs against synthetic data with no throw
 // and paints something (same "smoke" shape as check-views.mjs). This exists because the live
 // browser session that exercised TITLE/MENU/CHAR_SELECT/RACE_INTRO for real could not reach
-// RESULTS/OUTCOME/CHAMPION (the game.html tab went `document.hidden` under browser automation,
+// RESULTS/OUTCOME/CHAMPION (the index.html tab went `document.hidden` under browser automation,
 // which pauses requestAnimationFrame indefinitely -- the same rAF-throttling caveat play.js's own
 // M3.6 section already named, not a new bug); this closes that gap headlessly instead of guessing
 // those three screens are fine because the others were.

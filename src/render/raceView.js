@@ -68,7 +68,7 @@ export function applyTile0Parallax(bank, pristineTile0, camX, camY) {
  * (grid row 181-184, col 99-102), off the drivable surface. Cycles through 4 consecutive 16-tile
  * blocks of the tile bank (base 0/16/32/48, tiles 0-63) every 4 rendered frames, in raster order
  * within each 4x4 patch. No per-race gate -- fires in all 4 of round 2's races, including ROUND21
- * (index.html's own default race), unconditionally overwriting whatever was baked there. `counter`:
+ * (single.html's own default race), unconditionally overwriting whatever was baked there. `counter`:
  * the shared per-race tile-anim tick (see `applyTile0Parallax`'s own cadence note -- advanced from
  * the game loop's smoothness draw-gate, not here).
  */

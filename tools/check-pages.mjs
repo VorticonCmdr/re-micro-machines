@@ -21,14 +21,14 @@ function devOnly(html, id) {
   return label >= 0 && labelEnd > at && /class="[^"]*\bdev-only\b/.test(html.slice(label, html.indexOf('>', label) + 1))
 }
 
-const game = readFileSync(join(ROOT, 'game.html'), 'utf8')
-check('game.html: Strict OPL2 and Lap line are dev-only', devOnly(game, 'opl-strict') === true && devOnly(game, 'lapline-toggle') === true)
-check('game.html: the canvas and the folder picker are not', devOnly(game, 'game-canvas') === false && devOnly(game, 'pick-folder') === false)
+const game = readFileSync(join(ROOT, 'index.html'), 'utf8')
+check('index.html: Strict OPL2 and Lap line are dev-only', devOnly(game, 'opl-strict') === true && devOnly(game, 'lapline-toggle') === true)
+check('index.html: the canvas and the folder picker are not', devOnly(game, 'game-canvas') === false && devOnly(game, 'pick-folder') === false)
 const headerLinks = [...game.slice(game.indexOf('<header'), game.indexOf('</header>')).matchAll(/<a [^>]*>/g)].map((m) => m[0])
-check('game.html: the header links are dev-only too', headerLinks.length > 0 && headerLinks.every((a) => /\bdev-only\b/.test(a)))
-check('game.html: its description no longer points at the dev toggles', !/Lap line \(dev\)/.test(game.slice(game.indexOf('<main'))))
-const index = readFileSync(join(ROOT, 'index.html'), 'utf8')
-check('index.html: Strict OPL2, Projectiles and Lap line are dev-only; Smoothness stays', ['opl-strict', 'projectiles-toggle', 'lapline-toggle'].every((id) => devOnly(index, id) === true) && devOnly(index, 'smoothness') === false)
+check('index.html: the header links are dev-only too', headerLinks.length > 0 && headerLinks.every((a) => /\bdev-only\b/.test(a)))
+check('index.html: its description no longer points at the dev toggles', !/Lap line \(dev\)/.test(game.slice(game.indexOf('<main'))))
+const single = readFileSync(join(ROOT, 'single.html'), 'utf8')
+check('single.html: Strict OPL2, Projectiles and Lap line are dev-only; Smoothness, Round and Race stay', ['opl-strict', 'projectiles-toggle', 'lapline-toggle'].every((id) => devOnly(single, id) === true) && ['smoothness', 'round-select', 'race-select'].every((id) => devOnly(single, id) === false))
 for (const f of ['src/game-entry.js', 'src/play-entry.js']) {
   const src = readFileSync(join(ROOT, f), 'utf8')
   check(`${f}: applyDevFlag() runs before the first getElementById`, src.indexOf('applyDevFlag()') >= 0 && src.indexOf('applyDevFlag()') < src.indexOf('getElementById'))
@@ -47,5 +47,5 @@ check('applyDevFlag: ?dev keeps them and reports true', applyDevFlag(d2, '?dev')
 const d3 = fakeDoc()
 check('applyDevFlag: ?x=1&dev=1 counts too', applyDevFlag(d3, '?x=1&dev=1') === true && d3.els.every((e) => !e.removed))
 
-console.log(bad ? `${bad} check(s) failed` : 'check-pages: without ?dev the pages have no developer toggles (and game.html no nav links); with ?dev they do')
+console.log(bad ? `${bad} check(s) failed` : 'check-pages: without ?dev the pages have no developer toggles (and index.html no nav links); with ?dev they do')
 process.exitCode = bad ? 1 : 0

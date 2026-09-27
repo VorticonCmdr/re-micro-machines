@@ -1,4 +1,4 @@
-// The race page's "Test race" hook (index.html?round=&race=&edited=1, opened from editor.html):
+// The race page's "Test race" hook (single.html?round=&race=&edited=1, opened from editor.html):
 // reads go through the level editor's saved diff first (localStorage, src/editor/app.js), so the
 // race runs on the edited files. A saved PR entry is an unpacked slab; it is packed here with the
 // editor's encoder, since the loader (formats/race.js loadSeries) expects the file as shipped.

@@ -1,4 +1,4 @@
-# Goal: `game.html` behaves like the DOS game, and every open item is closed
+# Goal: `index.html` behaves like the DOS game, and every open item is closed
 
 Written 2026-09-24. Re-read this whole file at the start of every work session and after every
 context summary. Tick a checkbox here in the same commit that closes its item; together with
@@ -6,7 +6,7 @@ context summary. Tick a checkbox here in the same commit that closes its item; t
 
 ## Scope assumptions (the user may edit these three lines)
 
-- IN: the boot chain (SM.EXE logo intro, the code-card screen, the OPTIONS screen) is part of `game.html`.
+- IN: the boot chain (SM.EXE logo intro, the code-card screen, the OPTIONS screen) is part of `index.html`.
 - IN: two-human Head to Head (both humans on one keyboard: P1 = KEYS 2, P2 = KEYS 1 = `J L I M K`).
 - LAST: the SPEAKER driver (`DRIVER2.BIN`) and joystick/mouse input come after everything else.
 
@@ -25,7 +25,7 @@ finish that item or ask the user.
 
 ## What "done" means
 
-`game.html` runs the same sequence as typing `MICRO` in DOSBox, from the logo intro to the champion
+`index.html` runs the same sequence as typing `MICRO` in DOSBox, from the logo intro to the champion
 screen and back. The same inputs produce the same screens, the same music, the same rules and the
 same race outcomes. Every `UNKNOWN_*` in the registries below has one of these outcomes:
 
@@ -135,7 +135,7 @@ Known baselines that are **correct and must not be "fixed"**: `npm run trace` re
 - The relevant `docs/*.md` "Open items" section.
 - `CLAUDE.md`'s summary paragraph about the pages.
 - `README.md` "What's implemented / not implemented".
-- The placeholder text in `game.html`.
+- The placeholder text in `index.html`.
 - Add a new `npm run <name>` script to `package.json`, and to CLAUDE.md's Commands list, if you
   create a new check script.
 
@@ -711,7 +711,7 @@ docs, (6) commit.
 - [x] **The single-race select** (`SelectSingleRaceTrack 1000:2193`, the 10-entry list at
   `DS:09D9`; LEFT and RIGHT both step +1). Find where it is reachable from, and port it if it is
   reachable.
-  **Logic ported, §9bi; flow wiring in step 4 (same as item 1 above -- nothing in `game.html`
+  **Logic ported, §9bi; flow wiring in step 4 (same as item 1 above -- nothing in `index.html`
   reaches single race yet, so this stays unticked until that lands).** Reachable from
   `RunHeadToHeadVehicleSelectTune2 1000:2329`, confirmed via `get_xrefs_to 1000:2193` (exactly 2
   callers, no others) -- `2329` turned out to be single race's own COMPLETE gameplay loop (not just
@@ -806,9 +806,9 @@ docs, (6) commit.
 - [x] **NONE** (`DRIVER0.BIN`): silence. **Done (§9cq, M3.98): every command answers 0.**
 
 ### P7: page chrome
-- [x] **Done (§9ct, M3.101): `?dev` keeps them; without it they and `game.html`'s nav links are removed before boot (`src/devFlag.js`, `npm run pages`); the description is rewritten.** When the P1 options screen exists, the header's dev toggles ("Lap line (dev)", "Strict
+- [x] **Done (§9ct, M3.101): `?dev` keeps them; without it they and `index.html`'s nav links are removed before boot (`src/devFlag.js`, `npm run pages`); the description is rewritten.** When the P1 options screen exists, the header's dev toggles ("Lap line (dev)", "Strict
   OPL2") move behind a `?dev` URL flag. They are off by default, and the default page shows only
-  the game canvas and the folder picker. Rewrite `game.html`'s placeholder paragraph to describe the
+  the game canvas and the folder picker. Rewrite `index.html`'s placeholder paragraph to describe the
   real controls.
 
 ---
@@ -903,7 +903,7 @@ was carried forward and never met. Meet it now:
   `screens.js` with the same inputs and reports the differing-pixel count per screen, the way
   `check-live.mjs` does. Target: 0 for every static screen. Where a screen animates, pin the frame
   using the tick count read live. Add `front` to the regression loop above.
-- [x] F3. **(§9dq: two differences, both fixed: the carousel's entry-skip direction and the cheat code's settings write.)** Walk one full session side by side: DOSBox and `game.html` in a foreground Chrome tab.
+- [x] F3. **(§9dq: two differences, both fixed: the carousel's entry-skip direction and the cheat code's settings write.)** Walk one full session side by side: DOSBox and `index.html` in a foreground Chrome tab.
   Take the boot → options → title → Challenge → qualifier → race → results → board → … → a lost
   race → ONE LIFE LOST path, then quit. Write down each difference you see and either fix it (one
   commit each) or add it to §10 as an open item.

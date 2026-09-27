@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "render": "node tools/render-reference.mjs",
+    "favicon": "node tools/make-favicon.mjs",
     "catalog": "node tools/check-catalog.mjs",
     "lz": "node tools/check-lz.mjs",
     "chrtable": "node tools/check-chr-table.mjs",

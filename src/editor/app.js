@@ -131,7 +131,7 @@ export function startEditor(model) {
     for (const [id, b] of tabButtons) b.classList.toggle('active', id === app.tab)
     roundSel.value = app.round; fillRaces()
     const play = $('ed-play')
-    play.href = `index.html?round=${app.round}&race=${app.race}&edited=1`
+    play.href = `single.html?round=${app.round}&race=${app.race}&edited=1`
     const tab = TABS.find((t) => t[0] === app.tab)
     app.current = tab[2](main, app)
     storage.set(UI_KEY, JSON.stringify({ round: app.round, race: app.race, tab: app.tab }))

@@ -278,7 +278,7 @@ function checkRound9Deactivation() {
  * The three animated-tile mechanisms (docs/engine.md §9al): rounds 1/3/5's tile-0 parallax
  * (camera-derived, no counter), round 2's water-shimmer and round 8's hazard graphic (both
  * counter-driven word-map overwrites). Pinned against exact values, not just "changed" -- a
- * regression here would silently mis-animate `index.html`'s own default ROUND21 (round 2).
+ * regression here would silently mis-animate `single.html`'s own default ROUND21 (round 2).
  */
 async function checkTileAnimations() {
   const { applyTile0Parallax, applyRound2WaterAnim, applyRound8HazardAnim } = await import('../src/render/raceView.js')

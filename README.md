@@ -22,11 +22,12 @@ npm install
 npm run dev
 ```
 
-Open the URL Vite prints. Three pages:
+Open the URL Vite prints. Four pages:
 
-- **`index.html`** — a single race (round 2 qualifier), one player vs. 3 AI drones. The
-  simplest way to see the physics and rendering work.
-- **`game.html`** — the full flow: title → menu → character select → a one-player Challenge or
+- **`single.html`** — a single race, one player vs. 3 AI drones; Round/Race selects in the header
+  pick any of the 29 tracks (round 2 race 1, the qualifier, is the default). The simplest way to
+  see the physics and rendering work.
+- **`index.html`** — the full flow: title → menu → character select → a one-player Challenge or
   Head-to-Head-vs-CPU tournament → champion screen. Two-human head-to-head is partly there: both
   players pick characters (with the original's handicap question), and TOURNAMENT plays a real
   two-human match to 4 wins, with the WINNER!/LOSER! screen after each race, and SINGLE RACE lets
@@ -47,15 +48,15 @@ Open the URL Vite prints. Three pages:
   limits. Edits are saved in the browser; changed files download singly or as a `.zip` of `GAME1/…`
   paths. Every file is written back at its own layout, so an unedited file downloads byte-identical;
   an edited tile bank is re-packed with an LZ encoder the game's decompressor reads back exactly.
-  "Test race" opens the race page on the edited track (`index.html?round=&race=&edited=1`).
+  "Test race" opens the race page on the edited track (`single.html?round=&race=&edited=1`).
 
 In dev, Vite serves a local `game/` folder (see below) over HTTP automatically. A **production
 build** (`npm run build && npm run preview`, or any static host) has no `game/` to serve — every
 page then offers "Open game folder…" (or a drag-and-drop zone) to read your own copy directly from
 disk via the File System Access API, without ever uploading it anywhere.
 
-Controls: arrow keys to steer/throttle, Space (or S) to fire — remappable in `game.html`'s own
-GAME OPTIONS screen (F5), matching the original's real redefine-keys screen. `game.html`'s entire
+Controls: arrow keys to steer/throttle, Space (or S) to fire — remappable in `index.html`'s own
+GAME OPTIONS screen (F5), matching the original's real redefine-keys screen. `index.html`'s entire
 boot chain through character select — the title screen, SELECT GAME / ONE PLAYER GAME, and the
 character-select carousel — reads the same LEFT/RIGHT/FIRE keys your copy's `SETTINGS.DAT`
 configures (both players' own bindings work at every menu level except character select, which is
@@ -83,16 +84,16 @@ and stays local to your machine.
 - **Every shipped asset format**: palettes, sprites/fonts (the `.CHR` arena), tile banks, vehicle
   rotation frames, track layout (`.MAP`/`.CT`/`.COL`/`.DIR`/`.LEV`), the LZ codec, the OPL2/AdLib
   music-and-sfx driver (`DRIVER1.BIN`) reimplemented as a from-scratch YM3812 synthesizer, the logo
-  intro (a real per-frame animation on `game.html` -- the 48-record reveal, banner slide and
+  intro (a real per-frame animation on `index.html` -- the 48-record reveal, banner slide and
   diagonal shine, timed and skippable exactly as the original: a mouse click, not a key), and the
-  code-card copy-protection screen (also wired into `game.html`'s own boot sequence now -- the
+  code-card copy-protection screen (also wired into `index.html`'s own boot sequence now -- the
   live target column/row, the symbol grid, cursor movement, and the two-round accept flow; both
   real compares are patched in this copy, so ENTER always advances, exactly as it does in DOS),
   the real title attract loop (a 9-class `INTRO.CHR` showcase, no idle timeout), the real
   two-level SELECT GAME / ONE PLAYER GAME menu, and the real character-select carousel (11
   `FCNORMAL.CHR` faces on a real eased scroll, a taken character skipped/rejected purely through
   the roster's own shared byte encoding, a real 5-blink commit animation) -- closing out the
-  entire boot chain from `game.html`'s own launch to the character picks, all cross-checked live
+  entire boot chain from `index.html`'s own launch to the character picks, all cross-checked live
   against real DOSBox captures (`GOAL-DOS-PARITY.md` P1/P2, `docs/engine.md` §9as-§9ax), and the
   real tournament board screen between Challenge races (the `CASE.CHR` "vehicle display case" with
   one `MINATURE.CHR` icon per race, at the real per-icon positions, the newest one blinking as a
@@ -119,7 +120,7 @@ and stays local to your machine.
   square-wave tone per tick with chords arpeggiated, two beeper engines for cars 0 and 1, and no
   race-over jingle, which that driver's sound bank lacks) and NONE (silence). The choice changes a
   little gameplay too, as in the original: with BLASTER, pausing stops every car.
-- **The real GAME OPTIONS screen** (`game.html`, shown after the code card, before the title): F1/
+- **The real GAME OPTIONS screen** (`index.html`, shown after the code card, before the title): F1/
   F2 cycle the control device (P1 can never reach JOY2/MOUSE, a real, live-confirmed asymmetry;
   JOY 1/JOY 2 are gamepads, offered once the browser reports one — press a button on it first — and
   F7 calibrates them; MOUSE is never offered, because the original never turns its mouse on,
@@ -133,13 +134,13 @@ and stays local to your machine.
   `25011968` cheat code works too (10 lives after every race, and on a race intro, releasing
   keypad `+`/`-` jumps to the next/previous race, as the original's developers left it).
 - **Two "polish" settings**, both faithful to the original rather than added for their own sake:
-  - **Smoothness** (1–4, or AUTO on `game.html`'s own OPTIONS screen): the original's own
+  - **Smoothness** (1–4, or AUTO on `index.html`'s own OPTIONS screen): the original's own
     display-vs-physics-rate tradeoff — physics always runs at 35 Hz, this controls how often the
     screen redraws, and, as in the original, everything the original does while drawing: the car
     animations and countdowns, the race placings, the engine sound and the TANKS shots all advance
     once per drawn frame, so at 2–4 they run 2–4 times slower. On modern hardware there's no performance reason to use anything but 1
     (the smoothest); it's here for parity with the original's own options screen, not because the
-    browser needs it. (`index.html`'s single-race page keeps a header select instead, since it has
+    browser needs it. (`single.html` keeps a header select instead, since it has
     no boot chain of its own to host a real OPTIONS screen.)
   - **Strict OPL2**: the shipped game never enables the real YM3812's waveform-select register, so
     a real AdLib card would have played every voice as a plain sine wave. The DOSBox build this
@@ -148,7 +149,7 @@ and stays local to your machine.
     regardless — a richer, "not strictly accurate" sound that is what the game actually sounded
     like on real, common hardware. This checkbox switches to the stricter, sine-only behaviour.
   Like the other developer toggles (the lap line, and the single-race page's projectiles), it only
-  appears with `?dev` in the page URL; without it `game.html` is just the game.
+  appears with `?dev` in the page URL; without it `index.html` is just the game.
 
 ## What's not implemented
 
@@ -194,7 +195,7 @@ byte-for-byte comparison can't cover on its own.
 game/            your own copy of the game files (git-ignored, never bundled)
 src/formats/     decoders for every shipped file format
 src/engine/      the race physics, state machine, drone AI, camera, input, sound wiring
-src/frontend/    the tournament rules and the menu/race/results flow (game.html)
+src/frontend/    the tournament rules and the menu/race/results flow (index.html)
 src/render/      indexed-buffer compositing and sprite blitting
 src/audio/       the from-scratch OPL2 synthesizer and its AudioWorklet host
 src/data/        engine/front-end constants read live from MICROU.EXE, checked against it
