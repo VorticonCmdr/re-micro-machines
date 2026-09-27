@@ -13,7 +13,16 @@ full working plans; `docs/` holds the subsystem-by-subsystem evidence, each clai
 
 ## Playing it
 
-You need your own copy of the game's files (an `.exe`/`.com`/data-file set from the original
+![The port's SELECT GAME screen](screenshots/main.png)
+
+The port is hosted on GitHub Pages: **https://vorticoncmdr.github.io/re-micro-machines/**. The site
+has no game data, so on first load click **Open game folder…** (Chromium browsers) or drop the folder onto the
+page, and give it the directory that holds your copy's `MICRO.EXE` and `GAME1/`. The other pages are
+[`single.html`](https://vorticoncmdr.github.io/re-micro-machines/single.html),
+[`viewer.html`](https://vorticoncmdr.github.io/re-micro-machines/viewer.html) and
+[`editor.html`](https://vorticoncmdr.github.io/re-micro-machines/editor.html).
+
+To run it locally instead: you need your own copy of the game's files (an `.exe`/`.com`/data-file set from the original
 install, commonly named things like `MICRO.COM`, `MICRO.EXE`, `GAME1/`, etc.) — this repository
 does not include or link to a copy.
 
